@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSZEVAR ERP — COD & Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0b0f;--surface:#111318;--surface2:#161920;--border:#1e2230;--border2:#252a3a;--accent:#4f6ef7;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;--text:#e8eaf0;--text2:#8892aa;--text3:#4a5268;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;min-height:100vh;}
+.sidebar{position:fixed;left:0;top:0;width:220px;height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;}
+.logo{padding:24px 20px 20px;font-family:'Syne',sans-serif;font-weight:800;font-size:18px;border-bottom:1px solid var(--border);}
+.logo span{color:var(--accent);}
+.logo sub{font-size:10px;color:var(--text3);font-weight:400;display:block;margin-top:2px;}
+.nav{padding:16px 0;flex:1;overflow-y:auto;}
+.nav-section{padding:8px 20px 4px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;transition:all 0.2s;color:var(--text2);font-weight:500;font-size:13.5px;position:relative;}
+.nav-item:hover{color:var(--text);background:var(--surface2);}
+.nav-item.active{color:var(--accent);background:rgba(79,110,247,0.08);}
+.nav-item.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);border-radius:0 2px 2px 0;}
+.main{margin-left:220px;min-height:100vh;}
+.topbar{position:sticky;top:0;background:rgba(10,11,15,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;z-index:50;}
+.page-title{font-family:'Syne',sans-serif;font-weight:700;font-size:16px;}
+.btn{padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:600;font-size:13px;transition:all 0.2s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:#3d5ae0;}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2);}
+.btn-ghost:hover{color:var(--text);background:var(--surface2);}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.btn-green{background:var(--green);color:#fff;}
+.btn-red{background:var(--red);color:#fff;}
+.content{padding:24px 28px;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;position:relative;overflow:hidden;}
+.stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.stat-card.blue::after{background:linear-gradient(90deg,var(--accent),transparent);}
+.stat-card.green::after{background:linear-gradient(90deg,var(--green),transparent);}
+.stat-card.red::after{background:linear-gradient(90deg,var(--red),transparent);}
+.stat-card.yellow::after{background:linear-gradient(90deg,var(--yellow),transparent);}
+.stat-label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;}
+.stat-value{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-1px;}
+.stat-value.blue{color:var(--accent);}
+.stat-value.green{color:var(--green);}
+.stat-value.red{color:var(--red);}
+.stat-value.yellow{color:var(--yellow);}
+.stat-sub{margin-top:6px;font-size:12px;color:var(--text3);}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+.panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.panel-title{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;}
+.panel-sub{font-size:12px;color:var(--text3);margin-top:2px;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+thead tr{border-bottom:1px solid var(--border);}
+th{padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid rgba(30,34,48,0.6);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,0.02);}
+.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+.tag{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.tag-green{background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.2);}
+.tag-red{background:rgba(239,68,68,0.12);color:var(--red);border:1px solid rgba(239,68,68,0.2);}
+.tag-yellow{background:rgba(245,158,11,0.12);color:var(--yellow);border:1px solid rgba(245,158,11,0.2);}
+.tag-blue{background:rgba(79,110,247,0.12);color:var(--accent);border:1px solid rgba(79,110,247,0.2);}
+.tag-orange{background:rgba(249,115,22,0.12);color:var(--orange);border:1px solid rgba(249,115,22,0.2);}
+.view{display:none;}
+.view.active{display:block;animation:fadeIn 0.3s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.upload-zone{border:2px dashed var(--border2);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--surface2);margin-bottom:16px;}
+.upload-zone:hover{border-color:var(--accent);background:rgba(79,110,247,0.05);}
+.upload-icon{font-size:36px;margin-bottom:12px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.alert-box{padding:14px 16px;border-radius:8px;margin-bottom:12px;font-size:13px;}
+.alert-success{background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);color:var(--green);}
+.alert-error{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:var(--red);}
+.alert-info{background:rgba(79,110,247,0.1);border:1px solid rgba(79,110,247,0.3);color:var(--accent);}
+.loading{text-align:center;padding:40px;color:var(--text3);}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+input,select{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--accent);}
+.form-group{margin-bottom:12px;}
+.form-label{font-size:12px;color:var(--text2);margin-bottom:6px;display:block;}
+.diff-neg{color:var(--red);font-family:'JetBrains Mono',monospace;}
+.diff-zero{color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.diff-pos{color:var(--green);font-family:'JetBrains Mono',monospace;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);}
+.store-pill{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px;}
+.store-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);}
+.topbar-actions{display:flex;align-items:center;gap:10px;}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">RSZEVAR<span>.</span>ERP<sub>COD + Analytics System</sub></div>
+  <nav class="nav">
+    <div class="nav-section">Main</div>
+    <div class="nav-item active" onclick="showView('dashboard',this)">⬡ Dashboard</div>
+    <div class="nav-section">COD Module</div>
+    <div class="nav-item" onclick="showView('upload',this)">↑ File Upload</div>
+    <div class="nav-item" onclick="showView('reconciliation',this)">⇄ Reconciliation</div>
+    <div class="nav-item" onclick="showView('settlements',this)">₨ Settlements</div>
+    <div class="nav-section">Analytics</div>
+    <div class="nav-item" onclick="showView('products',this)">▤ Products</div>
+    <div class="nav-item" onclick="showView('restock',this)">△ Restock Alerts</div>
+    <div class="nav-section">Settings</div>
+    <div class="nav-item" onclick="showView('settings',this)">⚙ Settings</div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="store-pill">
+      <div class="store-dot"></div>
+      <div>
+        <div style="font-size:12px;font-weight:600;">RSZEVAR.COM</div>
+        <div style="font-size:10px;color:var(--text3);" id="conn-status">Connecting...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="pageTitle">Dashboard</div>
+    <div class="topbar-actions">
+      <select id="dateRange" onchange="loadDashboard()" style="width:140px">
+        <option value="30">Last 30 days</option>
+        <option value="60">Last 60 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="syncOrders()">⟳ Sync Orders</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="view active" id="view-dashboard">
+      <div id="dash-alert"></div>
+      <div class="stats-grid" id="dash-stats">
+        <div class="stat-card blue"><div class="stat-label">Total Orders</div><div class="stat-value blue" id="s-orders">...</div><div class="stat-sub">Synced from Shopify</div></div>
+        <div class="stat-card green"><div class="stat-label">COD Received</div><div class="stat-value green" id="s-received">...</div><div class="stat-sub">Reconciled payments</div></div>
+        <div class="stat-card red"><div class="stat-label">Pending COD</div><div class="stat-value red" id="s-pending">...</div><div class="stat-sub">Awaiting settlement</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Short Payments</div><div class="stat-value yellow" id="s-short">...</div><div class="stat-sub">Difference amount</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div><div class="panel-title">Recent Reconciliation</div><div class="panel-sub">Latest matched & unmatched orders</div></div></div>
+        <div id="dash-table"><div class="loading"><div class="spinner"></div><p style="margin-top:12px">Loading data...</p></div></div>
+      </div>
+    </div>
+
+    <!-- FILE UPLOAD -->
+    <div class="view" id="view-upload">
+      <div class="panel">
+        <div class="panel-header"><div><div class="panel-title">Upload Courier Settlement File</div><div class="panel-sub">PostEx ya Kangaroo ka CSV/Excel upload karo</div></div></div>
+        
+        <div class="form-group">
+          <label class="form-label">Courier Select Karo</label>
+          <select id="upload-courier">
+            <option value="postex">PostEx</option>
+            <option value="kangaroo">Kangaroo Logistics</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">📂</div>
+          <div style="font-weight:600;font-size:15px;margin-bottom:6px">File Drop Karo Ya Click Karo</div>
+          <div style="color:var(--text3);font-size:13px">CSV ya Excel (.xlsx) file — Max 10MB</div>
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
+        </div>
+
+        <div id="upload-status"></div>
+        <div id="upload-preview"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Column Mapping Guide</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:16px;font-size:13px;color:var(--text2);">
+          <p style="margin-bottom:8px">✅ <b>PostEx CSV columns:</b> CN_NUMBER, COD_AMOUNT, ORDER_ID, STATUS</p>
+          <p style="margin-bottom:8px">✅ <b>Kangaroo columns:</b> TRACKING_NO, AMOUNT, REF_NO, DELIVERY_STATUS</p>
+          <p style="color:var(--text3)">⚠️ Column names exact match nahi hon toh bhi system auto-detect karta hai</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Upload History</div></div>
+        <div id="upload-history"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- RECONCILIATION -->
+    <div class="view" id="view-reconciliation">
+      <div class="stats-grid">
+        <div class="stat-card green"><div class="stat-label">Matched</div><div class="stat-value green" id="r-matched">0</div></div>
+        <div class="stat-card red"><div class="stat-label">Unpaid</div><div class="stat-value red" id="r-unpaid">0</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Short Payment</div><div class="stat-value yellow" id="r-short">0</div></div>
+        <div class="stat-card blue"><div class="stat-label">Total Records</div><div class="stat-value blue" id="r-total">0</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div><div class="panel-title">Reconciliation Records</div></div>
+          <div style="display:flex;gap:8px">
+            <select id="recon-filter" onchange="loadReconciliation()" style="width:140px">
+              <option value="all">All</option>
+              <option value="unmatched">Unpaid</option>
+              <option value="short">Short</option>
+              <option value="matched">Matched</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Export</button>
+          </div>
+        </div>
+        <div id="recon-table"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- SETTLEMENTS -->
+    <div class="view" id="view-settlements">
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Settlement History</div></div>
+        <div id="settlements-table"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- PRODUCTS -->
+    <div class="view" id="view-products">
+      <div class="stats-grid">
+        <div class="stat-card blue"><div class="stat-label">Total Products</div><div class="stat-value blue" id="p-total">0</div></div>
+        <div class="stat-card green"><div class="stat-label">Class A</div><div class="stat-value green" id="p-a">0</div><div class="stat-sub">Top performers</div></div>
+        <div class="stat-card yellow"><div class="stat-label">Class B</div><div class="stat-value yellow" id="p-b">0</div><div class="stat-sub">Mid performers</div></div>
+        <div class="stat-card red"><div class="stat-label">Class C</div><div class="stat-value red" id="p-c">0</div><div class="stat-sub">Low performers</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div><div class="panel-title">Product Performance</div><div class="panel-sub">Revenue & quantity ranking</div></div>
+          <button class="btn btn-ghost btn-sm" onclick="syncProducts()">⟳ Sync Products</button>
+        </div>
+        <div id="products-table"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- RESTOCK -->
+    <div class="view" id="view-restock">
+      <div class="panel">
+        <div class="panel-header"><div><div class="panel-title">Restock Alerts</div><div class="panel-sub">Low stock & out of stock products</div></div></div>
+        <div id="restock-table"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="view" id="view-settings">
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">System Configuration</div></div>
+        <div class="form-group">
+          <label class="form-label">Shopify Store URL</label>
+          <input type="text" id="cfg-store" placeholder="rszevar.myshopify.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Shopify Access Token</label>
+          <input type="password" id="cfg-token" placeholder="shpat_xxxxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Supabase URL</label>
+          <input type="text" id="cfg-supa-url" placeholder="https://xxx.supabase.co">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Supabase Anon Key</label>
+          <input type="password" id="cfg-supa-key" placeholder="eyJhbGc...">
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+        <div id="settings-msg" style="margin-top:12px"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Connection Status</div></div>
+        <div id="conn-test"><button class="btn btn-ghost" onclick="testConnection()">🔌 Test Connection</button></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============================================
+// CONFIGURATION — Settings se load hogi
+// ============================================
+let SUPABASE_URL = localStorage.getItem('supa_url') || '';
+let SUPABASE_KEY = localStorage.getItem('supa_key') || '';
+let SHOPIFY_TOKEN = localStorage.getItem('shop_token') || '';
+let SHOPIFY_STORE = localStorage.getItem('shop_store') || '';
+let supabase = null;
+
+function initSupabase() {
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    document.getElementById('conn-status').textContent = 'Connected ✓';
+    return true;
+  }
+  document.getElementById('conn-status').textContent = 'Setup needed';
+  return false;
+}
+
+// ============================================
+// NAVIGATION
+// ============================================
+function showView(name, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  if(el) el.classList.add('active');
+  const titles = {
+    dashboard:'Dashboard', upload:'File Upload', reconciliation:'Reconciliation',
+    settlements:'Settlements', products:'Products', restock:'Restock Alerts', settings:'Settings'
+  };
+  document.getElementById('pageTitle').textContent = titles[name] || name;
+  if(name === 'dashboard') loadDashboard();
+  if(name === 'reconciliation') loadReconciliation();
+  if(name === 'settlements') loadSettlements();
+  if(name === 'products') loadProducts();
+  if(name === 'restock') loadRestock();
+  if(name === 'upload') loadUploadHistory();
+  if(name === 'settings') loadSettings();
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+function loadSettings() {
+  document.getElementById('cfg-store').value = SHOPIFY_STORE;
+  document.getElementById('cfg-token').value = SHOPIFY_TOKEN;
+  document.getElementById('cfg-supa-url').value = SUPABASE_URL;
+  document.getElementById('cfg-supa-key').value = SUPABASE_KEY;
+}
+
+function saveSettings() {
+  SHOPIFY_STORE = document.getElementById('cfg-store').value.trim();
+  SHOPIFY_TOKEN = document.getElementById('cfg-token').value.trim();
+  SUPABASE_URL = document.getElementById('cfg-supa-url').value.trim();
+  SUPABASE_KEY = document.getElementById('cfg-supa-key').value.trim();
+  localStorage.setItem('shop_store', SHOPIFY_STORE);
+  localStorage.setItem('shop_token', SHOPIFY_TOKEN);
+  localStorage.setItem('supa_url', SUPABASE_URL);
+  localStorage.setItem('supa_key', SUPABASE_KEY);
+  initSupabase();
+  document.getElementById('settings-msg').innerHTML = '<div class="alert-box alert-success">✅ Settings saved! System connected.</div>';
+}
+
+async function testConnection() {
+  if (!initSupabase()) {
+    document.getElementById('conn-test').innerHTML = '<div class="alert-box alert-error">❌ Pehle settings save karo!</div>';
+    return;
+  }
+  try {
+    const { data, error } = await supabase.from('orders').select('count').limit(1);
+    if (error) throw error;
+    document.getElementById('conn-test').innerHTML = '<div class="alert-box alert-success">✅ Supabase connected! Database working.</div>';
+  } catch(e) {
+    document.getElementById('conn-test').innerHTML = `<div class="alert-box alert-error">❌ Error: ${e.message}</div>`;
+  }
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+async function loadDashboard() {
+  if (!initSupabase()) {
+    document.getElementById('dash-alert').innerHTML = '<div class="alert-box alert-info">⚙️ Pehle Settings mein Supabase keys daalo!</div>';
+    document.getElementById('dash-table').innerHTML = '';
+    updateDashStats(0,0,0,0);
+    return;
+  }
+  try {
+    const { data: settlements } = await supabase.from('settlements').select('*').order('created_at', {ascending:false}).limit(50);
+    if (!settlements || settlements.length === 0) {
+      document.getElementById('dash-table').innerHTML = '<div class="loading" style="color:var(--text3)">📂 Koi data nahi — pehle file upload karo!</div>';
+      updateDashStats(0,0,0,0);
+      return;
+    }
+    const matched = settlements.filter(s => s.reconcile_status === 'matched');
+    const unpaid = settlements.filter(s => s.reconcile_status === 'unmatched');
+    const short = settlements.filter(s => s.reconcile_status === 'short');
+    const totalReceived = matched.reduce((a,b) => a + parseFloat(b.amount_received||0), 0);
+    const totalPending = unpaid.reduce((a,b) => a + parseFloat(b.amount_expected||0), 0);
+    const totalShort = short.reduce((a,b) => a + Math.abs(parseFloat(b.difference||0)), 0);
+    updateDashStats(settlements.length, totalReceived, totalPending, totalShort);
+    renderReconTable('dash-table', settlements.slice(0,10));
+  } catch(e) {
+    document.getElementById('dash-alert').innerHTML = `<div class="alert-box alert-error">❌ ${e.message}</div>`;
+  }
+}
+
+function updateDashStats(orders, received, pending, short) {
+  document.getElementById('s-orders').textContent = orders;
+  document.getElementById('s-received').textContent = 'Rs ' + formatNum(received);
+  document.getElementById('s-pending').textContent = 'Rs ' + formatNum(pending);
+  document.getElementById('s-short').textContent = 'Rs ' + formatNum(short);
+}
+
+function formatNum(n) {
+  return Math.round(n).toLocaleString('en-PK');
+}
+
+// ============================================
+// FILE UPLOAD & RECONCILIATION ENGINE
+// ============================================
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!initSupabase()) {
+    showUploadStatus('error', 'Pehle Settings mein keys daalo!');
+    return;
+  }
+  const courier = document.getElementById('upload-courier').value;
+  showUploadStatus('info', '⟳ File process ho rahi hai...');
+
+  try {
+    let rows = [];
+    if (file.name.endsWith('.csv')) {
+      rows = await parseCSV(file);
+    } else {
+      rows = await parseExcel(file);
+    }
+
+    if (rows.length === 0) {
+      showUploadStatus('error', 'File empty hai ya format sahi nahi!');
+      return;
+    }
+
+    showUploadStatus('info', `✓ ${rows.length} rows mili hain — matching shuru...`);
+    const results = await reconcileRows(rows, courier);
+    await saveSettlements(results, file.name, courier);
+    
+    const matched = results.filter(r => r.reconcile_status === 'matched').length;
+    const unmatched = results.filter(r => r.reconcile_status === 'unmatched').length;
+    const short = results.filter(r => r.reconcile_status === 'short').length;
+    
+    showUploadStatus('success', 
+      `✅ Complete! ${results.length} rows processed<br>
+       ✓ Matched: ${matched} | ⚠ Short: ${short} | ❌ Unpaid: ${unmatched}`
+    );
+    renderUploadPreview(results);
+    loadUploadHistory();
+    event.target.value = '';
+  } catch(e) {
+    showUploadStatus('error', 'Error: ' + e.message);
+  }
+}
+
+async function parseCSV(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(l => l.trim());
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,'').toUpperCase());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const vals = lines[i].split(',').map(v => v.trim().replace(/"/g,''));
+        const obj = {};
+        headers.forEach((h, idx) => obj[h] = vals[idx] || '');
+        rows.push(obj);
+      }
+      resolve(rows);
+    };
+    reader.readAsText(file);
+  });
+}
+
+async function parseExcel(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const wb = XLSX.read(e.target.result, {type:'binary'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, {raw:false});
+      const rows = data.map(row => {
+        const upper = {};
+        Object.keys(row).forEach(k => upper[k.trim().toUpperCase()] = row[k]);
+        return upper;
+      });
+      resolve(rows);
+    };
+    reader.readAsBinaryString(file);
+  });
+}
+
+function extractField(row, ...keys) {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== '') return row[k];
+  }
+  return '';
+}
+
+async function reconcileRows(rows, courier) {
+  const { data: orders } = await supabase.from('orders').select('shopify_order_id,order_number,total_price,customer_name');
+  const orderMap = {};
+  if (orders) {
+    orders.forEach(o => {
+      if (o.order_number) orderMap[o.order_number.toString().replace('#','')] = o;
+      if (o.shopify_order_id) orderMap[o.shopify_order_id] = o;
+    });
+  }
+
+  return rows.map(row => {
+    const tracking = extractField(row,'CN_NUMBER','TRACKING_NO','TRACKING','CN','AWB','TRACKING_NUMBER','CN NUMBER');
+    const amount = parseFloat(extractField(row,'COD_AMOUNT','AMOUNT','COD','COLLECTED_AMOUNT','COD AMOUNT') || 0);
+    const orderRef = extractField(row,'ORDER_ID','REF_NO','REFERENCE','ORDER_NO','ORDER NUMBER','REF');
+    const status = extractField(row,'STATUS','DELIVERY_STATUS','DLVR_STATUS');
+
+    const refClean = orderRef.toString().replace('#','').trim();
+    const matchedOrder = orderMap[refClean] || null;
+    const expected = matchedOrder ? parseFloat(matchedOrder.total_price) : 0;
+    const diff = amount - expected;
+
+    let reconcile_status = 'unmatched';
+    if (matchedOrder && Math.abs(diff) < 1) reconcile_status = 'matched';
+    else if (matchedOrder && diff < 0) reconcile_status = 'short';
+    else if (matchedOrder && diff > 0) reconcile_status = 'matched';
+
+    return {
+      courier, tracking_number: tracking, order_number: orderRef,
+      amount_expected: expected, amount_received: amount,
+      difference: diff, reconcile_status,
+      settlement_date: new Date().toISOString().split('T')[0],
+      source: 'file_upload',
+      notes: status
+    };
+  });
+}
+
+async function saveSettlements(results, filename, courier) {
+  const { error } = await supabase.from('settlements').insert(results);
+  if (error) throw error;
+  const total = results.reduce((a,b) => a + (b.amount_received||0), 0);
+  await supabase.from('upload_history').insert([{
+    filename, courier,
+    total_rows: results.length,
+    matched_rows: results.filter(r=>r.reconcile_status==='matched').length,
+    unmatched_rows: results.filter(r=>r.reconcile_status==='unmatched').length,
+    total_amount: total
+  }]);
+}
+
+function showUploadStatus(type, msg) {
+  const cls = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+  document.getElementById('upload-status').innerHTML = `<div class="alert-box ${cls}">${msg}</div>`;
+}
+
+function renderUploadPreview(results) {
+  const html = `
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Upload Result Preview</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tracking</th><th>Order</th><th>Expected</th><th>Received</th><th>Diff</th><th>Status</th></tr></thead>
+          <tbody>
+            ${results.slice(0,15).map(r => `
+              <tr>
+                <td class="mono">${r.tracking_number||'—'}</td>
+                <td class="mono">${r.order_number||'—'}</td>
+                <td>Rs ${formatNum(r.amount_expected)}</td>
+                <td>Rs ${formatNum(r.amount_received)}</td>
+                <td class="${r.difference<0?'diff-neg':r.difference>0?'diff-pos':'diff-zero'}">${r.difference>=0?'+':''}${formatNum(r.difference)}</td>
+                <td>${statusTag(r.reconcile_status)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('upload-preview').innerHTML = html;
+}
+
+// ============================================
+// RECONCILIATION VIEW
+// ============================================
+async function loadReconciliation() {
+  if (!initSupabase()) return;
+  const filter = document.getElementById('recon-filter').value;
+  let query = supabase.from('settlements').select('*').order('created_at',{ascending:false});
+  if (filter !== 'all') query = query.eq('reconcile_status', filter);
+  const { data } = await query;
+  if (!data || data.length === 0) {
+    document.getElementById('recon-table').innerHTML = '<div class="loading" style="color:var(--text3)">Koi record nahi</div>';
+    return;
+  }
+  const matched = data.filter(s=>s.reconcile_status==='matched').length;
+  const unpaid = data.filter(s=>s.reconcile_status==='unmatched').length;
+  const short = data.filter(s=>s.reconcile_status==='short').length;
+  document.getElementById('r-matched').textContent = matched;
+  document.getElementById('r-unpaid').textContent = unpaid;
+  document.getElementById('r-short').textContent = short;
+  document.getElementById('r-total').textContent = data.length;
+  renderReconTable('recon-table', data);
+}
+
+function renderReconTable(targetId, data) {
+  document.getElementById(targetId).innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tracking</th><th>Order</th><th>Courier</th><th>Expected</th><th>Received</th><th>Diff</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>
+          ${data.map(r => `
+            <tr>
+              <td class="mono">${r.tracking_number||'—'}</td>
+              <td class="mono">${r.order_number||'—'}</td>
+              <td><span class="tag tag-blue">${r.courier||'—'}</span></td>
+              <td>Rs ${formatNum(r.amount_expected||0)}</td>
+              <td>Rs ${formatNum(r.amount_received||0)}</td>
+              <td class="${(r.difference||0)<0?'diff-neg':(r.difference||0)>0?'diff-pos':'diff-zero'}">${(r.difference||0)>=0?'+':''}${formatNum(r.difference||0)}</td>
+              <td style="color:var(--text3);font-size:12px">${r.settlement_date||'—'}</td>
+              <td>${statusTag(r.reconcile_status)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================
+// SETTLEMENTS
+// ============================================
+async function loadSettlements() {
+  if (!initSupabase()) return;
+  const { data } = await supabase.from('upload_history').select('*').order('uploaded_at',{ascending:false});
+  if (!data || data.length === 0) {
+    document.getElementById('settlements-table').innerHTML = '<div class="loading" style="color:var(--text3)">Koi settlement nahi</div>';
+    return;
+  }
+  document.getElementById('settlements-table').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Courier</th><th>Total</th><th>Matched</th><th>Unmatched</th><th>Amount</th><th>Date</th></tr></thead>
+        <tbody>
+          ${data.map(r => `
+            <tr>
+              <td style="font-size:12px">${r.filename||'—'}</td>
+              <td><span class="tag tag-blue">${r.courier||'—'}</span></td>
+              <td>${r.total_rows||0}</td>
+              <td style="color:var(--green)">${r.matched_rows||0}</td>
+              <td style="color:var(--red)">${r.unmatched_rows||0}</td>
+              <td style="color:var(--green);font-family:'JetBrains Mono',monospace">Rs ${formatNum(r.total_amount||0)}</td>
+              <td style="color:var(--text3);font-size:12px">${new Date(r.uploaded_at).toLocaleDateString()}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================
+// PRODUCTS
+// ============================================
+async function loadProducts() {
+  if (!initSupabase()) return;
+  const { data } = await supabase.from('products').select('*').order('revenue_30d',{ascending:false});
+  if (!data || data.length === 0) {
+    document.getElementById('products-table').innerHTML = '<div class="loading" style="color:var(--text3)">📦 Koi product nahi — Sync karo!</div>';
+    document.getElementById('p-total').textContent = 0;
+    return;
+  }
+  document.getElementById('p-total').textContent = data.length;
+  document.getElementById('p-a').textContent = data.filter(p=>p.abc_class==='A').length;
+  document.getElementById('p-b').textContent = data.filter(p=>p.abc_class==='B').length;
+  document.getElementById('p-c').textContent = data.filter(p=>p.abc_class==='C').length;
+  document.getElementById('products-table').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Product</th><th>Vendor</th><th>Stock</th><th>Sold 30d</th><th>Revenue</th><th>Velocity</th><th>ABC</th></tr></thead>
+        <tbody>
+          ${data.map((p,i) => `
+            <tr>
+              <td style="font-family:'Syne',sans-serif;font-weight:800;color:var(--text3)">${i+1}</td>
+              <td>${p.title||'—'}<br><span style="font-size:11px;color:var(--text3)">${p.variant_title||''}</span></td>
+              <td style="font-size:12px;color:var(--text2)">${p.vendor||'—'}</td>
+              <td>${stockTag(p.inventory_quantity)}</td>
+              <td>${p.sold_30d||0}</td>
+              <td style="color:var(--green);font-family:'JetBrains Mono',monospace">Rs ${formatNum(p.revenue_30d||0)}</td>
+              <td style="font-size:12px">${p.sell_velocity||0}/day</td>
+              <td>${abcTag(p.abc_class)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================
+// RESTOCK
+// ============================================
+async function loadRestock() {
+  if (!initSupabase()) return;
+  const { data } = await supabase.from('products').select('*').lt('days_of_stock', 14).order('days_of_stock',{ascending:true});
+  if (!data || data.length === 0) {
+    document.getElementById('restock-table').innerHTML = '<div class="loading" style="color:var(--green)">✅ Sab products ka stock theek hai!</div>';
+    return;
+  }
+  document.getElementById('restock-table').innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Priority</th><th>Product</th><th>Stock</th><th>Sell Rate</th><th>Days Left</th><th>Vendor</th></tr></thead>
+        <tbody>
+          ${data.map(p => {
+            const days = parseFloat(p.days_of_stock||0);
+            const priority = days <= 0 ? '🔴 P1 OUT' : days < 3 ? '🔴 P1' : days < 7 ? '🟡 P2' : '🟠 P3';
+            const cls = days <= 3 ? 'diff-neg' : 'diff-zero';
+            return `<tr>
+              <td><span class="tag ${days<=3?'tag-red':'tag-yellow'}">${priority}</span></td>
+              <td>${p.title||'—'}</td>
+              <td>${p.inventory_quantity||0}</td>
+              <td style="font-size:12px">${p.sell_velocity||0}/day</td>
+              <td class="${cls}">${days<=0?'OUT':days.toFixed(1)+'d'}</td>
+              <td style="font-size:12px;color:var(--text2)">${p.vendor||'—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================
+// UPLOAD HISTORY
+// ============================================
+async function loadUploadHistory() {
+  if (!initSupabase()) return;
+  const { data } = await supabase.from('upload_history').select('*').order('uploaded_at',{ascending:false}).limit(10);
+  if (!data || data.length === 0) {
+    document.getElementById('upload-history').innerHTML = '<div style="color:var(--text3);font-size:13px;padding:12px">Koi upload nahi abhi tak</div>';
+    return;
+  }
+  document.getElementById('upload-history').innerHTML = `
+    <table style="width:100%">
+      <thead><tr><th>File</th><th>Courier</th><th>Rows</th><th>Matched</th><th>Date</th></tr></thead>
+      <tbody>
+        ${data.map(r=>`<tr>
+          <td style="font-size:12px">${r.filename}</td>
+          <td><span class="tag tag-blue">${r.courier}</span></td>
+          <td>${r.total_rows}</td>
+          <td style="color:var(--green)">${r.matched_rows}</td>
+          <td style="font-size:12px;color:var(--text3)">${new Date(r.uploaded_at).toLocaleDateString()}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ============================================
+// SYNC ORDERS FROM SHOPIFY
+// ============================================
+async function syncOrders() {
+  if (!initSupabase()) {
+    alert('Pehle Settings mein Shopify keys daalo!');
+    return;
+  }
+  if (!SHOPIFY_TOKEN || !SHOPIFY_STORE) {
+    alert('Settings mein Shopify Store URL aur Access Token daalo!');
+    showView('settings', null);
+    return;
+  }
+  alert('⚠️ Direct Shopify sync ke liye backend API zaroor hai.\n\nAbhi file upload mode use karo — yeh 100% kaam karta hai!\n\nSettings pe jao aur apna PostEx/Kangaroo CSV upload karo.');
+}
+
+async function syncProducts() {
+  alert('Products sync ke liye Shopify API backend zaroor hai.\n\nIs feature ke liye humein ek simple backend banana hoga — agla step mein karenge!');
+}
+
+// ============================================
+// EXPORT
+// ============================================
+function exportCSV() {
+  if (!initSupabase()) return;
+  supabase.from('settlements').select('*').then(({data}) => {
+    if (!data) return;
+    const headers = ['tracking_number','order_number','courier','amount_expected','amount_received','difference','reconcile_status','settlement_date'];
+    const csv = [headers.join(','), ...data.map(r => headers.map(h => r[h]||'').join(','))].join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rszevar_reconciliation.csv';
+    a.click();
+  });
+}
+
+// ============================================
+// HELPER TAGS
+// ============================================
+function statusTag(s) {
+  if (s === 'matched') return '<span class="tag tag-green">✓ Matched</span>';
+  if (s === 'short') return '<span class="tag tag-yellow">⚠ Short</span>';
+  return '<span class="tag tag-red">❌ Unpaid</span>';
+}
+
+function abcTag(c) {
+  if (c === 'A') return '<span class="tag tag-green">A</span>';
+  if (c === 'B') return '<span class="tag tag-blue">B</span>';
+  return '<span class="tag tag-red">C</span>';
+}
+
+function stockTag(qty) {
+  if (!qty || qty <= 0) return '<span class="tag tag-red">0</span>';
+  if (qty < 10) return `<span class="tag tag-yellow">${qty}</span>`;
+  return `<span class="tag tag-green">${qty}</span>`;
+}
+
+// ============================================
+// INIT
+// ============================================
+window.onload = () => {
+  initSupabase();
+  loadDashboard();
+};
+</script>
+</body>
+</html>
+```
+
+---
+
+## ▶️ Paste Karne Ke Baad
+```
+1. Upar "Commit changes..." GREEN button click karo
+2. Popup aayega — "Commit changes" click karo
+3. Done!
