@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫' },
   { id: 'orders', label: 'Orders', icon: '📋' },
-  { id: 'inventory', label: 'Inventory', icon: '📦', coming: true },
+  { id: 'inventory', label: 'Inventory', icon: '📦' },
   { id: 'accounts', label: 'Accounts', icon: '💰', coming: true },
   { id: 'courier', label: 'Courier', icon: '🚚', coming: true },
   { id: 'customers', label: 'Customers', icon: '👥', coming: true },
@@ -138,6 +138,7 @@ export default function ERPApp() {
       }}>
         {activeModule === 'dashboard' && <DashboardPage onNavigate={setActiveModule} />}
         {activeModule === 'orders' && <OrdersPage />}
+        {activeModule === 'inventory' && <InventoryPage />}
       </main>
     </div>
   );
@@ -763,6 +764,470 @@ function OrderDetailPanel({ order, onClose }) {
           <DetailRow label="Last Synced" value={order.shopify_synced_at ? new Date(order.shopify_synced_at).toLocaleString() : '—'} />
         </DetailSection>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// INVENTORY PAGE
+// ============================================================================
+function InventoryPage() {
+  const [products, setProducts] = useState([]);
+  const [stats, setStats] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [filters, setFilters] = useState({ search: '', category: 'all', stock: 'all' });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ sort: 'title', order: 'asc' });
+
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '40',
+        sort: sortConfig.sort,
+        order: sortConfig.order,
+      });
+      if (filters.search) params.set('search', filters.search);
+      if (filters.category !== 'all') params.set('category', filters.category);
+      if (filters.stock !== 'all') params.set('stock', filters.stock);
+
+      const res = await fetch(`/api/products?${params}`);
+      const data = await res.json();
+
+      if (data.success) {
+        setProducts(data.products || []);
+        setTotal(data.total || 0);
+        setTotalPages(data.total_pages || 1);
+        setStats(data.stats || {});
+        setCategories(data.categories || []);
+      }
+    } catch (e) {
+      console.error('Fetch products error:', e);
+    }
+    setLoading(false);
+  }, [page, filters, sortConfig]);
+
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch('/api/shopify/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      setSyncResult(data);
+      if (data.success) await fetchProducts();
+    } catch (e) {
+      setSyncResult({ success: false, error: e.message });
+    }
+    setSyncing(false);
+  };
+
+  const handleSort = (field) => {
+    setSortConfig(prev => ({
+      sort: field,
+      order: prev.sort === field && prev.order === 'asc' ? 'desc' : 'asc',
+    }));
+    setPage(1);
+  };
+
+  const SortIcon = ({ field }) => {
+    if (sortConfig.sort !== field) return <span style={{ opacity: 0.3 }}>↕</span>;
+    return <span style={{ color: 'var(--gold)' }}>{sortConfig.order === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const stockFilters = [
+    { value: 'all', label: 'All Products' },
+    { value: 'low', label: 'Low Stock (≤5)' },
+    { value: 'out', label: 'Out of Stock' },
+  ];
+
+  const getStockColor = (qty) => {
+    if (qty === 0) return 'var(--red)';
+    if (qty <= 5) return 'var(--orange)';
+    if (qty <= 15) return '#fbbf24';
+    return 'var(--green)';
+  };
+
+  const getStockBg = (qty) => {
+    if (qty === 0) return 'var(--red-dim)';
+    if (qty <= 5) return 'var(--orange-dim)';
+    if (qty <= 15) return 'rgba(251,191,36,0.12)';
+    return 'var(--green-dim)';
+  };
+
+  return (
+    <div style={{ padding: 24 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1,
+          }}>Inventory</h1>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
+            {total} products · Synced from Shopify
+          </p>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 20px',
+            background: syncing ? 'var(--border)' : 'var(--gold)',
+            color: syncing ? 'var(--text3)' : '#080808',
+            border: 'none', borderRadius: 'var(--radius)',
+            fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+            cursor: syncing ? 'wait' : 'pointer',
+          }}
+        >
+          <span style={{ display: 'inline-block', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
+          {syncing ? 'Syncing Products...' : 'Sync from Shopify'}
+        </button>
+      </div>
+
+      {/* Sync Result */}
+      {syncResult && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 16, borderRadius: 'var(--radius)',
+          background: syncResult.success ? 'var(--green-dim)' : 'var(--red-dim)',
+          border: `1px solid ${syncResult.success ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'}`,
+          fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span style={{ color: syncResult.success ? 'var(--green)' : 'var(--red)' }}>
+            {syncResult.success ? `✅ ${syncResult.message}` : `❌ ${syncResult.error}`}
+          </span>
+          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gap: 12, marginBottom: 20,
+      }}>
+        {[
+          { label: 'Total Products', value: stats.total || 0, icon: '📦', color: 'var(--gold)' },
+          { label: 'Total Units', value: stats.total_units || 0, icon: '🔢', color: 'var(--blue)' },
+          { label: 'Stock Value', value: `Rs ${((stats.total_stock_value || 0) / 1000).toFixed(0)}K`, icon: '💰', color: 'var(--green)' },
+          { label: 'Low Stock', value: stats.low_stock || 0, icon: '⚠️', color: 'var(--orange)' },
+          { label: 'Out of Stock', value: stats.out_of_stock || 0, icon: '🚫', color: 'var(--red)' },
+          { label: 'Active', value: stats.active || 0, icon: '✅', color: 'var(--cyan)' },
+        ].map(card => (
+          <div key={card.label} style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)', padding: 16,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>
+                  {card.label}
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: card.color }}>{card.value}</div>
+              </div>
+              <span style={{ fontSize: 20 }}>{card.icon}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters Row */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search by name, SKU, category..."
+          value={filters.search}
+          onChange={e => { setFilters(f => ({ ...f, search: e.target.value })); setPage(1); }}
+          style={{
+            flex: '1 1 250px', maxWidth: 350, padding: '9px 14px',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)',
+            fontSize: 13, fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        {/* Category */}
+        <select
+          value={filters.category}
+          onChange={e => { setFilters(f => ({ ...f, category: e.target.value })); setPage(1); }}
+          style={{
+            padding: '9px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)',
+            fontSize: 13, fontFamily: 'inherit', outline: 'none',
+          }}
+        >
+          <option value="all">All Categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {/* Stock filter */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {stockFilters.map(sf => (
+            <button key={sf.value}
+              onClick={() => { setFilters(f => ({ ...f, stock: sf.value })); setPage(1); }}
+              style={{
+                padding: '7px 14px',
+                background: filters.stock === sf.value ? 'var(--gold-dim)' : 'transparent',
+                border: `1px solid ${filters.stock === sf.value ? 'var(--gold)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius)',
+                color: filters.stock === sf.value ? 'var(--gold)' : 'var(--text2)',
+                fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >{sf.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Products Table */}
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+      }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
+            <div style={{ fontSize: 24, marginBottom: 8, animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</div>
+            <div>Loading products...</div>
+          </div>
+        ) : products.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+            <div style={{ fontSize: 15, marginBottom: 8 }}>No products found</div>
+            <div style={{ fontSize: 13 }}>
+              {filters.search || filters.stock !== 'all'
+                ? 'Try different filters'
+                : 'Click "Sync from Shopify" to pull your products'}
+            </div>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {[
+                    { key: 'image', label: '', sortable: false, width: 50 },
+                    { key: 'title', label: 'Product', sortable: true },
+                    { key: 'sku', label: 'SKU', sortable: true },
+                    { key: 'category', label: 'Category', sortable: true },
+                    { key: 'selling_price', label: 'Price', sortable: true },
+                    { key: 'cost_price', label: 'Cost', sortable: true },
+                    { key: 'stock_quantity', label: 'Stock', sortable: true },
+                    { key: 'total_sold', label: 'Sold', sortable: true },
+                    { key: 'status', label: 'Status', sortable: false },
+                  ].map(col => (
+                    <th key={col.key}
+                      onClick={() => col.sortable && handleSort(col.key)}
+                      style={{
+                        padding: '12px 10px', textAlign: 'left',
+                        color: 'var(--text3)', fontWeight: 500,
+                        fontSize: 11, textTransform: 'uppercase',
+                        letterSpacing: 0.5, whiteSpace: 'nowrap',
+                        background: 'var(--bg2)',
+                        cursor: col.sortable ? 'pointer' : 'default',
+                        width: col.width || 'auto',
+                      }}
+                    >
+                      {col.label} {col.sortable && <SortIcon field={col.key} />}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {products.map(product => (
+                  <tr
+                    key={product.id}
+                    onClick={() => setSelectedProduct(selectedProduct?.id === product.id ? null : product)}
+                    style={{
+                      borderBottom: '1px solid var(--border)',
+                      cursor: 'pointer',
+                      background: selectedProduct?.id === product.id ? 'var(--gold-dim)' : 'transparent',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => { if (selectedProduct?.id !== product.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                    onMouseLeave={e => { if (selectedProduct?.id !== product.id) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {/* Image */}
+                    <td style={{ padding: '8px 10px' }}>
+                      {product.image_url ? (
+                        <img src={product.image_url} alt="" style={{
+                          width: 36, height: 36, objectFit: 'cover',
+                          borderRadius: 4, border: '1px solid var(--border)',
+                        }} />
+                      ) : (
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 4,
+                          background: 'var(--border)', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center',
+                          fontSize: 14, color: 'var(--text3)',
+                        }}>📷</div>
+                      )}
+                    </td>
+                    {/* Title */}
+                    <td style={{ padding: '10px', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 500 }}>{product.title}</div>
+                      {product.vendor && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{product.vendor}</div>}
+                    </td>
+                    {/* SKU */}
+                    <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 12, fontFamily: 'monospace' }}>
+                      {product.sku || '—'}
+                    </td>
+                    {/* Category */}
+                    <td style={{ padding: '10px', color: 'var(--text2)' }}>
+                      {product.category || '—'}
+                    </td>
+                    {/* Price */}
+                    <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      Rs {product.selling_price?.toLocaleString()}
+                    </td>
+                    {/* Cost */}
+                    <td style={{ padding: '10px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                      {product.cost_price ? `Rs ${product.cost_price.toLocaleString()}` : '—'}
+                    </td>
+                    {/* Stock */}
+                    <td style={{ padding: '10px' }}>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: 4,
+                        background: getStockBg(product.stock_quantity || 0),
+                        color: getStockColor(product.stock_quantity || 0),
+                        fontWeight: 600, fontSize: 12,
+                      }}>
+                        {product.stock_quantity ?? 0}
+                      </span>
+                    </td>
+                    {/* Sold */}
+                    <td style={{ padding: '10px', color: 'var(--text2)' }}>
+                      {product.total_sold || 0}
+                    </td>
+                    {/* Status */}
+                    <td style={{ padding: '10px' }}>
+                      <span style={{
+                        fontSize: 10, padding: '2px 8px', borderRadius: 4,
+                        background: product.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)',
+                        color: product.is_active ? 'var(--green)' : 'var(--text3)',
+                      }}>
+                        {product.is_active ? 'Active' : 'Draft'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '12px 16px', borderTop: '1px solid var(--border)',
+            fontSize: 12, color: 'var(--text3)',
+          }}>
+            <span>Page {page} of {totalPages} · {total} products</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <PagBtn disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</PagBtn>
+              <PagBtn disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next →</PagBtn>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Product Detail Panel */}
+      {selectedProduct && (
+        <div style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0, width: 400,
+          background: 'var(--bg2)', borderLeft: '1px solid var(--border)',
+          zIndex: 200, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{
+            padding: '16px 20px', borderBottom: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 1,
+          }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--gold)', fontFamily: "'Cormorant Garamond', serif" }}>
+              Product Details
+            </h3>
+            <button onClick={() => setSelectedProduct(null)} style={{
+              background: 'none', border: 'none', color: 'var(--text3)',
+              fontSize: 22, cursor: 'pointer',
+            }}>×</button>
+          </div>
+
+          <div style={{ padding: 20 }}>
+            {selectedProduct.image_url && (
+              <img src={selectedProduct.image_url} alt="" style={{
+                width: '100%', maxHeight: 250, objectFit: 'contain',
+                borderRadius: 8, border: '1px solid var(--border)',
+                marginBottom: 16, background: '#fff',
+              }} />
+            )}
+
+            <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4, color: 'var(--text)' }}>
+              {selectedProduct.title}
+            </h4>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>
+              {selectedProduct.vendor && <span>{selectedProduct.vendor} · </span>}
+              {selectedProduct.category || 'No category'}
+            </div>
+
+            <DetailSection title="Stock Info">
+              <DetailRow label="Current Stock" value={
+                <span style={{ color: getStockColor(selectedProduct.stock_quantity || 0), fontWeight: 700 }}>
+                  {selectedProduct.stock_quantity ?? 0} units
+                </span>
+              } />
+              <DetailRow label="Min Stock Level" value={selectedProduct.min_stock_level || '—'} />
+              <DetailRow label="Reserved" value={selectedProduct.reserved_quantity || 0} />
+              <DetailRow label="Available" value={(selectedProduct.stock_quantity || 0) - (selectedProduct.reserved_quantity || 0)} />
+            </DetailSection>
+
+            <DetailSection title="Pricing">
+              <DetailRow label="Selling Price" value={`Rs ${selectedProduct.selling_price?.toLocaleString()}`} bold />
+              <DetailRow label="Cost Price" value={selectedProduct.cost_price ? `Rs ${selectedProduct.cost_price.toLocaleString()}` : '—'} />
+              {selectedProduct.cost_price > 0 && selectedProduct.selling_price > 0 && (
+                <DetailRow label="Margin" value={`${((1 - selectedProduct.cost_price / selectedProduct.selling_price) * 100).toFixed(0)}%`} color="var(--green)" />
+              )}
+              <DetailRow label="Stock Value" value={`Rs ${((selectedProduct.stock_quantity || 0) * (selectedProduct.selling_price || 0)).toLocaleString()}`} />
+            </DetailSection>
+
+            <DetailSection title="Performance">
+              <DetailRow label="Total Sold" value={selectedProduct.total_sold || 0} />
+              <DetailRow label="Total Returns" value={selectedProduct.total_returned || 0} />
+              <DetailRow label="Complaints" value={selectedProduct.total_complaints || 0} />
+              {selectedProduct.abc_classification && (
+                <DetailRow label="ABC Class" value={
+                  <span style={{
+                    padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                    background: selectedProduct.abc_classification === 'A' ? 'var(--gold-dim)' :
+                               selectedProduct.abc_classification === 'B' ? 'var(--blue-dim)' : 'var(--border)',
+                    color: selectedProduct.abc_classification === 'A' ? 'var(--gold)' :
+                           selectedProduct.abc_classification === 'B' ? 'var(--blue)' : 'var(--text3)',
+                  }}>
+                    Class {selectedProduct.abc_classification}
+                  </span>
+                } />
+              )}
+            </DetailSection>
+
+            <DetailSection title="Identifiers">
+              <DetailRow label="SKU" value={selectedProduct.sku || '—'} />
+              <DetailRow label="Barcode" value={selectedProduct.barcode || '—'} />
+              <DetailRow label="Shopify ID" value={selectedProduct.shopify_product_id || '—'} />
+            </DetailSection>
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
