@@ -9,6 +9,7 @@ const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫' },
   { id: 'orders', label: 'Orders', icon: '📋' },
   { id: 'inventory', label: 'Inventory', icon: '📦' },
+  { id: 'accounts', label: 'Accounts', icon: '💰' },
   { id: 'accounts', label: 'Accounts', icon: '💰', coming: true },
   { id: 'courier', label: 'Courier', icon: '🚚', coming: true },
   { id: 'customers', label: 'Customers', icon: '👥', coming: true },
