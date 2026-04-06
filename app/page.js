@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import AccountsPage from './accounts/page';
 import CourierPage from './courier/page';
 import CourierSyncPage from './courier/sync-page';
+import OrdersPage from './orders/page';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
 // ============================================================================
@@ -144,7 +145,7 @@ export default function ERPApp() {
         {activeModule === 'inventory' && <InventoryPage />}
         {activeModule === 'accounts' && <AccountsPage />}
         {activeModule === 'courier' && <CourierPage />}
-{activeModule === 'courier-sync' && <CourierSyncPage />}
+        {activeModule === 'courier-sync' && <CourierSyncPage />}
       </main>
     </div>
   );
@@ -188,7 +189,6 @@ function DashboardPage({ onNavigate }) {
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Header */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{
           fontFamily: "'Cormorant Garamond', serif",
@@ -212,7 +212,6 @@ function DashboardPage({ onNavigate }) {
         </div>
       ) : (
         <>
-          {/* Stats Grid */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
@@ -241,7 +240,6 @@ function DashboardPage({ onNavigate }) {
             ))}
           </div>
 
-          {/* Quick Actions */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -253,7 +251,6 @@ function DashboardPage({ onNavigate }) {
             <ActionButton icon="⏳" label="Pending Orders" desc={`${s.pending || 0} need confirmation`} onClick={() => onNavigate('orders')} color="var(--orange)" />
           </div>
 
-          {/* Recent Orders */}
           <div style={{
             background: 'var(--bg-card)',
             border: '1px solid var(--border)',
@@ -294,248 +291,6 @@ function DashboardPage({ onNavigate }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-// ============================================================================
-// ORDERS PAGE
-// ============================================================================
-function OrdersPage() {
-  const [orders, setOrders] = useState([]);
-  const [stats, setStats] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ status: 'all', search: '', courier: 'all' });
-  const [selectedOrder, setSelectedOrder] = useState(null);
-
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: '30' });
-      if (filters.status !== 'all') params.set('status', filters.status);
-      if (filters.search) params.set('search', filters.search);
-      if (filters.courier !== 'all') params.set('courier', filters.courier);
-      const res = await fetch(`/api/orders?${params}`);
-      const data = await res.json();
-      if (data.success) {
-        setOrders(data.orders || []);
-        setTotal(data.total || 0);
-        setTotalPages(data.total_pages || 1);
-        setStats(data.stats || {});
-      }
-    } catch (e) { console.error('Fetch orders error:', e); }
-    setLoading(false);
-  }, [page, filters]);
-
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      const res = await fetch('/api/shopify/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ since: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString() }),
-      });
-      const data = await res.json();
-      setSyncResult(data);
-      if (data.success) await fetchOrders();
-    } catch (e) { setSyncResult({ success: false, error: e.message }); }
-    setSyncing(false);
-  };
-
-  const statusFilters = [
-    { value: 'all', label: 'All', count: stats.total },
-    { value: 'pending', label: 'Pending', count: stats.pending },
-    { value: 'confirmed', label: 'Confirmed', count: stats.confirmed },
-    { value: 'dispatched', label: 'Dispatched', count: stats.dispatched },
-    { value: 'delivered', label: 'Delivered', count: stats.delivered },
-    { value: 'returned', label: 'Returned', count: stats.returned },
-    { value: 'cancelled', label: 'Cancelled', count: stats.cancelled },
-  ];
-
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1 }}>Orders</h1>
-          <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{total} orders · Live from Shopify</p>
-        </div>
-        <button onClick={handleSync} disabled={syncing} style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px',
-          background: syncing ? 'var(--border)' : 'var(--gold)',
-          color: syncing ? 'var(--text3)' : '#080808',
-          border: 'none', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: syncing ? 'wait' : 'pointer',
-        }}>
-          <span style={{ display: 'inline-block', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
-          {syncing ? 'Syncing Shopify...' : 'Sync from Shopify'}
-        </button>
-      </div>
-
-      {syncResult && (
-        <div style={{
-          padding: '12px 16px', marginBottom: 16, borderRadius: 'var(--radius)',
-          background: syncResult.success ? 'var(--green-dim)' : 'var(--red-dim)',
-          border: `1px solid ${syncResult.success ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'}`,
-          fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <span style={{ color: syncResult.success ? 'var(--green)' : 'var(--red)' }}>
-            {syncResult.success ? `✅ ${syncResult.message} (${syncResult.total_fetched} fetched, ${syncResult.synced} synced)` : `❌ Sync failed: ${syncResult.error}`}
-          </span>
-          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
-        {statusFilters.map(sf => (
-          <button key={sf.value} onClick={() => { setFilters(f => ({ ...f, status: sf.value })); setPage(1); }} style={{
-            padding: '7px 14px',
-            background: filters.status === sf.value ? 'var(--gold-dim)' : 'transparent',
-            border: `1px solid ${filters.status === sf.value ? 'var(--gold)' : 'var(--border)'}`,
-            borderRadius: 'var(--radius)', color: filters.status === sf.value ? 'var(--gold)' : 'var(--text2)',
-            fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap',
-          }}>
-            {sf.label}{sf.count !== undefined && <span style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>({sf.count || 0})</span>}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <input type="text" placeholder="Search by order #, customer, phone, city, tracking..."
-          value={filters.search} onChange={e => { setFilters(f => ({ ...f, search: e.target.value })); setPage(1); }}
-          style={{ width: '100%', maxWidth: 500, padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
-        />
-      </div>
-
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
-            <div style={{ fontSize: 24, marginBottom: 8, animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</div>
-            <div>Loading orders...</div>
-          </div>
-        ) : orders.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-            <div style={{ fontSize: 15, marginBottom: 8 }}>No orders found</div>
-            <div style={{ fontSize: 13 }}>{filters.search || filters.status !== 'all' ? 'Try different filters' : 'Click "Sync from Shopify" to pull your orders'}</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Order #', 'Customer', 'Phone', 'City', 'Items', 'Amount', 'Payment', 'Status', 'Courier', 'Date'].map(h => (
-                    <th key={h} style={{ padding: '12px 10px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap', background: 'var(--bg2)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(order => (
-                  <tr key={order.id} onClick={() => setSelectedOrder(selectedOrder?.id === order.id ? null : order)}
-                    style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selectedOrder?.id === order.id ? 'var(--gold-dim)' : 'transparent', transition: 'background 0.1s' }}
-                    onMouseEnter={e => { if (selectedOrder?.id !== order.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                    onMouseLeave={e => { if (selectedOrder?.id !== order.id) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <td style={{ padding: '12px 10px', color: 'var(--gold)', fontWeight: 600, whiteSpace: 'nowrap' }}>{order.order_number}</td>
-                    <td style={{ padding: '12px 10px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.customer_name || '—'}</td>
-                    <td style={{ padding: '12px 10px', color: 'var(--text2)', whiteSpace: 'nowrap', fontSize: 12 }}>{order.customer_phone || '—'}</td>
-                    <td style={{ padding: '12px 10px', color: 'var(--text2)' }}>{order.customer_city || '—'}</td>
-                    <td style={{ padding: '12px 10px', textAlign: 'center' }}>{order.order_items?.length || 0}</td>
-                    <td style={{ padding: '12px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {order.total_amount?.toLocaleString()}</td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: order.payment_method === 'COD' ? 'var(--orange-dim)' : 'var(--green-dim)', color: order.payment_method === 'COD' ? 'var(--orange)' : 'var(--green)' }}>{order.payment_method || 'COD'}</span>
-                    </td>
-                    <td style={{ padding: '12px 10px' }}><StatusBadge status={order.status} /></td>
-                    <td style={{ padding: '12px 10px', color: 'var(--text2)', fontSize: 12 }}>{order.courier || '—'}</td>
-                    <td style={{ padding: '12px 10px', color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(order.created_at).toLocaleDateString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text3)' }}>
-            <span>Page {page} of {totalPages} · {total} orders</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <PagBtn disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</PagBtn>
-              <PagBtn disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next →</PagBtn>
-            </div>
-          </div>
-        )}
-      </div>
-      {selectedOrder && <OrderDetailPanel order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-}
-
-// ============================================================================
-// ORDER DETAIL PANEL
-// ============================================================================
-function OrderDetailPanel({ order, onClose }) {
-  return (
-    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, background: 'var(--bg2)', borderLeft: '1px solid var(--border)', zIndex: 200, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.5)' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 1 }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)', fontFamily: "'Cormorant Garamond', serif" }}>{order.order_number}</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{new Date(order.created_at).toLocaleString()}</div>
-        </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer', padding: 4 }}>×</button>
-      </div>
-      <div style={{ padding: 20 }}>
-        <div style={{ marginBottom: 20, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <StatusBadge status={order.status} />
-          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: order.payment_method === 'COD' ? 'var(--orange-dim)' : 'var(--green-dim)', color: order.payment_method === 'COD' ? 'var(--orange)' : 'var(--green)' }}>{order.payment_method || 'COD'}</span>
-        </div>
-        <DetailSection title="Customer">
-          <DetailRow label="Name" value={order.customer_name} />
-          <DetailRow label="Phone" value={order.customer_phone} link={order.customer_phone ? `tel:${order.customer_phone}` : null} />
-          <DetailRow label="City" value={order.customer_city} />
-          <DetailRow label="Address" value={order.customer_address} />
-        </DetailSection>
-        <DetailSection title="Items">
-          {(order.order_items || []).length === 0 ? (
-            <div style={{ color: 'var(--text3)', fontSize: 12 }}>No items data</div>
-          ) : order.order_items.map((item, i) => (
-            <div key={i} style={{ padding: '8px 0', borderBottom: i < order.order_items.length - 1 ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-              <div>
-                <div>{item.title}</div>
-                {item.sku && <div style={{ fontSize: 11, color: 'var(--text3)' }}>SKU: {item.sku}</div>}
-              </div>
-              <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                <div style={{ fontWeight: 600 }}>Rs {item.total_price?.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>×{item.quantity}</div>
-              </div>
-            </div>
-          ))}
-        </DetailSection>
-        <DetailSection title="Amounts">
-          <DetailRow label="Subtotal" value={`Rs ${order.subtotal?.toLocaleString()}`} />
-          {order.discount > 0 && <DetailRow label="Discount" value={`-Rs ${order.discount?.toLocaleString()}`} color="var(--red)" />}
-          <DetailRow label="Shipping" value={`Rs ${order.shipping_fee?.toLocaleString()}`} />
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 8 }}>
-            <DetailRow label="Total" value={`Rs ${order.total_amount?.toLocaleString()}`} bold />
-          </div>
-        </DetailSection>
-        {(order.courier || order.tracking_number) && (
-          <DetailSection title="Courier">
-            <DetailRow label="Courier" value={order.courier} />
-            <DetailRow label="Tracking #" value={order.tracking_number} />
-            <DetailRow label="Courier Status" value={order.courier_status} />
-          </DetailSection>
-        )}
-        <DetailSection title="Shopify">
-          <DetailRow label="Shopify ID" value={order.shopify_order_id} />
-          <DetailRow label="Last Synced" value={order.shopify_synced_at ? new Date(order.shopify_synced_at).toLocaleString() : '—'} />
-        </DetailSection>
-      </div>
     </div>
   );
 }
