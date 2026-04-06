@@ -23,7 +23,6 @@ export async function GET(request) {
       .from('orders')
       .select('*, order_items(*)', { count: 'exact' });
 
-    // Filters
     if (status && status !== 'all') query = query.eq('status', status);
     if (courier && courier !== 'all') query = query.eq('courier', courier);
     if (dateFrom) query = query.gte('created_at', dateFrom);
@@ -32,29 +31,31 @@ export async function GET(request) {
       query = query.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,customer_city.ilike.%${search}%,tracking_number.ilike.%${search}%`);
     }
 
-    // Sort & paginate
     query = query.order(sort, { ascending: order === 'asc' }).range(from, to);
 
     const { data: orders, count, error } = await query;
 
     if (error) throw error;
 
-    // Stats
-    const { data: stats } = await supabase.rpc('get_order_stats').single().catch(() => ({ data: null }));
+    const statQueries = await Promise.all([
+      supabase.from('orders').select('*', { count: 'exact', head: true }),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'dispatched'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'returned'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
+    ]);
 
-    // If RPC doesn't exist, calculate manually
-    let orderStats = stats;
-    if (!stats) {
-      const { count: total } = await supabase.from('orders').select('*', { count: 'exact', head: true });
-      const { count: pending } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      const { count: confirmed } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed');
-      const { count: dispatched } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'dispatched');
-      const { count: delivered } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered');
-      const { count: returned } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'returned');
-      const { count: cancelled } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled');
-
-      orderStats = { total, pending, confirmed, dispatched, delivered, returned, cancelled };
-    }
+    const orderStats = {
+      total: statQueries[0].count || 0,
+      pending: statQueries[1].count || 0,
+      confirmed: statQueries[2].count || 0,
+      dispatched: statQueries[3].count || 0,
+      delivered: statQueries[4].count || 0,
+      returned: statQueries[5].count || 0,
+      cancelled: statQueries[6].count || 0,
+    };
 
     return NextResponse.json({
       success: true,
