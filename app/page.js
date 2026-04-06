@@ -4,6 +4,8 @@ import AccountsPage from './accounts/page';
 import CourierPage from './courier/page';
 import CourierSyncPage from './courier/sync-page';
 import OrdersPage from './orders/page';
+import AnalyticsPage from './analytics/page';
+import EmployeesPage from './employees/page';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
 // ============================================================================
@@ -17,8 +19,8 @@ const MODULES = [
   { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e' },
   { id: 'customers', label: 'Customers', icon: '👥', coming: true },
   { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true },
-  { id: 'employees', label: 'Team', icon: '👤', coming: true },
-  { id: 'analytics', label: 'Analytics', icon: '📊', coming: true },
+ { id: 'employees', label: 'Team', icon: '👤' },
+{ id: 'analytics', label: 'Analytics', icon: '📊' },
 ];
 
 const STATUS_MAP = {
@@ -146,6 +148,8 @@ export default function ERPApp() {
         {activeModule === 'accounts' && <AccountsPage />}
         {activeModule === 'courier' && <CourierPage />}
         {activeModule === 'courier-sync' && <CourierSyncPage />}
+{activeModule === 'analytics' && <AnalyticsPage />}
+{activeModule === 'employees' && <EmployeesPage />}
       </main>
     </div>
   );
