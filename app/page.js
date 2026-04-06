@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import AccountsPage from './accounts/page';
 
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
@@ -10,7 +11,6 @@ const MODULES = [
   { id: 'orders', label: 'Orders', icon: '📋' },
   { id: 'inventory', label: 'Inventory', icon: '📦' },
   { id: 'accounts', label: 'Accounts', icon: '💰' },
-  { id: 'accounts', label: 'Accounts', icon: '💰', coming: true },
   { id: 'courier', label: 'Courier', icon: '🚚', coming: true },
   { id: 'customers', label: 'Customers', icon: '👥', coming: true },
   { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true },
@@ -139,7 +139,8 @@ export default function ERPApp() {
       }}>
         {activeModule === 'dashboard' && <DashboardPage onNavigate={setActiveModule} />}
         {activeModule === 'orders' && <OrdersPage />}
-        {activeModule === 'inventory' && <InventoryPage />}
+        {activeModule === 'inventory' && <InventoryPage />} 
+{activeModule === 'accounts' && <AccountsPage />}
       </main>
     </div>
   );
