@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import AccountsPage from './accounts/page';
 import CourierPage from './courier/page';
-
+import CourierSyncPage from './courier/sync-page';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
 // ============================================================================
@@ -13,6 +13,7 @@ const MODULES = [
   { id: 'inventory', label: 'Inventory', icon: '📦' },
   { id: 'accounts', label: 'Accounts', icon: '💰' },
   { id: 'courier', label: 'Courier', icon: '🚚' },
+  { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e' },
   { id: 'customers', label: 'Customers', icon: '👥', coming: true },
   { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true },
   { id: 'employees', label: 'Team', icon: '👤', coming: true },
@@ -143,6 +144,7 @@ export default function ERPApp() {
         {activeModule === 'inventory' && <InventoryPage />}
         {activeModule === 'accounts' && <AccountsPage />}
         {activeModule === 'courier' && <CourierPage />}
+{activeModule === 'courier-sync' && <CourierSyncPage />}
       </main>
     </div>
   );
