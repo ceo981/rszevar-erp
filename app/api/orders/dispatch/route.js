@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { createShopifyFulfillment } from '@/lib/shopify';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// ─── Courier API Helpers ────────────────────────────────────────────────────
 
 async function bookPostEx(order, courier_notes) {
   const token = process.env.POSTEX_API_TOKEN;
@@ -15,14 +18,14 @@ async function bookPostEx(order, courier_notes) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'token': token },
     body: JSON.stringify({
-      orderRefNumber: order.shopify_order_name || String(order.id),
+      orderRefNumber: order.order_number || String(order.id),
       orderType: 'Normal',
       paymentType: 'COD',
-      invoicePayment: String(order.total_price || 0),
+      invoicePayment: String(order.total_amount || 0),
       customerName: order.customer_name || '',
       customerPhone: order.customer_phone || '',
-      customerAddress: order.shipping_address || '',
-      cityName: order.city || 'Karachi',
+      customerAddress: order.customer_address || '',
+      cityName: order.customer_city || 'Karachi',
       storeId: storeId || '',
       itemDescription: courier_notes || 'Jewelry',
     }),
@@ -49,11 +52,11 @@ async function bookKangaroo(order, courier_notes) {
       request: 'neworder',
       consignee: order.customer_name || '',
       phone: order.customer_phone || '',
-      address: order.shipping_address || '',
-      city: order.city || 'Karachi',
-      cod: String(order.total_price || 0),
+      address: order.customer_address || '',
+      city: order.customer_city || 'Karachi',
+      cod: String(order.total_amount || 0),
       description: courier_notes || 'Jewelry',
-      ref: order.shopify_order_name || String(order.id),
+      ref: order.order_number || String(order.id),
     }),
   });
 
@@ -79,12 +82,12 @@ async function bookLeopards(order, courier_notes) {
       shipment_type_id: 1,
       consignee_name: order.customer_name || '',
       consignee_email: '',
-      consignee_address: order.shipping_address || '',
+      consignee_address: order.customer_address || '',
       consignee_phone: order.customer_phone || '',
-      consignee_city: order.city || 'Karachi',
-      shipment_amount: String(order.total_price || 0),
+      consignee_city: order.customer_city || 'Karachi',
+      shipment_amount: String(order.total_amount || 0),
       pieces_quantity: 1,
-      order_id: order.shopify_order_name || String(order.id),
+      order_id: order.order_number || String(order.id),
       comments: courier_notes || 'Jewelry',
       shipper_id: shipperId || '',
     }),
@@ -97,10 +100,14 @@ async function bookLeopards(order, courier_notes) {
   throw new Error(data.error_description || 'Leopards booking failed');
 }
 
+// ─── Main Dispatch Handler ──────────────────────────────────────────────────
+
 export async function POST(request) {
   try {
     const { order_id, courier, courier_notes } = await request.json();
-    if (!order_id || !courier) return NextResponse.json({ success: false, error: 'order_id and courier required' }, { status: 400 });
+    if (!order_id || !courier) {
+      return NextResponse.json({ success: false, error: 'order_id and courier required' }, { status: 400 });
+    }
 
     // Fetch order details
     const { data: order, error: fetchErr } = await supabase
@@ -109,12 +116,14 @@ export async function POST(request) {
       .eq('id', order_id)
       .single();
 
-    if (fetchErr || !order) return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+    if (fetchErr || !order) {
+      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+    }
 
+    // ── 1. Book with courier API ──
     let tracking = null;
     let bookingError = null;
 
-    // Try to book with courier API
     try {
       let result;
       if (courier === 'PostEx') result = await bookPostEx(order, courier_notes);
@@ -123,10 +132,10 @@ export async function POST(request) {
       tracking = result?.tracking;
     } catch (e) {
       bookingError = e.message;
-      // Still continue — manual tracking can be added
+      // Continue — manual tracking can be added
     }
 
-    // Update order status
+    // ── 2. Update order status in DB ──
     await supabase.from('orders').update({
       status: 'dispatched',
       dispatched_at: new Date().toISOString(),
@@ -135,28 +144,66 @@ export async function POST(request) {
       updated_at: new Date().toISOString(),
     }).eq('id', order_id);
 
-    // Insert courier booking record
+    // ── 3. Insert courier_bookings record (with correct column names) ──
     await supabase.from('courier_bookings').insert({
       order_id,
+      order_name: order.order_number,
       tracking_number: tracking || `MANUAL-${order_id}-${Date.now()}`,
       courier_name: courier,
       customer_name: order.customer_name || '',
       customer_phone: order.customer_phone || '',
-      customer_address: order.shipping_address || '',
-      city: order.city || '',
-      cod_amount: order.total_price || 0,
+      address: order.customer_address || '',
+      city: order.customer_city || '',
+      cod_amount: order.total_amount || 0,
       status: 'booked',
+      api_booked: !bookingError,
       cod_settled: false,
       rto_acknowledged: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
 
-    // Log action
+    // ── 4. PUSH FULFILLMENT TO SHOPIFY (best-effort) ──
+    // This makes Shopify auto-email the customer with tracking info.
+    // Skip if: no Shopify order link, no tracking, or already pushed.
+    let shopifyFulfillmentId = null;
+    let shopifyPushError = null;
+
+    if (order.shopify_order_id && tracking && !order.shopify_fulfillment_id) {
+      try {
+        const fulfillment = await createShopifyFulfillment(
+          order.shopify_order_id,
+          tracking,
+          courier
+        );
+        shopifyFulfillmentId = fulfillment?.id ? String(fulfillment.id) : null;
+
+        if (shopifyFulfillmentId) {
+          await supabase.from('orders').update({
+            shopify_fulfillment_id: shopifyFulfillmentId,
+            shopify_fulfilled_at: new Date().toISOString(),
+          }).eq('id', order_id);
+        }
+      } catch (e) {
+        shopifyPushError = e.message;
+        console.error('[dispatch] Shopify fulfillment push failed:', e.message);
+        // Don't fail the dispatch — order is already marked dispatched in ERP
+      }
+    }
+
+    // ── 5. Activity log ──
+    const logNotes = [
+      `Courier: ${courier}`,
+      tracking ? `Tracking: ${tracking}` : null,
+      bookingError ? `Booking API error: ${bookingError}` : null,
+      shopifyFulfillmentId ? `Shopify fulfilled: ${shopifyFulfillmentId}` : null,
+      shopifyPushError ? `Shopify push error: ${shopifyPushError}` : null,
+    ].filter(Boolean).join(' | ');
+
     await supabase.from('order_activity_log').insert({
       order_id,
       action: 'dispatched',
-      notes: `Courier: ${courier}${tracking ? ` | Tracking: ${tracking}` : ''}${bookingError ? ` | API Error: ${bookingError}` : ''}`,
+      notes: logNotes,
       performed_at: new Date().toISOString(),
     });
 
@@ -165,7 +212,12 @@ export async function POST(request) {
       tracking,
       courier,
       api_booked: !bookingError,
-      warning: bookingError || null,
+      shopify_fulfilled: !!shopifyFulfillmentId,
+      shopify_fulfillment_id: shopifyFulfillmentId,
+      warnings: {
+        booking: bookingError || null,
+        shopify_push: shopifyPushError || null,
+      },
     });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
