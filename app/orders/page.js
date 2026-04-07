@@ -105,7 +105,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.shopify_order_name || '#' + order.id}</div>
+            <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.order_number || '#' + order.id}</div>
             <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.city}</div>
             <div style={{ marginTop: 8 }}><StatusBadge status={order.status} /></div>
           </div>
@@ -115,7 +115,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         {/* Order Info */}
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
-            ['COD Amount', fmt(order.total_price)],
+            ['COD Amount', fmt(order.total_amount)],
             ['Phone', order.customer_phone || '—'],
             ['Address', order.shipping_address || '—'],
             ['Placed', timeAgo(order.created_at)],
@@ -468,11 +468,11 @@ export default function OrdersPage() {
                 <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
                   onClick={() => setSelected(order)} className="order-row">
                   <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
-                    {order.shopify_order_name || '#' + order.id}
+                    {order.order_number || '#' + order.id}
                   </td>
                   <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
                   <td style={{ padding: '12px 16px', color: '#888' }}>{order.city}</td>
-                  <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_price)}</td>
+                  <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
                   <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                   <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                   <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
