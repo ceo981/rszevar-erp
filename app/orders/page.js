@@ -21,14 +21,32 @@ const STATUS_CONFIG = {
   pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
   confirmed:  { label: 'Confirmed',  color: '#3b82f6', bg: '#3b82f622' },
   processing: { label: 'Processing', color: gold,      bg: gold + '22' },
+  packed:     { label: 'Packed',     color: '#06b6d4', bg: '#06b6d422' },
   dispatched: { label: 'Dispatched', color: '#a855f7', bg: '#a855f722' },
+  in_transit: { label: 'In Transit', color: '#8b5cf6', bg: '#8b5cf622' },
   delivered:  { label: 'Delivered',  color: '#22c55e', bg: '#22c55e22' },
-  cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
+  returned:   { label: 'Returned',   color: '#f59e0b', bg: '#f59e0b22' },
   rto:        { label: 'RTO',        color: '#ef4444', bg: '#ef444422' },
+  cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
+};
+
+const PAYMENT_CONFIG = {
+  unpaid:   { label: 'Unpaid',   color: '#f87171', bg: '#f8717122' },
+  paid:     { label: 'Paid',     color: '#22c55e', bg: '#22c55e22' },
+  refunded: { label: 'Refunded', color: '#fbbf24', bg: '#fbbf2422' },
 };
 
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function PaymentBadge({ payment_status }) {
+  const cfg = PAYMENT_CONFIG[payment_status] || PAYMENT_CONFIG.unpaid;
   return (
     <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
       {cfg.label}
@@ -221,11 +239,15 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
   const PER_PAGE = 30;
 
   const load = useCallback(async () => {
@@ -237,15 +259,74 @@ export default function OrdersPage() {
       const r = await fetch(`/api/orders?${params}`);
       const d = await r.json();
       setOrders(d.orders || []);
+      if (d.stats) setStats(d.stats);
     } catch {}
     setLoading(false);
   }, [page, search, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Status counts
-  const counts = orders.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, {});
-  const totalCOD = orders.reduce((a, o) => a + parseFloat(o.total_price || 0), 0);
+  // Load last sync time on mount
+  useEffect(() => {
+    fetch('/api/shopify/sync')
+      .then(r => r.json())
+      .then(d => { if (d.last_synced) setLastSync(d.last_synced); })
+      .catch(() => {});
+  }, []);
+
+  // Sync from Shopify
+  const syncFromShopify = async () => {
+    setSyncing(true);
+    setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
+
+    // Safety timeout: if 3 minutes pass, force unlock
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
+
+    try {
+      const r = await fetch('/api/shopify/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!r.ok) {
+        throw new Error(`Server error ${r.status}`);
+      }
+
+      const d = await r.json();
+
+      if (d.success) {
+        setSyncMsg({
+          type: 'success',
+          text: d.synced > 0
+            ? `✓ ${d.synced} orders synced from Shopify`
+            : '✓ Already up to date — no new orders',
+        });
+        setLastSync(new Date().toISOString());
+        await load(); // Reload orders from DB
+      } else {
+        setSyncMsg({ type: 'error', text: `✗ ${d.error || 'Sync failed'}` });
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        setSyncMsg({ type: 'error', text: '✗ Sync timed out after 3 minutes. Try again or check Shopify API.' });
+      } else {
+        setSyncMsg({ type: 'error', text: `✗ ${e.message}` });
+      }
+    } finally {
+      setSyncing(false);
+      // Auto-hide after 6 seconds
+      setTimeout(() => setSyncMsg(null), 6000);
+    }
+  };
+
+  // Status counts (from API, global — not just current page)
+  const c = stats || {};
 
   const filtered = orders.filter(o => {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
@@ -263,21 +344,54 @@ export default function OrdersPage() {
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
       {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} />}
 
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Orders</h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Confirm, dispatch, and manage all orders</p>
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Orders</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
+            Confirm, dispatch, and manage all orders
+            {lastSync && (
+              <span style={{ marginLeft: 10, color: '#666' }}>
+                · Last sync: {new Date(lastSync).toLocaleString('en-PK', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
+              </span>
+            )}
+          </p>
+        </div>
+        {syncMsg && (
+          <div style={{
+            padding: '8px 14px',
+            borderRadius: 8,
+            fontSize: 12,
+            background:
+              syncMsg.type === 'success' ? 'rgba(74,222,128,0.12)' :
+              syncMsg.type === 'error' ? 'rgba(248,113,113,0.12)' :
+              'rgba(96,165,250,0.12)',
+            border: `1px solid ${
+              syncMsg.type === 'success' ? '#4ade80' :
+              syncMsg.type === 'error' ? '#f87171' :
+              '#60a5fa'
+            }`,
+            color:
+              syncMsg.type === 'success' ? '#4ade80' :
+              syncMsg.type === 'error' ? '#f87171' :
+              '#60a5fa',
+          }}>
+            {syncMsg.text}
+          </div>
+        )}
       </div>
 
       {/* Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 20 }}>
         {[
-          { label: 'Total', value: orders.length, color: '#fff' },
-          { label: 'Pending', value: counts.pending || 0, color: '#888' },
-          { label: 'Confirmed', value: counts.confirmed || 0, color: '#3b82f6' },
-          { label: 'Dispatched', value: counts.dispatched || 0, color: '#a855f7' },
-          { label: 'Delivered', value: counts.delivered || 0, color: '#22c55e' },
-          { label: 'RTO', value: counts.rto || 0, color: '#ef4444' },
-          { label: 'Total COD', value: fmt(totalCOD), color: gold },
+          { label: 'Total', value: c.total || 0, color: '#fff' },
+          { label: 'Pending', value: c.pending || 0, color: '#888' },
+          { label: 'Confirmed', value: c.confirmed || 0, color: '#3b82f6' },
+          { label: 'Dispatched', value: c.dispatched || 0, color: '#a855f7' },
+          { label: 'Delivered', value: c.delivered || 0, color: '#22c55e' },
+          { label: 'RTO', value: c.rto || 0, color: '#ef4444' },
+          { label: 'Paid', value: c.paid || 0, color: '#22c55e' },
+          { label: 'Unpaid', value: c.unpaid || 0, color: '#f87171' },
+          { label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold },
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
@@ -296,6 +410,40 @@ export default function OrdersPage() {
           {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
         </select>
         <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
+        <button
+          onClick={syncFromShopify}
+          disabled={syncing}
+          style={{
+            background: syncing ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
+            border: `1px solid ${syncing ? border : '#c9a96e'}`,
+            color: syncing ? '#888' : '#000',
+            borderRadius: 8,
+            padding: '9px 18px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: syncing ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            transition: 'all 0.15s',
+          }}
+          title="Pull latest orders from Shopify"
+        >
+          {syncing ? (
+            <>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+              Syncing…
+            </>
+          ) : (
+            <>⟱ Sync from Shopify</>
+          )}
+        </button>
+        <style jsx>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
 
       {/* Table */}
@@ -304,17 +452,17 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Courier', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+                <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
               )}
               {filtered.map((order, i) => (
                 <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
@@ -326,6 +474,7 @@ export default function OrdersPage() {
                   <td style={{ padding: '12px 16px', color: '#888' }}>{order.city}</td>
                   <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_price)}</td>
                   <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
+                  <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                   <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
                   <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
                   <td style={{ padding: '12px 16px' }}>

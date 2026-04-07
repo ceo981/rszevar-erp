@@ -2,84 +2,151 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { fetchAllOrdersSince, transformOrder, transformLineItems } from '@/lib/shopify';
 
+const LOCKED_STATUSES = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+
 export async function POST(request) {
+  const startTime = Date.now();
   try {
     const supabase = createServerClient();
     const body = await request.json().catch(() => ({}));
 
-    // Default: sync last 30 days
-    const sinceDate = body.since || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // Default: sync last 3 days (fast)
+    // Client can override: { days: 7 } or { days: 30 } or { since: 'ISO_DATE' }
+    const days = body.days || 3;
+    const sinceDate = body.since || new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     // 1. Fetch orders from Shopify
     const shopifyOrders = await fetchAllOrdersSince(sinceDate);
 
     if (shopifyOrders.length === 0) {
-      return NextResponse.json({ success: true, message: 'No new orders found', synced: 0 });
+      return NextResponse.json({
+        success: true,
+        message: 'No new orders found',
+        synced: 0,
+        duration_ms: Date.now() - startTime,
+      });
     }
 
-    let synced = 0;
-    let skipped = 0;
-    let errors = [];
+    // 2. BATCH FETCH existing orders (1 query instead of N)
+    const shopifyOrderIds = shopifyOrders.map(o => String(o.id));
+    const { data: existingOrders } = await supabase
+      .from('orders')
+      .select('id, shopify_order_id, status, payment_status')
+      .in('shopify_order_id', shopifyOrderIds);
+
+    const existingMap = new Map();
+    (existingOrders || []).forEach(o => existingMap.set(o.shopify_order_id, o));
+
+    // 3. Transform + apply locked status rules
+    const ordersToUpsert = [];
+    const customersToUpsert = [];
+    const customerIdsSeen = new Set();
+    const errors = [];
 
     for (const shopifyOrder of shopifyOrders) {
       try {
         const orderData = transformOrder(shopifyOrder);
-        const lineItems = transformLineItems(shopifyOrder);
+        const existing = existingMap.get(orderData.shopify_order_id);
 
-        // Upsert order (update if exists, insert if new)
-        const { data: order, error: orderError } = await supabase
-          .from('orders')
-          .upsert(orderData, { onConflict: 'shopify_order_id' })
-          .select('id')
-          .single();
-
-        if (orderError) {
-          errors.push({ order: orderData.order_number, error: orderError.message });
-          continue;
+        if (existing) {
+          if (LOCKED_STATUSES.includes(existing.status)) {
+            delete orderData.status;
+          }
+          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
+            delete orderData.payment_status;
+          }
+          if (existing.payment_status === 'refunded') {
+            delete orderData.payment_status;
+          }
         }
 
-        // Upsert customer
-        if (shopifyOrder.customer) {
-          const customer = shopifyOrder.customer;
-          await supabase.from('customers').upsert({
-            shopify_customer_id: String(customer.id),
-            name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim(),
-            phone: customer.phone || null,
-            email: customer.email || null,
+        ordersToUpsert.push(orderData);
+
+        // Unique customers
+        if (shopifyOrder.customer && !customerIdsSeen.has(shopifyOrder.customer.id)) {
+          customerIdsSeen.add(shopifyOrder.customer.id);
+          const c = shopifyOrder.customer;
+          customersToUpsert.push({
+            shopify_customer_id: String(c.id),
+            name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown',
+            phone: c.phone || null,
+            email: c.email || null,
             city: shopifyOrder.shipping_address?.city || null,
             address: shopifyOrder.shipping_address?.address1 || null,
-          }, { onConflict: 'shopify_customer_id' });
+          });
         }
-
-        // Insert line items (delete old ones first to avoid duplicates)
-        if (order?.id && lineItems.length > 0) {
-          await supabase.from('order_items').delete().eq('order_id', order.id);
-          await supabase.from('order_items').insert(
-            lineItems.map(item => ({ ...item, order_id: order.id }))
-          );
-        }
-
-        synced++;
       } catch (e) {
         errors.push({ order: shopifyOrder.name, error: e.message });
       }
     }
 
-    skipped = shopifyOrders.length - synced - errors.length;
+    // 4. BATCH UPSERT orders (1 query instead of N)
+    let synced = 0;
+    let upsertedOrders = [];
+    if (ordersToUpsert.length > 0) {
+      const { data, error: upsertError } = await supabase
+        .from('orders')
+        .upsert(ordersToUpsert, { onConflict: 'shopify_order_id' })
+        .select('id, shopify_order_id');
+
+      if (upsertError) {
+        return NextResponse.json({
+          success: false,
+          error: `Batch upsert failed: ${upsertError.message}`,
+          duration_ms: Date.now() - startTime,
+        }, { status: 500 });
+      }
+      upsertedOrders = data || [];
+      synced = upsertedOrders.length;
+    }
+
+    // 5. BATCH UPSERT customers in parallel
+    const customerPromise = customersToUpsert.length > 0
+      ? supabase.from('customers').upsert(customersToUpsert, { onConflict: 'shopify_customer_id' })
+      : Promise.resolve();
+
+    // 6. LINE ITEMS: only for NEW orders (existing ones rarely change items)
+    const newOrdersMap = new Map();
+    upsertedOrders.forEach(o => {
+      if (!existingMap.has(o.shopify_order_id)) {
+        newOrdersMap.set(o.shopify_order_id, o.id);
+      }
+    });
+
+    const itemsPromise = (async () => {
+      if (newOrdersMap.size === 0) return;
+      const allItems = [];
+      for (const shopifyOrder of shopifyOrders) {
+        const dbId = newOrdersMap.get(String(shopifyOrder.id));
+        if (!dbId) continue;
+        const items = transformLineItems(shopifyOrder).map(i => ({ ...i, order_id: dbId }));
+        allItems.push(...items);
+      }
+      if (allItems.length > 0) {
+        await supabase.from('order_items').insert(allItems);
+      }
+    })();
+
+    // Wait for both parallel operations
+    await Promise.all([customerPromise, itemsPromise]);
 
     return NextResponse.json({
       success: true,
       total_fetched: shopifyOrders.length,
       synced,
-      skipped,
-      errors: errors.length > 0 ? errors.slice(0, 10) : undefined,
-      message: `${synced} orders synced from Shopify`
+      errors: errors.length > 0 ? errors.slice(0, 5) : undefined,
+      duration_ms: Date.now() - startTime,
+      message: `${synced} orders synced in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
     });
 
   } catch (error) {
     console.error('Sync error:', error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      {
+        success: false,
+        error: error.message,
+        duration_ms: Date.now() - startTime,
+      },
       { status: 500 }
     );
   }
@@ -100,7 +167,7 @@ export async function GET() {
       .not('shopify_synced_at', 'is', null)
       .order('shopify_synced_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     return NextResponse.json({
       success: true,

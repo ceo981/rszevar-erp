@@ -45,7 +45,14 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'returned'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'rto'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
+      supabase.from('orders').select('total_amount').eq('payment_method', 'COD').in('status', ['pending', 'confirmed', 'dispatched']),
     ]);
+
+    const codOrders = statQueries[10].data || [];
+    const totalCOD = codOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
 
     const orderStats = {
       total: statQueries[0].count || 0,
@@ -55,6 +62,10 @@ export async function GET(request) {
       delivered: statQueries[4].count || 0,
       returned: statQueries[5].count || 0,
       cancelled: statQueries[6].count || 0,
+      rto: statQueries[7].count || 0,
+      paid: statQueries[8].count || 0,
+      unpaid: statQueries[9].count || 0,
+      total_cod: totalCOD,
     };
 
     return NextResponse.json({
