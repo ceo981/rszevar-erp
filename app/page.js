@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import AccountsPage from './accounts/page';
 import CourierPage from './courier/page';
 import CourierSyncPage from './courier/sync-page';
@@ -11,25 +13,29 @@ import ComplaintsPage from './complaints/page';
 import SettingsPage from './settings/page';
 import ReportsPage from './reports/page';
 import WholesalePage from './wholesale/page';
+import UsersPage from './users/page';
+import RolesPage from './roles/page';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
 // ============================================================================
 
 const MODULES = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◫' },
-  { id: 'orders', label: 'Orders', icon: '📋' },
-  { id: 'inventory', label: 'Inventory', icon: '📦' },
-  { id: 'accounts', label: 'Accounts', icon: '💰' },
-  { id: 'courier', label: 'Courier', icon: '🚚' },
-  { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e' },
-  { id: 'customers', label: 'Customers', icon: '👥' },
-  { id: 'complaints', label: 'Complaints', icon: '📢' },
-  { id: 'reports', label: 'Reports', icon: '📄' },
-{ id: 'wholesale', label: 'Wholesale', icon: '🏪' },
-{ id: 'settings', label: 'Settings', icon: '⚙️' },
-  { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true },
- { id: 'employees', label: 'Team', icon: '👤' },
-{ id: 'analytics', label: 'Analytics', icon: '📊' },
+  { id: 'dashboard', label: 'Dashboard', icon: '◫', perm: 'dashboard.view' },
+  { id: 'orders', label: 'Orders', icon: '📋', perm: 'orders.view' },
+  { id: 'inventory', label: 'Inventory', icon: '📦', perm: 'inventory.view' },
+  { id: 'accounts', label: 'Accounts', icon: '💰', perm: 'reports.view' },
+  { id: 'courier', label: 'Courier', icon: '🚚', perm: 'courier.view' },
+  { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e', perm: 'courier.view' },
+  { id: 'customers', label: 'Customers', icon: '👥', perm: 'customers.view' },
+  { id: 'complaints', label: 'Complaints', icon: '📢', perm: 'customers.view' },
+  { id: 'reports', label: 'Reports', icon: '📄', perm: 'reports.view' },
+  { id: 'wholesale', label: 'Wholesale', icon: '🏪', perm: 'wholesale.view' },
+  { id: 'settings', label: 'Settings', icon: '⚙️', perm: 'settings.view' },
+  { id: 'users', label: 'Users', icon: '🧑‍💼', perm: 'settings.edit' },
+  { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
+  { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
+  { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
+  { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
 ];
 
 const STATUS_MAP = {
@@ -46,8 +52,85 @@ const STATUS_MAP = {
 // MAIN APP
 // ============================================================================
 export default function ERPApp() {
+  const router = useRouter();
   const [activeModule, setActiveModule] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [permissions, setPermissions] = useState(new Set());
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadUser() {
+      const supabase = createClient();
+      const { data: { user: u } } = await supabase.auth.getUser();
+      if (!u) {
+        router.push('/login');
+        return;
+      }
+      setUser(u);
+
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', u.id)
+        .single();
+      setProfile(p);
+
+      const { data: perms } = await supabase
+        .from('my_permissions')
+        .select('permission_key');
+      setPermissions(new Set((perms || []).map(x => x.permission_key)));
+
+      setAuthLoading(false);
+    }
+    loadUser();
+  }, [router]);
+
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const can = useCallback(
+    (key) => isSuperAdmin || permissions.has(key),
+    [isSuperAdmin, permissions]
+  );
+
+  // Filter modules by permission
+  const visibleModules = MODULES.filter((m) => !m.perm || can(m.perm));
+
+  // Auto-switch if active module is not accessible
+  useEffect(() => {
+    if (!authLoading && visibleModules.length > 0) {
+      const stillVisible = visibleModules.some((m) => m.id === activeModule);
+      if (!stillVisible) {
+        setActiveModule(visibleModules[0].id);
+      }
+    }
+  }, [authLoading, visibleModules, activeModule]);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          background: 'var(--bg)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text3)',
+          fontSize: 13,
+          letterSpacing: 1,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -89,7 +172,7 @@ export default function ERPApp() {
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {MODULES.map(mod => (
+          {visibleModules.map(mod => (
             <button
               key={mod.id}
               onClick={() => !mod.coming && setActiveModule(mod.id)}
@@ -128,6 +211,83 @@ export default function ERPApp() {
           ))}
         </nav>
 
+        {/* User info + Logout */}
+        {sidebarOpen && profile && (
+          <div
+            style={{
+              padding: '12px 14px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: 'var(--gold-dim)',
+                border: '1px solid var(--gold)',
+                color: 'var(--gold)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              {(profile.full_name || '?').charAt(0).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {profile.full_name || 'User'}
+              </div>
+              <div
+                style={{
+                  fontSize: 9,
+                  color: 'var(--text3)',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5,
+                  marginTop: 1,
+                }}
+              >
+                {(profile.role || '').replace(/_/g, ' ')}
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border2)',
+                color: 'var(--text3)',
+                width: 28,
+                height: 28,
+                borderRadius: 'var(--radius)',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: 'inherit',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              ⏻
+            </button>
+          </div>
+        )}
+
         {/* Toggle */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -164,6 +324,8 @@ export default function ERPApp() {
 {activeModule === 'reports' && <ReportsPage />}
 {activeModule === 'wholesale' && <WholesalePage />}
 {activeModule === 'complaints' && <ComplaintsPage />}
+{activeModule === 'users' && <UsersPage />}
+{activeModule === 'roles' && <RolesPage />}
       </main>
     </div>
   );
