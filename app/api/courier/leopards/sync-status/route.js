@@ -1,35 +1,26 @@
 // ============================================================================
-// Leopards — Bulk Status Sync
-// ============================================================================
-// Pulls all packets in a date range from Leopards API, matches them against
-// orders by tracking_number, and updates orders.status + courier_status_raw.
-//
-// Default: last 10 days
-// Body (optional): { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', days: 10, triggered_by: 'manual' }
-//
-// Safe to run repeatedly — idempotent. Uses LOCKED_STATUSES protection
-// (delivered/rto/cancelled/refunded never overwritten with weaker status).
+// Leopards — Bulk Status Sync (Chunk 3: reads window from settings)
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { fetchLeopardsStatuses, mapLeopardsStatus } from '@/lib/leopards';
+import { createServerClient } from '../../../../../lib/supabase';
+import { fetchLeopardsStatuses, mapLeopardsStatus } from '../../../../../lib/leopards';
+import { getSettings } from '../../../../../lib/settings';
 
-const LOCKED_STATUSES = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function formatDate(d) {
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  return d.toISOString().slice(0, 10);
 }
 
-async function runSync({ from, to, triggered_by = 'manual' }) {
+async function runSync({ from, to, triggered_by = 'manual', lockedStatuses }) {
   const startTime = Date.now();
   const supabase = createServerClient();
 
-  // 1. Fetch from Leopards
   const packets = await fetchLeopardsStatuses(from, to);
 
   if (packets.length === 0) {
@@ -38,15 +29,13 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
       total_fetched: 0,
       matched_orders: 0,
       updated_orders: 0,
-      from,
-      to,
+      from, to,
       duration_ms: Date.now() - startTime,
       message: 'No packets returned from Leopards for this date range',
     };
   }
 
-  // 2. Build map: tracking_number → latest packet
-  //    (API may return multiple entries for same packet; keep last)
+  // Build map: tracking → packet
   const packetMap = new Map();
   for (const p of packets) {
     if (p.tracking_number) {
@@ -55,7 +44,7 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
   }
   const trackingNumbers = Array.from(packetMap.keys());
 
-  // 3. Fetch matching orders from DB (in chunks to stay under query size limits)
+  // Fetch matching orders
   const existingOrders = [];
   for (let i = 0; i < trackingNumbers.length; i += 500) {
     const chunk = trackingNumbers.slice(i, i + 500);
@@ -67,7 +56,7 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
     if (data) existingOrders.push(...data);
   }
 
-  // 4. Build updates
+  // Build updates
   const updates = [];
   const skipped = [];
 
@@ -84,10 +73,7 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
       courier_last_synced_at: new Date().toISOString(),
     };
 
-    // Only update ERP status if:
-    // 1. We successfully mapped the raw text to an ERP status
-    // 2. Current status is not locked (don't downgrade delivered → dispatched)
-    if (mappedStatus && !LOCKED_STATUSES.includes(order.status)) {
+    if (mappedStatus && !lockedStatuses.includes(order.status)) {
       if (mappedStatus !== order.status) {
         patch.status = mappedStatus;
         if (mappedStatus === 'delivered') {
@@ -102,21 +88,17 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
     updates.push(patch);
   }
 
-  // 5. Apply updates one by one (can't bulk update with per-row values easily)
-  //    Batching would need an RPC function; for 150 rows this is fine
+  // Apply
   let updatedCount = 0;
   const errors = [];
   for (const u of updates) {
     const { id, ...patch } = u;
     const { error } = await supabase.from('orders').update(patch).eq('id', id);
-    if (error) {
-      errors.push({ order_id: id, error: error.message });
-    } else {
-      updatedCount++;
-    }
+    if (error) errors.push({ order_id: id, error: error.message });
+    else updatedCount++;
   }
 
-  // 6. Log the sync run
+  // Log
   await supabase.from('courier_sync_log').insert({
     courier: 'Leopards',
     sync_type: 'status',
@@ -133,8 +115,7 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
 
   return {
     success: true,
-    from,
-    to,
+    from, to,
     total_fetched: packets.length,
     unique_packets: packetMap.size,
     matched_orders: existingOrders.length,
@@ -147,17 +128,22 @@ async function runSync({ from, to, triggered_by = 'manual' }) {
   };
 }
 
-// ─── POST — manual trigger ──────────────────────────────────────────────────
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const days = body.days || 10;
+
+    // Read sync window + locked statuses from settings
+    const rules = await getSettings('business_rules');
+    const configuredDays = rules['rules.leopards_sync_window_days'] ?? 10;
+    const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
+
+    const days = body.days || configuredDays;
     const now = new Date();
     const from = body.from || formatDate(new Date(now.getTime() - days * 24 * 60 * 60 * 1000));
     const to = body.to || formatDate(now);
     const triggered_by = body.triggered_by || 'manual';
 
-    const result = await runSync({ from, to, triggered_by });
+    const result = await runSync({ from, to, triggered_by, lockedStatuses });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
@@ -167,7 +153,6 @@ export async function POST(request) {
   }
 }
 
-// ─── GET — simple check / last sync info ────────────────────────────────────
 export async function GET() {
   try {
     const supabase = createServerClient();

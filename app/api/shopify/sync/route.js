@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { fetchAllOrdersSince, transformOrder, transformLineItems } from '@/lib/shopify';
+import { createServerClient } from '../../../../lib/supabase';
+import { fetchAllOrdersSince, transformOrder, transformLineItems } from '../../../../lib/shopify';
+import { getSettings } from '../../../../lib/settings';
 
-const LOCKED_STATUSES = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+// LOCKED_STATUSES also read from settings now, with sensible fallback
+const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function POST(request) {
   const startTime = Date.now();
@@ -12,13 +18,18 @@ export async function POST(request) {
     const supabase = createServerClient();
     const body = await request.json().catch(() => ({}));
 
-    const days = body.days || 3;
+    // Read sync window from settings (fallback to 3 days)
+    const rules = await getSettings('business_rules');
+    const configuredDays = rules['rules.shopify_sync_window_days'] ?? 3;
+    const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
+
+    const days = body.days || configuredDays;
     const sinceDate = body.since || new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     debug.stage = 'fetching_shopify';
-    debug.steps.push({ step: 'fetch_start', since: sinceDate });
+    debug.steps.push({ step: 'fetch_start', since: sinceDate, days, locked_count: lockedStatuses.length });
 
-    // 1. Fetch orders from Shopify
+    // 1. Fetch from Shopify
     const shopifyOrders = await fetchAllOrdersSince(sinceDate);
     debug.steps.push({ step: 'fetch_done', count: shopifyOrders.length });
 
@@ -44,16 +55,14 @@ export async function POST(request) {
         success: false,
         stage: 'fetch_existing_orders',
         error: existingError.message,
-        details: existingError,
         debug,
       }, { status: 500 });
     }
 
     const existingMap = new Map();
     (existingOrders || []).forEach(o => existingMap.set(o.shopify_order_id, o));
-    debug.steps.push({ step: 'existing_loaded', count: existingMap.size });
 
-    // 3. Transform
+    // 3. Transform (now async — each call reads settings but cache makes it fast)
     debug.stage = 'transforming';
     const ordersToUpsert = [];
     const customersToUpsert = [];
@@ -62,11 +71,11 @@ export async function POST(request) {
 
     for (const shopifyOrder of shopifyOrders) {
       try {
-        const orderData = transformOrder(shopifyOrder);
+        const orderData = await transformOrder(shopifyOrder);
         const existing = existingMap.get(orderData.shopify_order_id);
 
         if (existing) {
-          if (LOCKED_STATUSES.includes(existing.status)) delete orderData.status;
+          if (lockedStatuses.includes(existing.status)) delete orderData.status;
           if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') delete orderData.payment_status;
           if (existing.payment_status === 'refunded') delete orderData.payment_status;
         }
@@ -86,7 +95,7 @@ export async function POST(request) {
           });
         }
       } catch (e) {
-        transformErrors.push({ order: shopifyOrder.name, error: e.message, stack: e.stack });
+        transformErrors.push({ order: shopifyOrder.name, error: e.message });
       }
     }
 
@@ -97,16 +106,9 @@ export async function POST(request) {
       transform_errors: transformErrors.length,
     });
 
-    if (ordersToUpsert.length > 0) {
-      debug.sample_order_keys = Object.keys(ordersToUpsert[0]);
-    }
-
-    // 4. Dedupe (Shopify pagination can return same order twice on boundary)
-    //    Keep last occurrence per shopify_order_id
+    // 4. Dedupe (Shopify pagination overlap)
     const dedupMap = new Map();
-    for (const o of ordersToUpsert) {
-      dedupMap.set(o.shopify_order_id, o);
-    }
+    for (const o of ordersToUpsert) dedupMap.set(o.shopify_order_id, o);
     const dedupedOrders = Array.from(dedupMap.values());
     debug.steps.push({
       step: 'dedup_done',
@@ -115,7 +117,7 @@ export async function POST(request) {
       removed: ordersToUpsert.length - dedupedOrders.length,
     });
 
-    // 5. Upsert orders
+    // 5. Upsert
     debug.stage = 'upserting_orders';
     let synced = 0;
     let upsertedOrders = [];
@@ -130,9 +132,8 @@ export async function POST(request) {
           success: false,
           stage: 'upsert_orders',
           error: upsertError.message,
-          hint: upsertError.hint || null,
-          code: upsertError.code || null,
-          details: upsertError.details || null,
+          code: upsertError.code,
+          hint: upsertError.hint,
           sample_order_keys: Object.keys(dedupedOrders[0] || {}),
           debug,
         }, { status: 500 });
@@ -140,28 +141,19 @@ export async function POST(request) {
       upsertedOrders = data || [];
       synced = upsertedOrders.length;
     }
-    debug.steps.push({ step: 'orders_upserted', count: synced });
 
-    // 6. Upsert customers (already deduped via customerIdsSeen Set above)
-    debug.stage = 'upserting_customers';
+    // 6. Upsert customers
     let customerError = null;
     if (customersToUpsert.length > 0) {
       const { error } = await supabase
         .from('customers')
         .upsert(customersToUpsert, { onConflict: 'shopify_customer_id' });
       if (error) {
-        customerError = {
-          message: error.message,
-          code: error.code,
-          hint: error.hint,
-          details: error.details,
-        };
+        customerError = { message: error.message, code: error.code };
       }
     }
-    debug.steps.push({ step: 'customers_upserted', error: customerError });
 
-    // 6. Line items for NEW orders only
-    debug.stage = 'inserting_items';
+    // 7. Line items for NEW orders only
     const newOrdersMap = new Map();
     upsertedOrders.forEach(o => {
       if (!existingMap.has(o.shopify_order_id)) {
@@ -181,20 +173,10 @@ export async function POST(request) {
       }
       if (allItems.length > 0) {
         const { error } = await supabase.from('order_items').insert(allItems);
-        if (error) {
-          itemsError = {
-            message: error.message,
-            code: error.code,
-            hint: error.hint,
-            details: error.details,
-            sample_item_keys: Object.keys(allItems[0] || {}),
-          };
-        } else {
-          itemsInserted = allItems.length;
-        }
+        if (error) itemsError = { message: error.message, code: error.code };
+        else itemsInserted = allItems.length;
       }
     }
-    debug.steps.push({ step: 'items_inserted', count: itemsInserted, error: itemsError });
 
     return NextResponse.json({
       success: true,
@@ -204,8 +186,8 @@ export async function POST(request) {
       transform_errors: transformErrors.length > 0 ? transformErrors.slice(0, 5) : undefined,
       customer_error: customerError,
       items_error: itemsError,
+      sync_window_days: days,
       duration_ms: Date.now() - startTime,
-      debug,
       message: `${synced} orders synced in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
     });
 
