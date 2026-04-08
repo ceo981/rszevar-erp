@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/courier/leopards/sync-status",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/courier/leopards/sync-payments",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}
