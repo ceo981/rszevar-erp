@@ -63,8 +63,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
   const [cancelReason, setCancelReason] = useState('');
   const [confirmNotes, setConfirmNotes] = useState('');
-  const [showDispatch, setShowDispatch] = useState(false);
-  const [showCancel, setShowCancel] = useState(false);
 
   useEffect(() => {
     if (tab === 'log') {
@@ -106,7 +104,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.order_number || '#' + order.id}</div>
-            <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.city}</div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.customer_city}</div>
             <div style={{ marginTop: 8 }}><StatusBadge status={order.status} /></div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -117,10 +115,12 @@ function OrderDrawer({ order, onClose, onRefresh }) {
           {[
             ['COD Amount', fmt(order.total_amount)],
             ['Phone', order.customer_phone || '—'],
-            ['Address', order.shipping_address || '—'],
+            ['Address', order.customer_address || '—'],
             ['Placed', timeAgo(order.created_at)],
             ['Courier', order.dispatched_courier || '—'],
             ['Tracking', order.tracking_number || '—'],
+            ['Courier Status', order.courier_status_raw || '—'],
+            ['Payment', order.payment_status || 'unpaid'],
           ].map(([k, v]) => (
             <div key={k}>
               <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
@@ -246,6 +246,8 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
   const [syncing, setSyncing] = useState(false);
+  const [leopardsStatusSyncing, setLeopardsStatusSyncing] = useState(false);
+  const [leopardsPaymentsSyncing, setLeopardsPaymentsSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const PER_PAGE = 30;
@@ -274,12 +276,17 @@ export default function OrdersPage() {
       .catch(() => {});
   }, []);
 
+  // Shared helper to show auto-hiding messages
+  const showMsg = (type, text, ms = 8000) => {
+    setSyncMsg({ type, text });
+    setTimeout(() => setSyncMsg(null), ms);
+  };
+
   // Sync from Shopify
   const syncFromShopify = async () => {
     setSyncing(true);
     setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
 
-    // Safety timeout: if 3 minutes pass, force unlock
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
 
@@ -293,9 +300,7 @@ export default function OrdersPage() {
 
       clearTimeout(timeoutId);
 
-      if (!r.ok) {
-        throw new Error(`Server error ${r.status}`);
-      }
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
 
       const d = await r.json();
 
@@ -307,7 +312,7 @@ export default function OrdersPage() {
             : '✓ Already up to date — no new orders',
         });
         setLastSync(new Date().toISOString());
-        await load(); // Reload orders from DB
+        await load();
       } else {
         setSyncMsg({ type: 'error', text: `✗ ${d.error || 'Sync failed'}` });
       }
@@ -320,8 +325,99 @@ export default function OrdersPage() {
       }
     } finally {
       setSyncing(false);
-      // Auto-hide after 6 seconds
       setTimeout(() => setSyncMsg(null), 6000);
+    }
+  };
+
+  // Sync Leopards delivery status
+  const syncLeopardsStatus = async () => {
+    setLeopardsStatusSyncing(true);
+    setSyncMsg({ type: 'info', text: '⟳ Fetching Leopards statuses (can take 30-60 seconds)...' });
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
+
+    try {
+      const r = await fetch('/api/courier/leopards/sync-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 10, triggered_by: 'manual' }),
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+
+      const d = await r.json();
+
+      if (d.success) {
+        const parts = [
+          `✓ Leopards: ${d.updated_orders || 0} orders updated`,
+          `${d.matched_orders || 0} matched`,
+          `${d.total_fetched || 0} packets fetched`,
+        ];
+        if (d.skipped_unmapped > 0) parts.push(`${d.skipped_unmapped} unmapped`);
+        showMsg('success', parts.join(' · '));
+        await load();
+      } else {
+        showMsg('error', `✗ ${d.error || 'Leopards status sync failed'}`);
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        showMsg('error', '✗ Leopards status sync timed out after 3 minutes.');
+      } else {
+        showMsg('error', `✗ ${e.message}`);
+      }
+    } finally {
+      setLeopardsStatusSyncing(false);
+    }
+  };
+
+  // Sync Leopards payments
+  const syncLeopardsPayments = async () => {
+    setLeopardsPaymentsSyncing(true);
+    setSyncMsg({ type: 'info', text: '⟳ Reconciling Leopards payments...' });
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
+
+    try {
+      const r = await fetch('/api/courier/leopards/sync-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggered_by: 'manual' }),
+        signal: abortController.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+
+      const d = await r.json();
+
+      if (d.success) {
+        if (d.candidates === 0) {
+          showMsg('info', '✓ No delivered unpaid Leopards orders to check');
+        } else if (d.marked_paid > 0) {
+          showMsg('success', `✓ Leopards: ${d.marked_paid} orders marked paid (${d.candidates} checked, ${d.still_pending} still pending)`);
+          await load();
+        } else {
+          showMsg('info', `✓ Leopards: 0 marked paid — ${d.candidates} still pending invoice generation`);
+        }
+      } else {
+        showMsg('error', `✗ ${d.error || 'Leopards payment sync failed'}`);
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        showMsg('error', '✗ Leopards payment sync timed out after 3 minutes.');
+      } else {
+        showMsg('error', `✗ ${e.message}`);
+      }
+    } finally {
+      setLeopardsPaymentsSyncing(false);
     }
   };
 
@@ -332,13 +428,16 @@ export default function OrdersPage() {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      return (o.shopify_order_name || '').toLowerCase().includes(q) ||
+      return (o.order_number || '').toLowerCase().includes(q) ||
              (o.customer_name || '').toLowerCase().includes(q) ||
              (o.customer_phone || '').includes(q) ||
-             (o.city || '').toLowerCase().includes(q);
+             (o.customer_city || '').toLowerCase().includes(q) ||
+             (o.tracking_number || '').toLowerCase().includes(q);
     }
     return true;
   });
+
+  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing;
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
@@ -361,6 +460,7 @@ export default function OrdersPage() {
             padding: '8px 14px',
             borderRadius: 8,
             fontSize: 12,
+            maxWidth: 600,
             background:
               syncMsg.type === 'success' ? 'rgba(74,222,128,0.12)' :
               syncMsg.type === 'error' ? 'rgba(248,113,113,0.12)' :
@@ -400,19 +500,21 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Filters + Sync buttons */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Search order, customer, phone..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
+          placeholder="Search order, customer, phone, tracking..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
         <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           style={{ background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }}>
           <option value="all">All Status</option>
           {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
         </select>
         <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
+
+        {/* Sync from Shopify */}
         <button
           onClick={syncFromShopify}
-          disabled={syncing}
+          disabled={anySyncing}
           style={{
             background: syncing ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
             border: `1px solid ${syncing ? border : '#c9a96e'}`,
@@ -421,7 +523,8 @@ export default function OrdersPage() {
             padding: '9px 18px',
             fontSize: 13,
             fontWeight: 600,
-            cursor: syncing ? 'not-allowed' : 'pointer',
+            cursor: anySyncing ? 'not-allowed' : 'pointer',
+            opacity: (anySyncing && !syncing) ? 0.5 : 1,
             display: 'flex',
             alignItems: 'center',
             gap: 8,
@@ -438,6 +541,71 @@ export default function OrdersPage() {
             <>⟱ Sync from Shopify</>
           )}
         </button>
+
+        {/* Leopards Status Sync */}
+        <button
+          onClick={syncLeopardsStatus}
+          disabled={anySyncing}
+          style={{
+            background: leopardsStatusSyncing ? '#1a1a1a' : 'rgba(168, 85, 247, 0.15)',
+            border: `1px solid ${leopardsStatusSyncing ? border : '#a855f7'}`,
+            color: leopardsStatusSyncing ? '#888' : '#a855f7',
+            borderRadius: 8,
+            padding: '9px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: anySyncing ? 'not-allowed' : 'pointer',
+            opacity: (anySyncing && !leopardsStatusSyncing) ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontFamily: 'inherit',
+            transition: 'all 0.15s',
+          }}
+          title="Pull latest delivery statuses from Leopards API"
+        >
+          {leopardsStatusSyncing ? (
+            <>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+              Syncing…
+            </>
+          ) : (
+            <>🐆 Leopards Status</>
+          )}
+        </button>
+
+        {/* Leopards Payments Sync */}
+        <button
+          onClick={syncLeopardsPayments}
+          disabled={anySyncing}
+          style={{
+            background: leopardsPaymentsSyncing ? '#1a1a1a' : 'rgba(34, 197, 94, 0.15)',
+            border: `1px solid ${leopardsPaymentsSyncing ? border : '#22c55e'}`,
+            color: leopardsPaymentsSyncing ? '#888' : '#22c55e',
+            borderRadius: 8,
+            padding: '9px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: anySyncing ? 'not-allowed' : 'pointer',
+            opacity: (anySyncing && !leopardsPaymentsSyncing) ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontFamily: 'inherit',
+            transition: 'all 0.15s',
+          }}
+          title="Reconcile Leopards COD payments (auto-mark paid orders)"
+        >
+          {leopardsPaymentsSyncing ? (
+            <>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+              Checking…
+            </>
+          ) : (
+            <>💰 Leopards Payments</>
+          )}
+        </button>
+
         <style jsx>{`
           @keyframes spin {
             from { transform: rotate(0deg); }
@@ -471,7 +639,7 @@ export default function OrdersPage() {
                     {order.order_number || '#' + order.id}
                   </td>
                   <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
-                  <td style={{ padding: '12px 16px', color: '#888' }}>{order.city}</td>
+                  <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
                   <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
                   <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                   <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
