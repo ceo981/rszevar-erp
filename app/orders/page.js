@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -54,6 +54,207 @@ function PaymentBadge({ payment_status }) {
   );
 }
 
+// ─── Filter Dropdown ──────────────────────────────────────────
+// Single dropdown with sections. Picks ONE filter at a time.
+// Filter object: { type, value } e.g. { type: 'status', value: 'delivered' }
+function FilterDropdown({ current, onChange, globalCounts }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const gc = globalCounts || {};
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const sections = [
+    {
+      label: 'Status',
+      items: [
+        { type: 'status', value: 'pending', label: 'Pending', color: '#888' },
+        { type: 'status', value: 'confirmed', label: 'Confirmed', color: '#3b82f6' },
+        { type: 'status', value: 'dispatched', label: 'Dispatched', color: '#a855f7' },
+        { type: 'status', value: 'delivered', label: 'Delivered', color: '#22c55e' },
+        { type: 'status', value: 'rto', label: 'RTO', color: '#ef4444' },
+        { type: 'status', value: 'cancelled', label: 'Cancelled', color: '#ef4444' },
+      ],
+    },
+    {
+      label: 'Type',
+      items: [
+        { type: 'type', value: 'wholesale', label: '🏢 Wholesale', color: '#8b5cf6', count: gc.wholesale },
+        { type: 'type', value: 'international', label: '🌍 International', color: '#06b6d4', count: gc.international },
+        { type: 'type', value: 'walkin', label: '🚶 Walk-in', color: '#f59e0b', count: gc.walkin },
+      ],
+    },
+    {
+      label: 'Courier',
+      items: [
+        { type: 'courier', value: 'Leopards', label: '🐆 Leopards', color: '#a855f7', count: gc.leopards },
+        { type: 'courier', value: 'PostEx', label: '📦 PostEx', color: '#22d3ee', count: gc.postex },
+        { type: 'courier', value: 'Kangaroo', label: '🦘 Kangaroo', color: '#f59e0b', count: gc.kangaroo },
+        { type: 'courier', value: 'Other', label: '❓ Other / Unknown', color: '#888' },
+      ],
+    },
+    {
+      label: 'Payment',
+      items: [
+        { type: 'payment', value: 'paid', label: '💰 Paid', color: '#22c55e' },
+        { type: 'payment', value: 'unpaid', label: '⏳ Unpaid', color: '#f87171' },
+        { type: 'payment', value: 'refunded', label: '↩️ Refunded', color: '#fbbf24' },
+      ],
+    },
+  ];
+
+  // Derive display label
+  let displayLabel = 'All Orders';
+  let displayColor = '#888';
+  if (current.type) {
+    for (const s of sections) {
+      const found = s.items.find(i => i.type === current.type && i.value === current.value);
+      if (found) {
+        displayLabel = found.label;
+        displayColor = found.color;
+        break;
+      }
+    }
+  }
+
+  const pick = (item) => {
+    onChange({ type: item.type, value: item.value });
+    setOpen(false);
+  };
+
+  const clear = () => {
+    onChange({ type: null, value: null });
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: card,
+          border: `1px solid ${current.type ? displayColor : border}`,
+          color: current.type ? displayColor : '#fff',
+          borderRadius: 8,
+          padding: '9px 16px',
+          fontSize: 13,
+          fontWeight: current.type ? 600 : 400,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          minWidth: 180,
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: 1, textAlign: 'left' }}>{displayLabel}</span>
+        <span style={{ fontSize: 10, color: '#555' }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 6px)',
+          left: 0,
+          minWidth: 260,
+          background: '#0a0a0a',
+          border: `1px solid ${border}`,
+          borderRadius: 10,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+          zIndex: 100,
+          maxHeight: 480,
+          overflowY: 'auto',
+        }}>
+          {/* All / Clear */}
+          <button
+            onClick={clear}
+            style={{
+              width: '100%',
+              background: !current.type ? '#1a1a1a' : 'transparent',
+              border: 'none',
+              color: !current.type ? gold : '#ccc',
+              padding: '11px 16px',
+              fontSize: 13,
+              fontWeight: !current.type ? 600 : 400,
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              borderBottom: `1px solid ${border}`,
+            }}
+          >
+            {current.type ? '✕ Clear filter' : '✓ All Orders'}
+          </button>
+
+          {sections.map(section => (
+            <div key={section.label}>
+              <div style={{
+                padding: '10px 16px 6px',
+                fontSize: 10,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                fontWeight: 600,
+                background: '#050505',
+              }}>
+                {section.label}
+              </div>
+              {section.items.map(item => {
+                const active = current.type === item.type && current.value === item.value;
+                return (
+                  <button
+                    key={`${item.type}-${item.value}`}
+                    onClick={() => pick(item)}
+                    style={{
+                      width: '100%',
+                      background: active ? '#1a1a1a' : 'transparent',
+                      border: 'none',
+                      borderLeft: active ? `3px solid ${item.color}` : '3px solid transparent',
+                      color: active ? item.color : '#ccc',
+                      padding: '10px 16px',
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#111'; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span>{item.label}</span>
+                    {typeof item.count === 'number' && (
+                      <span style={{
+                        fontSize: 11,
+                        color: active ? item.color : '#555',
+                        background: active ? item.color + '22' : '#1a1a1a',
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        fontWeight: 600,
+                        minWidth: 24,
+                        textAlign: 'center',
+                      }}>
+                        {item.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Order Action Drawer ───────────────────────────────────────
 function OrderDrawer({ order, onClose, onRefresh }) {
   const [loading, setLoading] = useState(false);
@@ -94,23 +295,32 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
   const s = order.status;
 
+  // Order type badges
+  const typeBadges = [];
+  if (order.is_wholesale) typeBadges.push({ label: '🏢 Wholesale', color: '#8b5cf6' });
+  if (order.is_international) typeBadges.push({ label: '🌍 International', color: '#06b6d4' });
+  if (order.is_walkin) typeBadges.push({ label: '🚶 Walk-in', color: '#f59e0b' });
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' }}>
-      {/* Backdrop */}
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />
-      {/* Drawer */}
       <div style={{ width: 480, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.order_number || '#' + order.id}</div>
             <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.customer_city}</div>
-            <div style={{ marginTop: 8 }}><StatusBadge status={order.status} /></div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <StatusBadge status={order.status} />
+              {typeBadges.map(b => (
+                <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+                  {b.label}
+                </span>
+              ))}
+            </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
-        {/* Order Info */}
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
             ['COD Amount', fmt(order.total_amount)],
@@ -129,7 +339,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
           ))}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: `1px solid ${border}` }}>
           {['actions', 'log'].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
@@ -144,8 +353,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         <div style={{ padding: '20px 24px', flex: 1 }}>
           {tab === 'actions' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-              {/* Confirm */}
               {(s === 'pending' || s === 'processing') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
@@ -157,7 +364,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 </div>
               )}
 
-              {/* Dispatch */}
               {(s === 'confirmed' || s === 'processing' || s === 'pending') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>📦 Dispatch Order</div>
@@ -180,7 +386,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 </div>
               )}
 
-              {/* Mark Delivered */}
               {s === 'dispatched' && (
                 <button onClick={() => setStatus('delivered')} disabled={loading}
                   style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -188,7 +393,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 </button>
               )}
 
-              {/* Mark RTO */}
               {(s === 'dispatched' || s === 'delivered') && (
                 <button onClick={() => setStatus('rto')} disabled={loading}
                   style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -196,7 +400,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 </button>
               )}
 
-              {/* Cancel */}
               {s !== 'cancelled' && s !== 'delivered' && (
                 <div style={{ background: card, border: '1px solid #330000', borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
@@ -240,9 +443,10 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
+  const [globalCounts, setGlobalCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [filter, setFilter] = useState({ type: null, value: null }); // unified filter
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
   const [syncing, setSyncing] = useState(false);
@@ -257,18 +461,18 @@ export default function OrdersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
       if (search) params.append('search', search);
-      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (filter.type && filter.value) params.append(filter.type, filter.value);
       const r = await fetch(`/api/orders?${params}`);
       const d = await r.json();
       setOrders(d.orders || []);
       if (d.stats) setStats(d.stats);
+      if (d.global_counts) setGlobalCounts(d.global_counts);
     } catch {}
     setLoading(false);
-  }, [page, search, statusFilter]);
+  }, [page, search, filter]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Load last sync time on mount
   useEffect(() => {
     fetch('/api/shopify/sync')
       .then(r => r.json())
@@ -276,17 +480,14 @@ export default function OrdersPage() {
       .catch(() => {});
   }, []);
 
-  // Shared helper to show auto-hiding messages
   const showMsg = (type, text, ms = 8000) => {
     setSyncMsg({ type, text });
     setTimeout(() => setSyncMsg(null), ms);
   };
 
-  // Sync from Shopify
   const syncFromShopify = async () => {
     setSyncing(true);
     setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
-
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
 
@@ -297,11 +498,8 @@ export default function OrdersPage() {
         body: JSON.stringify({}),
         signal: abortController.signal,
       });
-
       clearTimeout(timeoutId);
-
       if (!r.ok) throw new Error(`Server error ${r.status}`);
-
       const d = await r.json();
 
       if (d.success) {
@@ -319,7 +517,7 @@ export default function OrdersPage() {
     } catch (e) {
       clearTimeout(timeoutId);
       if (e.name === 'AbortError') {
-        setSyncMsg({ type: 'error', text: '✗ Sync timed out after 3 minutes. Try again or check Shopify API.' });
+        setSyncMsg({ type: 'error', text: '✗ Sync timed out after 3 minutes.' });
       } else {
         setSyncMsg({ type: 'error', text: `✗ ${e.message}` });
       }
@@ -329,11 +527,9 @@ export default function OrdersPage() {
     }
   };
 
-  // Sync Leopards delivery status
   const syncLeopardsStatus = async () => {
     setLeopardsStatusSyncing(true);
-    setSyncMsg({ type: 'info', text: '⟳ Fetching Leopards statuses (can take 30-60 seconds)...' });
-
+    setSyncMsg({ type: 'info', text: '⟳ Fetching Leopards statuses...' });
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
 
@@ -344,11 +540,8 @@ export default function OrdersPage() {
         body: JSON.stringify({ days: 10, triggered_by: 'manual' }),
         signal: abortController.signal,
       });
-
       clearTimeout(timeoutId);
-
       if (!r.ok) throw new Error(`Server error ${r.status}`);
-
       const d = await r.json();
 
       if (d.success) {
@@ -365,21 +558,15 @@ export default function OrdersPage() {
       }
     } catch (e) {
       clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        showMsg('error', '✗ Leopards status sync timed out after 3 minutes.');
-      } else {
-        showMsg('error', `✗ ${e.message}`);
-      }
+      showMsg('error', e.name === 'AbortError' ? '✗ Leopards status sync timed out.' : `✗ ${e.message}`);
     } finally {
       setLeopardsStatusSyncing(false);
     }
   };
 
-  // Sync Leopards payments
   const syncLeopardsPayments = async () => {
     setLeopardsPaymentsSyncing(true);
     setSyncMsg({ type: 'info', text: '⟳ Reconciling Leopards payments...' });
-
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
 
@@ -390,11 +577,8 @@ export default function OrdersPage() {
         body: JSON.stringify({ triggered_by: 'manual' }),
         signal: abortController.signal,
       });
-
       clearTimeout(timeoutId);
-
       if (!r.ok) throw new Error(`Server error ${r.status}`);
-
       const d = await r.json();
 
       if (d.success) {
@@ -411,32 +595,13 @@ export default function OrdersPage() {
       }
     } catch (e) {
       clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        showMsg('error', '✗ Leopards payment sync timed out after 3 minutes.');
-      } else {
-        showMsg('error', `✗ ${e.message}`);
-      }
+      showMsg('error', e.name === 'AbortError' ? '✗ Leopards payment sync timed out.' : `✗ ${e.message}`);
     } finally {
       setLeopardsPaymentsSyncing(false);
     }
   };
 
-  // Status counts (from API, global — not just current page)
   const c = stats || {};
-
-  const filtered = orders.filter(o => {
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (o.order_number || '').toLowerCase().includes(q) ||
-             (o.customer_name || '').toLowerCase().includes(q) ||
-             (o.customer_phone || '').includes(q) ||
-             (o.customer_city || '').toLowerCase().includes(q) ||
-             (o.tracking_number || '').toLowerCase().includes(q);
-    }
-    return true;
-  });
-
   const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing;
 
   return (
@@ -480,7 +645,7 @@ export default function OrdersPage() {
         )}
       </div>
 
-      {/* Summary */}
+      {/* Summary cards (filter-aware — show counts within current filter) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 20 }}>
         {[
           { label: 'Total', value: c.total || 0, color: '#fff' },
@@ -504,14 +669,15 @@ export default function OrdersPage() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
           placeholder="Search order, customer, phone, tracking..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
-        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          style={{ background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }}>
-          <option value="all">All Status</option>
-          {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
-        </select>
+
+        <FilterDropdown
+          current={filter}
+          onChange={(f) => { setFilter(f); setPage(1); }}
+          globalCounts={globalCounts}
+        />
+
         <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
 
-        {/* Sync from Shopify */}
         <button
           onClick={syncFromShopify}
           disabled={anySyncing}
@@ -528,21 +694,12 @@ export default function OrdersPage() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            transition: 'all 0.15s',
           }}
           title="Pull latest orders from Shopify"
         >
-          {syncing ? (
-            <>
-              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
-              Syncing…
-            </>
-          ) : (
-            <>⟱ Sync from Shopify</>
-          )}
+          {syncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>⟱ Sync from Shopify</>)}
         </button>
 
-        {/* Leopards Status Sync */}
         <button
           onClick={syncLeopardsStatus}
           disabled={anySyncing}
@@ -560,21 +717,12 @@ export default function OrdersPage() {
             alignItems: 'center',
             gap: 8,
             fontFamily: 'inherit',
-            transition: 'all 0.15s',
           }}
           title="Pull latest delivery statuses from Leopards API"
         >
-          {leopardsStatusSyncing ? (
-            <>
-              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
-              Syncing…
-            </>
-          ) : (
-            <>🐆 Leopards Status</>
-          )}
+          {leopardsStatusSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>🐆 Leopards Status</>)}
         </button>
 
-        {/* Leopards Payments Sync */}
         <button
           onClick={syncLeopardsPayments}
           disabled={anySyncing}
@@ -592,25 +740,14 @@ export default function OrdersPage() {
             alignItems: 'center',
             gap: 8,
             fontFamily: 'inherit',
-            transition: 'all 0.15s',
           }}
           title="Reconcile Leopards COD payments (auto-mark paid orders)"
         >
-          {leopardsPaymentsSyncing ? (
-            <>
-              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
-              Checking…
-            </>
-          ) : (
-            <>💰 Leopards Payments</>
-          )}
+          {leopardsPaymentsSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Checking…</>) : (<>💰 Leopards Payments</>)}
         </button>
 
         <style jsx>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         `}</style>
       </div>
 
@@ -620,46 +757,52 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
               )}
-              {!loading && filtered.length === 0 && (
-                <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+              {!loading && orders.length === 0 && (
+                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
               )}
-              {filtered.map((order, i) => (
-                <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
-                  onClick={() => setSelected(order)} className="order-row">
-                  <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
-                    {order.order_number || '#' + order.id}
-                  </td>
-                  <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
-                  <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
-                  <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
-                  <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
-                  <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
-                  <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
-                  <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <button onClick={e => { e.stopPropagation(); setSelected(order); }}
-                      style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Actions →
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {orders.map((order, i) => {
+                let typeIcon = '';
+                if (order.is_wholesale) typeIcon = '🏢';
+                else if (order.is_international) typeIcon = '🌍';
+                else if (order.is_walkin) typeIcon = '🚶';
+                return (
+                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
+                    onClick={() => setSelected(order)} className="order-row">
+                    <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
+                      {order.order_number || '#' + order.id}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
+                    <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
+                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
+                    <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
+                    <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
+                    <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center' }}>{typeIcon || <span style={{ color: '#333' }}>—</span>}</td>
+                    <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <button onClick={e => { e.stopPropagation(); setSelected(order); }}
+                        style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Actions →
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#555' }}>Showing {filtered.length} orders</span>
+          <span style={{ fontSize: 12, color: '#555' }}>Showing {orders.length} orders</span>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: page === 1 ? '#333' : '#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: page === 1 ? 'not-allowed' : 'pointer' }}>← Prev</button>
