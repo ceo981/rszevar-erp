@@ -4,8 +4,8 @@
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/permissions';
-import { createServerClient } from '@/lib/supabase';
+import { getCurrentUser } from '../../../../lib/permissions';
+import { createServerClient } from '../../../../lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

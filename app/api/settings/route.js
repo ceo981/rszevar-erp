@@ -7,9 +7,9 @@
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/permissions';
-import { createServerClient } from '@/lib/supabase';
-import { getAllSettingsWithMeta, setSettingsBulk, invalidateSettingsCache } from '@/lib/settings';
+import { getCurrentUser } from '../../../lib/permissions';
+import { createServerClient } from '../../../lib/supabase';
+import { getAllSettingsWithMeta, setSettingsBulk, invalidateSettingsCache } from '../../../lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
