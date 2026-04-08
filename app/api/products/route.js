@@ -1,77 +1,152 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 
+// ============================================================================
+// Products / Inventory API
+// Supports two views:
+//   ?view=grouped  → one entry per Shopify product, with variants[] nested
+//   ?view=flat     → one entry per variant (old behavior, unchanged)
+// Stats always include BOTH total_products (distinct Shopify products) and
+// total_variants (row count).
+// ============================================================================
+
+const MAX_FETCH = 10000; // safety cap — we have ~3-4k variants in practice
+
+function groupByProduct(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const key = r.shopify_product_id || `orphan-${r.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        group_key: key,
+        id: key, // React key compatibility
+        shopify_product_id: r.shopify_product_id,
+        parent_title: r.parent_title || (r.title ? r.title.split(' - ')[0] : 'Untitled'),
+        image_url: r.image_url,
+        vendor: r.vendor,
+        category: r.category,
+        is_active: r.is_active,
+        variants: [],
+      });
+    }
+    groups.get(key).variants.push(r);
+  }
+
+  for (const g of groups.values()) {
+    g.variant_count = g.variants.length;
+    g.total_stock = g.variants.reduce((s, v) => s + (v.stock_quantity || 0), 0);
+    g.stock_quantity = g.total_stock; // compatibility for sort/display
+    g.total_sold = g.variants.reduce((s, v) => s + (v.total_sold || 0), 0);
+    g.has_out_of_stock = g.variants.some(v => (v.stock_quantity || 0) === 0);
+    g.has_low_stock = g.variants.some(v => {
+      const q = v.stock_quantity || 0;
+      return q > 0 && q <= 5;
+    });
+    // Lowest non-zero selling price across variants (or 0 if none priced)
+    const prices = g.variants.map(v => v.selling_price || 0).filter(p => p > 0);
+    g.selling_price = prices.length ? Math.min(...prices) : 0;
+    // Group is active if ANY variant is active
+    g.is_active = g.variants.some(v => v.is_active);
+  }
+
+  return Array.from(groups.values());
+}
+
 export async function GET(request) {
   try {
     const supabase = createServerClient();
     const { searchParams } = new URL(request.url);
 
+    const view = searchParams.get('view') || 'grouped'; // grouped | flat
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = parseInt(searchParams.get('limit') || '40');
     const search = searchParams.get('search');
     const category = searchParams.get('category');
     const stockFilter = searchParams.get('stock'); // low, out, all
     const sort = searchParams.get('sort') || 'title';
     const order = searchParams.get('order') || 'asc';
 
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+    // ── Build filtered query ──
+    let query = supabase.from('products').select('*');
 
-    let query = supabase
-      .from('products')
-      .select('*', { count: 'exact' });
-
-    // Filters
     if (search) {
-      query = query.or(`title.ilike.%${search}%,sku.ilike.%${search}%,category.ilike.%${search}%,vendor.ilike.%${search}%`);
+      // Include parent_title so searching parent name finds all its variants
+      query = query.or(
+        `title.ilike.%${search}%,parent_title.ilike.%${search}%,sku.ilike.%${search}%,category.ilike.%${search}%,vendor.ilike.%${search}%`
+      );
     }
     if (category && category !== 'all') query = query.eq('category', category);
     if (stockFilter === 'out') query = query.eq('stock_quantity', 0);
     if (stockFilter === 'low') query = query.lte('stock_quantity', 5).gt('stock_quantity', 0);
 
-    query = query.order(sort, { ascending: order === 'asc' }).range(from, to);
+    query = query.order(sort, { ascending: order === 'asc' }).range(0, MAX_FETCH - 1);
 
-    const { data: products, count, error } = await query;
+    const { data: allRows, error } = await query;
     if (error) throw error;
 
-    // Stats
-    const statsQueries = await Promise.all([
+    // ── Stats (over full products table, unfiltered) ──
+    const [totalRowsRes, outRes, lowRes, activeRes, valueRes] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('stock_quantity', 0),
       supabase.from('products').select('*', { count: 'exact', head: true }).lte('stock_quantity', 5).gt('stock_quantity', 0),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      supabase.from('products').select('stock_quantity, selling_price'),
+      supabase.from('products').select('stock_quantity, selling_price, shopify_product_id').range(0, MAX_FETCH - 1),
     ]);
 
-    // Calculate total stock value
-    const allProducts = statsQueries[4].data || [];
-    const totalStockValue = allProducts.reduce((sum, p) => sum + (p.stock_quantity || 0) * (p.selling_price || 0), 0);
-    const totalUnits = allProducts.reduce((sum, p) => sum + (p.stock_quantity || 0), 0);
-
-    // Get unique categories
-    const { data: cats } = await supabase.from('products').select('category').not('category', 'is', null);
-    const categories = [...new Set((cats || []).map(c => c.category).filter(Boolean))].sort();
+    const valueRows = valueRes.data || [];
+    const total_stock_value = valueRows.reduce(
+      (s, p) => s + (p.stock_quantity || 0) * (p.selling_price || 0),
+      0
+    );
+    const total_units = valueRows.reduce((s, p) => s + (p.stock_quantity || 0), 0);
+    const distinctProducts = new Set(
+      valueRows.map(p => p.shopify_product_id).filter(Boolean)
+    ).size;
 
     const productStats = {
-      total: statsQueries[0].count || 0,
-      out_of_stock: statsQueries[1].count || 0,
-      low_stock: statsQueries[2].count || 0,
-      active: statsQueries[3].count || 0,
-      total_stock_value: totalStockValue,
-      total_units: totalUnits,
+      total: totalRowsRes.count || 0,
+      total_variants: totalRowsRes.count || 0,
+      total_products: distinctProducts,
+      out_of_stock: outRes.count || 0,
+      low_stock: lowRes.count || 0,
+      active: activeRes.count || 0,
+      total_stock_value,
+      total_units,
     };
+
+    // ── Categories dropdown ──
+    const { data: cats } = await supabase
+      .from('products')
+      .select('category')
+      .not('category', 'is', null);
+    const categories = [
+      ...new Set((cats || []).map(c => c.category).filter(Boolean)),
+    ].sort();
+
+    // ── Paginate + shape output ──
+    let products, total;
+    if (view === 'grouped') {
+      const groups = groupByProduct(allRows || []);
+      total = groups.length;
+      const from = (page - 1) * limit;
+      products = groups.slice(from, from + limit);
+    } else {
+      total = (allRows || []).length;
+      const from = (page - 1) * limit;
+      products = (allRows || []).slice(from, from + limit);
+    }
 
     return NextResponse.json({
       success: true,
-      products: products || [],
-      total: count || 0,
+      view,
+      products,
+      total,
       page,
       limit,
-      total_pages: Math.ceil((count || 0) / limit),
+      total_pages: Math.ceil(total / limit) || 1,
       stats: productStats,
       categories,
     });
-
   } catch (error) {
     console.error('Products fetch error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

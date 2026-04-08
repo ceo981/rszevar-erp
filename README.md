@@ -1,201 +1,162 @@
-# RS ZEVAR ERP — Phase 1: Auth + RBAC
+# Phase 7 — Chunk 3: Tags Management + Notifications + Business Rules Integration
 
-Complete login + role-based permissions system with database-driven access control.
+## ⚡ This is the big one
 
-## 🎯 Kya Banaya Hai
+After this chunk:
+- **Tags tab** — add/edit/disable/delete tags from UI, filter dropdown auto-updates
+- **Notifications tab** — email/WhatsApp alert preferences (future hooks)
+- **Business rules ACTUALLY ENFORCED** — toggles in Business Rules tab now affect code behavior
+- **Sync windows from settings** — change "Shopify sync window" from 3 → 7 days in settings, next sync uses the new value
 
-- **Login page** (Supabase Auth)
-- **Middleware** — protected routes, auto-redirect
-- **Dynamic sidebar** — har user ko sirf apne permissions ke modules dikhte hain
-- **Roles & Permissions matrix** — checkbox se on/off, database se control (code change zaroorat nahi)
-- **Users management** — team members ke roles badlo, activate/deactivate
-- **Dashboard shell** with topbar + user info + logout
+---
 
-## 📦 Setup Steps
+## What changes
 
-### 1. Repo mai copy kro
+### 1. `lib/shopify.js` — `transformOrder` is now ASYNC
+- Reads `business_rules` from settings
+- Reads matching tag definitions from `tag_definitions` table
+- Applies auto-actions respecting toggles (walkin_auto_deliver, auto_confirm_paid, etc.)
+- Kangaroo courier override now comes from tag_definitions, not hardcoded
 
-Is folder ki saari files apne `rszevar-erp` repo mai merge kro. Agar conflict ho to dono side ka code dekh ke merge karna.
+### 2. `lib/shopify-webhook.js` — updated to `await transformOrder()`
+- **Critical:** Without this, webhooks would silently break after Chunk 3 (would insert Promise objects instead of order data)
+- Also reads locked_statuses from settings
 
-### 2. Dependencies install
+### 3. `app/api/shopify/sync/route.js` — reads sync window from settings
+- `rules.shopify_sync_window_days` now drives how far back to fetch
+- `rules.locked_statuses` drives what can't be overwritten
 
+### 4. `app/api/courier/leopards/sync-status/route.js` — reads Leopards window
+- `rules.leopards_sync_window_days` drives date range
+- Cron uses this automatically too
+
+### 5. New `lib/tags.js`
+- Cached (60s) read/write for tag definitions
+- `matchTagDefinitions(tags)` returns matched definitions
+- Used by transformOrder to apply auto-actions
+
+### 6. New `/api/settings/tags` — full CRUD
+- GET → list tags
+- POST → create (super_admin)
+- PUT → update (super_admin)
+- DELETE → delete (super_admin, blocks core tags)
+
+### 7. Updated `app/settings/page.js`
+- Tags tab with full UI (add form, edit, enable/disable, delete, protected core tags)
+- Notifications tab wired (reuses existing SettingRow component)
+
+---
+
+## Files
+
+```
+settings-chunk3/
+├── migrations/
+│   └── settings-chunk3.sql                                ← run in Supabase
+├── lib/
+│   ├── tags.js                                            ← NEW
+│   ├── shopify.js                                         ← REPLACES existing
+│   └── shopify-webhook.js                                 ← REPLACES existing (CRITICAL)
+├── app/
+│   ├── api/
+│   │   ├── settings/tags/route.js                         ← NEW
+│   │   ├── shopify/sync/route.js                          ← REPLACES existing
+│   │   └── courier/leopards/sync-status/route.js          ← REPLACES existing
+│   └── settings/page.js                                   ← REPLACES existing
+└── README.md
+```
+
+**1 SQL + 7 code files (2 new, 5 replacements)**
+
+---
+
+## ⚠️ IMPORTANT: Setup Order Matters
+
+Follow these steps **exactly in order** — some steps depend on others.
+
+### Step 1: Run SQL migration FIRST
+Supabase → SQL Editor → paste `migrations/settings-chunk3.sql` → Run.
+
+Verify:
+```sql
+SELECT tag_key, category FROM tag_definitions ORDER BY sort_order;
+-- Should show 7 tags: wholesale, international, walkin, kangaroo, postex, leopards, order_confirmed
+
+SELECT key FROM erp_settings_v2 WHERE category = 'notifications';
+-- Should show 7 notification keys
+```
+
+### Step 2: Replace files (ALL AT ONCE, not one by one)
+Extract zip → copy all files into project. The following must all go in together because they depend on each other:
+
+- **NEW:** `lib/tags.js`
+- **REPLACE:** `lib/shopify.js`
+- **REPLACE:** `lib/shopify-webhook.js`
+- **NEW:** `app/api/settings/tags/route.js`
+- **REPLACE:** `app/api/shopify/sync/route.js`
+- **REPLACE:** `app/api/courier/leopards/sync-status/route.js`
+- **REPLACE:** `app/settings/page.js`
+
+**Do not skip `lib/shopify-webhook.js`** — if you push the new `lib/shopify.js` without this file, Shopify webhooks will silently break.
+
+### Step 3: Commit + push (one commit)
 ```bash
-npm install
-```
-
-Ya agar aap apne existing repo mai merge kr rhe ho, sirf ye missing packages install kro:
-
-```bash
-npm install @supabase/ssr @supabase/supabase-js lucide-react clsx tailwind-merge
-```
-
-### 3. Environment variables
-
-`.env.local` file banao root mai:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://xsynkcgjvbrbwnwcakqn.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<your_anon_key>
-```
-
-Supabase Dashboard → Project Settings → API se anon key copy kro.
-
-### 4. Database ready hai?
-
-Aapne already ye SQL run kr liya hai Supabase pe:
-- ✅ `profiles` table (with `id`, `email` columns)
-- ✅ `user_role` enum (8 roles)
-- ✅ `modules` table (12 modules)
-- ✅ `permissions` table (33 permissions)
-- ✅ `role_permissions` table (seeded)
-- ✅ `has_permission()` function + `my_permissions` view
-- ✅ RLS policies
-- ✅ `ceo@rszevar.com` super_admin user
-
-### 5. Run
-
-```bash
-npm run dev
-```
-
-Browser kholo → `http://localhost:3000` → automatically `/login` redirect hoga.
-
-Login kro with:
-- Email: `ceo@rszevar.com`
-- Password: (jo Supabase mai set kiya tha)
-
-Dashboard pe aa jayenge. ✅
-
-### 6. Deploy to Vercel
-
-```bash
-git add .
-git commit -m "Phase 1: Auth + RBAC"
+git add lib/tags.js lib/shopify.js lib/shopify-webhook.js app/api/settings/tags app/api/shopify/sync app/api/courier/leopards/sync-status app/settings/page.js
+git commit -m "Phase 7 Chunk 3: Tags management + notifications + business rules integration"
 git push
 ```
 
-Vercel auto-deploy ho jayega. Vercel Dashboard mai Environment Variables add krna na bhoolna:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+### Step 4: Test after deploy
 
-## 🗂️ Folder Structure
+**Test 1 — Settings page still works:**
+Open `/settings`. All previous tabs should still work (Store, Business Rules, Shopify diagnostics, Leopards diagnostics, System Health, Audit Log).
 
-```
-src/
-├── middleware.ts                          # Auth guard + session refresh
-├── app/
-│   ├── layout.tsx                         # Root HTML
-│   ├── page.tsx                           # → redirects to /dashboard
-│   ├── globals.css                        # Tailwind + custom styles
-│   ├── (auth)/
-│   │   └── login/
-│   │       ├── page.tsx                   # Login page
-│   │       └── login-form.tsx             # Form (client)
-│   ├── (dashboard)/
-│   │   ├── layout.tsx                     # Shell: sidebar + topbar
-│   │   ├── dashboard/page.tsx             # Home
-│   │   ├── users/
-│   │   │   ├── page.tsx                   # Users list
-│   │   │   └── users-table.tsx            # Edit roles UI
-│   │   └── settings/
-│   │       ├── page.tsx                   # Settings hub
-│   │       └── roles/
-│   │           ├── page.tsx               # Roles & Permissions
-│   │           └── roles-matrix.tsx       # ⭐ Checkbox matrix
-│   └── api/auth/signout/route.ts          # POST /api/auth/signout
-├── lib/
-│   ├── supabase/
-│   │   ├── client.ts                      # Browser client
-│   │   ├── server.ts                      # Server Component client
-│   │   └── middleware.ts                  # Middleware client
-│   └── permissions/
-│       └── server.ts                      # getCurrentUser() helper
-├── hooks/
-│   └── use-permissions.tsx                # <Can> wrapper + usePermissions()
-├── components/layout/
-│   ├── sidebar.tsx                        # Dynamic menu from DB
-│   └── topbar.tsx                         # User info + logout
-└── types/
-    └── index.ts                           # TS types
+**Test 2 — Tags tab:**
+Click 🏷️ Tags tab. You should see 7 tags (wholesale, international, walkin, kangaroo, postex, leopards, order_confirmed) with "core" badge on 5 of them.
+
+**Test 3 — Create a custom tag:**
+Click "+ New Tag". Fill in:
+- tag_key: `vip`
+- label: `⭐ VIP Customer`
+- category: custom
+- color: `#fbbf24`
+Click Create. Should appear in the list.
+
+**Test 4 — Notifications tab:**
+Should show 7 toggles/fields. Try toggling "Email Notifications Enabled" → Save → reload → verify persisted.
+
+**Test 5 — Business rules actually enforced:**
+Go to Business Rules tab → turn OFF "Walk-in → Auto Delivered" → Save. Then in Shopify, tag a new test order with `walkin`. Wait for webhook. Check ERP — order should NOT be auto-delivered anymore (stays pending). Turn it back ON to restore normal behavior.
+
+**Test 6 — Webhook still works (MOST IMPORTANT):**
+Create any test order in Shopify. Webhook should hit ERP within 5 seconds and create the order successfully. Check `/orders` page.
+
+If Test 6 fails, the issue is in `lib/shopify-webhook.js`. Check Vercel logs for webhook errors.
+
+**Test 7 — Sync from Shopify still works:**
+Click "Sync from Shopify" button on orders page. Should complete normally with a message like "5 orders synced".
+
+**Test 8 — Sync window from settings:**
+Go to Business Rules → change "Shopify Sync Window (days)" to `7` → Save. Next sync should fetch 7 days instead of 3. (You can verify in the Vercel logs or from the sync response's `sync_window_days` field.)
+
+---
+
+## Rollback
+
+If webhooks break or anything major goes wrong:
+```bash
+git revert HEAD
+git push
 ```
 
-## 🔐 Kaise Kaam Krta Hai (Permission System)
+SQL migration is safe to keep — only adds tables/seeds.
 
-### Roles (8)
-1. `super_admin` — Abdul (CEO) — sab kuch, **locked**
-2. `admin` — Second-in-command — sab except role management
-3. `manager` — Operations (Sharjeel)
-4. `inventory_manager` — Stock (Abrar)
-5. `dispatcher` — Courier (Adil)
-6. `customer_support` — Support (Salman)
-7. `wholesale_manager` — Wholesale (Farhan)
-8. `packing_staff` — Packing team
+---
 
-### Permissions (33)
-Format: `module.action` — jaise `orders.view`, `orders.edit`, `courier.book`, `settings.roles`.
+## Notes & limitations
 
-### Flow
-1. User login kare → middleware session check kre
-2. `(dashboard)/layout.tsx` mai `getCurrentUser()` call hota hai
-3. Profile + permissions fetch hote hain from `my_permissions` view
-4. Sab pages mai `<PermissionProvider>` ke through milte hain
-5. Components mai `usePermissions()` ya `<Can permission="orders.edit">` use kro
-
-### Access badalna (aapka main use case)
-
-**Scenario:** Aapko Dispatcher (Adil) se `courier.cancel` permission hatani hai.
-
-**Old way:** Code mai hardcoded array tha, deploy krna padta.
-
-**New way:**
-1. Login as super_admin
-2. Sidebar → Settings → Roles & Permissions
-3. "Dispatcher" tab select kro
-4. "Courier" module mai "Cancel Parcel" ka checkbox **uncheck** kro
-5. Done ✅ — Adil jab next time login krega, cancel button hi nahi dikhega
-
-Koi code change, koi deploy nahi. Pure database-driven.
-
-## 🧪 Component Usage Examples
-
-### Hide a button based on permission (client component)
-```tsx
-'use client'
-import { Can } from '@/hooks/use-permissions'
-
-<Can permission="orders.delete">
-  <button>Delete Order</button>
-</Can>
-```
-
-### Check permission in a server component
-```tsx
-import { getCurrentUser, hasPermission } from '@/lib/permissions/server'
-
-const user = await getCurrentUser()
-if (!hasPermission(user, 'reports.export')) {
-  return <p>Access denied</p>
-}
-```
-
-### Conditional rendering with usePermissions
-```tsx
-'use client'
-import { usePermissions } from '@/hooks/use-permissions'
-
-const { can } = usePermissions()
-return can('whatsapp.send') ? <SendButton /> : null
-```
-
-## 🚀 Next Phases
-
-- **Phase 2:** Shopify 2-way sync (webhooks + cron)
-- **Phase 3:** Settings → General (API keys, courier configs, WhatsApp config)
-- **Phase 4:** WhatsApp API automation
-
-## 📝 Notes
-
-- **Super Admin** role matrix mai locked hai — accidentally khud ko lockout se bachane ke liye
-- **Admin** role ko bhi `settings.roles` nahi mila hai — sirf super_admin hi permissions change kr sakta hai
-- Modules enabled/disabled toggle agar chahiye to bhi ye same pattern extend ho sakta hai
-- Agle phase mai naye modules add krne ke liye sirf `modules` + `permissions` table mai rows insert krni hongi
+- **Cache TTL is 60s** — after saving a business rule, it takes up to 60 seconds for the change to propagate to sync routes. Webhooks trigger cache refresh naturally.
+- **Custom tags auto-action**: The form UI in Tags tab doesn't expose `auto_action` JSON editing yet — you create tags with empty auto_action and can set it later via API if needed. Core tags have their auto_action pre-seeded.
+- **Notifications are preference-only**: The toggles save to DB but **no code actually sends emails yet**. That's a future phase. We're setting up the config so when we add email service, it just reads these settings.
+- **tag_key cannot be changed after creation** (by design — prevents orphaning existing tagged orders).
+- **Filter dropdown on orders page still uses hardcoded wholesale/international/walkin/kangaroo.** In a future chunk we can make it fully dynamic from `tag_definitions`, but that's not critical right now.

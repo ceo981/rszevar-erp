@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import AccountsPage from './accounts/page';
@@ -491,11 +491,13 @@ function InventoryPage() {
   const [filters, setFilters] = useState({ search: '', category: 'all', stock: 'all' });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sortConfig, setSortConfig] = useState({ sort: 'title', order: 'asc' });
+  const [view, setView] = useState('grouped'); // 'grouped' | 'flat'
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: '40', sort: sortConfig.sort, order: sortConfig.order });
+      const params = new URLSearchParams({ page: String(page), limit: '40', sort: sortConfig.sort, order: sortConfig.order, view });
       if (filters.search) params.set('search', filters.search);
       if (filters.category !== 'all') params.set('category', filters.category);
       if (filters.stock !== 'all') params.set('stock', filters.stock);
@@ -510,7 +512,7 @@ function InventoryPage() {
       }
     } catch (e) { console.error('Fetch products error:', e); }
     setLoading(false);
-  }, [page, filters, sortConfig]);
+  }, [page, filters, sortConfig, view]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -561,7 +563,8 @@ function InventoryPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Total Products', value: stats.total || 0, icon: '📦', color: 'var(--gold)' },
+          { label: 'Total Products', value: stats.total_products ?? stats.total ?? 0, icon: '📦', color: 'var(--gold)' },
+          { label: 'Total Variants', value: stats.total_variants ?? stats.total ?? 0, icon: '🎨', color: 'var(--cyan)' },
           { label: 'Total Units', value: stats.total_units || 0, icon: '🔢', color: 'var(--blue)' },
           { label: 'Stock Value', value: `Rs ${((stats.total_stock_value || 0) / 1000).toFixed(0)}K`, icon: '💰', color: 'var(--green)' },
           { label: 'Low Stock', value: stats.low_stock || 0, icon: '⚠️', color: 'var(--orange)' },
@@ -590,6 +593,12 @@ function InventoryPage() {
           <option value="all">All Categories</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+          {[{ value: 'grouped', label: '📦 Grouped' }, { value: 'flat', label: '≡ Flat' }].map(v => (
+            <button key={v.value} onClick={() => { setView(v.value); setPage(1); setExpandedGroups(new Set()); }}
+              style={{ padding: '7px 14px', background: view === v.value ? 'var(--gold-dim)' : 'transparent', border: `1px solid ${view === v.value ? 'var(--gold)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: view === v.value ? 'var(--gold)' : 'var(--text2)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{v.label}</button>
+          ))}
+        </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[{ value: 'all', label: 'All Products' }, { value: 'low', label: 'Low Stock (≤5)' }, { value: 'out', label: 'Out of Stock' }].map(sf => (
             <button key={sf.value} onClick={() => { setFilters(f => ({ ...f, stock: sf.value })); setPage(1); }}
@@ -634,7 +643,71 @@ function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {products.map(product => (
+                {view === 'grouped' ? products.map(group => {
+                  const isExpanded = expandedGroups.has(group.group_key);
+                  const toggleExpand = () => setExpandedGroups(prev => {
+                    const next = new Set(prev);
+                    if (next.has(group.group_key)) next.delete(group.group_key);
+                    else next.add(group.group_key);
+                    return next;
+                  });
+                  return (
+                    <Fragment key={group.group_key}>
+                      <tr onClick={toggleExpand}
+                        style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: isExpanded ? 'var(--gold-dim)' : 'transparent', transition: 'background 0.1s' }}
+                        onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                        onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}>
+                        <td style={{ padding: '8px 10px' }}>
+                          {group.image_url ? <img src={group.image_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+                            : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text3)' }}>📷</div>}
+                        </td>
+                        <td style={{ padding: '10px', maxWidth: 250, overflow: 'hidden' }}>
+                          <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <span style={{ color: 'var(--gold)', fontSize: 10, width: 10, flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.parent_title}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1, marginLeft: 16 }}>{group.vendor ? `${group.vendor} · ` : ''}{group.variant_count} variant{group.variant_count !== 1 ? 's' : ''}</div>
+                        </td>
+                        <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11, fontStyle: 'italic' }}>{group.variant_count} SKUs</td>
+                        <td style={{ padding: '10px', color: 'var(--text2)' }}>{group.category || '—'}</td>
+                        <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {group.selling_price?.toLocaleString() || '—'}</td>
+                        <td style={{ padding: '10px', color: 'var(--text2)', whiteSpace: 'nowrap' }}>—</td>
+                        <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
+                          <span style={{ padding: '3px 10px', borderRadius: 4, background: getStockBg(group.total_stock), color: getStockColor(group.total_stock), fontWeight: 600, fontSize: 12 }}>{group.total_stock}</span>
+                          {group.has_out_of_stock && <span title="Some variants out of stock" style={{ marginLeft: 6, fontSize: 10, color: 'var(--red)' }}>⚠</span>}
+                          {!group.has_out_of_stock && group.has_low_stock && <span title="Some variants low" style={{ marginLeft: 6, fontSize: 10, color: 'var(--orange)' }}>⚠</span>}
+                        </td>
+                        <td style={{ padding: '10px', color: 'var(--text2)' }}>{group.total_sold || 0}</td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: group.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: group.is_active ? 'var(--green)' : 'var(--text3)' }}>{group.is_active ? 'Active' : 'Draft'}</span>
+                        </td>
+                      </tr>
+                      {isExpanded && group.variants.map(v => {
+                        const variantLabel = v.title && v.parent_title && v.title.startsWith(v.parent_title + ' - ')
+                          ? v.title.slice((v.parent_title + ' - ').length)
+                          : (v.title?.split(' - ').slice(1).join(' - ') || 'Default');
+                        return (
+                          <tr key={v.id} onClick={(e) => { e.stopPropagation(); setSelectedProduct(selectedProduct?.id === v.id ? null : v); }}
+                            style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selectedProduct?.id === v.id ? 'var(--gold-dim)' : 'var(--bg2)' }}>
+                            <td></td>
+                            <td style={{ padding: '6px 10px 6px 30px', fontSize: 12, color: 'var(--text2)', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <span style={{ color: 'var(--text3)' }}>└ </span>{variantLabel}
+                            </td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 11, fontFamily: 'monospace' }}>{v.sku || '—'}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
+                            <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>Rs {v.selling_price?.toLocaleString()}</td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 11, whiteSpace: 'nowrap' }}>{v.cost_price ? `Rs ${v.cost_price.toLocaleString()}` : '—'}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: 4, background: getStockBg(v.stock_quantity || 0), color: getStockColor(v.stock_quantity || 0), fontWeight: 600, fontSize: 11 }}>{v.stock_quantity ?? 0}</span>
+                            </td>
+                            <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 11 }}>{v.total_sold || 0}</td>
+                            <td></td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                }) : products.map(product => (
                   <tr key={product.id} onClick={() => setSelectedProduct(selectedProduct?.id === product.id ? null : product)}
                     style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: selectedProduct?.id === product.id ? 'var(--gold-dim)' : 'transparent', transition: 'background 0.1s' }}
                     onMouseEnter={e => { if (selectedProduct?.id !== product.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
