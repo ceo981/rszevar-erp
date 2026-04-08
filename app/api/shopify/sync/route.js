@@ -101,14 +101,28 @@ export async function POST(request) {
       debug.sample_order_keys = Object.keys(ordersToUpsert[0]);
     }
 
-    // 4. Upsert orders
+    // 4. Dedupe (Shopify pagination can return same order twice on boundary)
+    //    Keep last occurrence per shopify_order_id
+    const dedupMap = new Map();
+    for (const o of ordersToUpsert) {
+      dedupMap.set(o.shopify_order_id, o);
+    }
+    const dedupedOrders = Array.from(dedupMap.values());
+    debug.steps.push({
+      step: 'dedup_done',
+      before: ordersToUpsert.length,
+      after: dedupedOrders.length,
+      removed: ordersToUpsert.length - dedupedOrders.length,
+    });
+
+    // 5. Upsert orders
     debug.stage = 'upserting_orders';
     let synced = 0;
     let upsertedOrders = [];
-    if (ordersToUpsert.length > 0) {
+    if (dedupedOrders.length > 0) {
       const { data, error: upsertError } = await supabase
         .from('orders')
-        .upsert(ordersToUpsert, { onConflict: 'shopify_order_id' })
+        .upsert(dedupedOrders, { onConflict: 'shopify_order_id' })
         .select('id, shopify_order_id');
 
       if (upsertError) {
@@ -119,7 +133,7 @@ export async function POST(request) {
           hint: upsertError.hint || null,
           code: upsertError.code || null,
           details: upsertError.details || null,
-          sample_order_keys: Object.keys(ordersToUpsert[0] || {}),
+          sample_order_keys: Object.keys(dedupedOrders[0] || {}),
           debug,
         }, { status: 500 });
       }
@@ -128,7 +142,7 @@ export async function POST(request) {
     }
     debug.steps.push({ step: 'orders_upserted', count: synced });
 
-    // 5. Upsert customers
+    // 6. Upsert customers (already deduped via customerIdsSeen Set above)
     debug.stage = 'upserting_customers';
     let customerError = null;
     if (customersToUpsert.length > 0) {
