@@ -225,23 +225,11 @@ export default function SettingsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sRes, uRes] = await Promise.all([
-        fetch('/api/settings').then(r => r.json()),
-        fetch('/api/users?me=true').then(r => r.json()).catch(() => null),
-      ]);
+      const sRes = await fetch('/api/settings').then(r => r.json());
 
-      if (sRes?.success) setSettings(sRes.settings || []);
-
-      // Try multiple ways to get role
-      if (uRes?.user?.role) setRole(uRes.user.role);
-      else if (uRes?.profile?.role) setRole(uRes.profile.role);
-      // Fallback: if /api/users doesn't return me, try /api/auth/me
-      if (!uRes?.user?.role && !uRes?.profile?.role) {
-        try {
-          const meRes = await fetch('/api/auth/me').then(r => r.json());
-          if (meRes?.role) setRole(meRes.role);
-          else if (meRes?.profile?.role) setRole(meRes.profile.role);
-        } catch {}
+      if (sRes?.success) {
+        setSettings(sRes.settings || []);
+        if (sRes.user?.role) setRole(sRes.user.role);
       }
     } catch (e) {
       setMsg({ type: 'error', text: `Load failed: ${e.message}` });

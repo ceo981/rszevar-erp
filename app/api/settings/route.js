@@ -43,6 +43,11 @@ export async function GET(request) {
       settings: filtered,
       grouped,
       count: filtered.length,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.profile.role,
+      },
     });
   } catch (error) {
     console.error('[settings GET] error:', error);
