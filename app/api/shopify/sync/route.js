@@ -6,17 +6,21 @@ const LOCKED_STATUSES = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'
 
 export async function POST(request) {
   const startTime = Date.now();
+  const debug = { stage: 'init', steps: [] };
+
   try {
     const supabase = createServerClient();
     const body = await request.json().catch(() => ({}));
 
-    // Default: sync last 3 days (fast)
-    // Client can override: { days: 7 } or { days: 30 } or { since: 'ISO_DATE' }
     const days = body.days || 3;
     const sinceDate = body.since || new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
+    debug.stage = 'fetching_shopify';
+    debug.steps.push({ step: 'fetch_start', since: sinceDate });
+
     // 1. Fetch orders from Shopify
     const shopifyOrders = await fetchAllOrdersSince(sinceDate);
+    debug.steps.push({ step: 'fetch_done', count: shopifyOrders.length });
 
     if (shopifyOrders.length === 0) {
       return NextResponse.json({
@@ -27,21 +31,34 @@ export async function POST(request) {
       });
     }
 
-    // 2. BATCH FETCH existing orders (1 query instead of N)
+    // 2. Batch fetch existing
+    debug.stage = 'fetching_existing';
     const shopifyOrderIds = shopifyOrders.map(o => String(o.id));
-    const { data: existingOrders } = await supabase
+    const { data: existingOrders, error: existingError } = await supabase
       .from('orders')
       .select('id, shopify_order_id, status, payment_status')
       .in('shopify_order_id', shopifyOrderIds);
 
+    if (existingError) {
+      return NextResponse.json({
+        success: false,
+        stage: 'fetch_existing_orders',
+        error: existingError.message,
+        details: existingError,
+        debug,
+      }, { status: 500 });
+    }
+
     const existingMap = new Map();
     (existingOrders || []).forEach(o => existingMap.set(o.shopify_order_id, o));
+    debug.steps.push({ step: 'existing_loaded', count: existingMap.size });
 
-    // 3. Transform + apply locked status rules
+    // 3. Transform
+    debug.stage = 'transforming';
     const ordersToUpsert = [];
     const customersToUpsert = [];
     const customerIdsSeen = new Set();
-    const errors = [];
+    const transformErrors = [];
 
     for (const shopifyOrder of shopifyOrders) {
       try {
@@ -49,20 +66,13 @@ export async function POST(request) {
         const existing = existingMap.get(orderData.shopify_order_id);
 
         if (existing) {
-          if (LOCKED_STATUSES.includes(existing.status)) {
-            delete orderData.status;
-          }
-          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
-            delete orderData.payment_status;
-          }
-          if (existing.payment_status === 'refunded') {
-            delete orderData.payment_status;
-          }
+          if (LOCKED_STATUSES.includes(existing.status)) delete orderData.status;
+          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') delete orderData.payment_status;
+          if (existing.payment_status === 'refunded') delete orderData.payment_status;
         }
 
         ordersToUpsert.push(orderData);
 
-        // Unique customers
         if (shopifyOrder.customer && !customerIdsSeen.has(shopifyOrder.customer.id)) {
           customerIdsSeen.add(shopifyOrder.customer.id);
           const c = shopifyOrder.customer;
@@ -76,11 +86,23 @@ export async function POST(request) {
           });
         }
       } catch (e) {
-        errors.push({ order: shopifyOrder.name, error: e.message });
+        transformErrors.push({ order: shopifyOrder.name, error: e.message, stack: e.stack });
       }
     }
 
-    // 4. BATCH UPSERT orders (1 query instead of N)
+    debug.steps.push({
+      step: 'transform_done',
+      orders_to_upsert: ordersToUpsert.length,
+      customers_to_upsert: customersToUpsert.length,
+      transform_errors: transformErrors.length,
+    });
+
+    if (ordersToUpsert.length > 0) {
+      debug.sample_order_keys = Object.keys(ordersToUpsert[0]);
+    }
+
+    // 4. Upsert orders
+    debug.stage = 'upserting_orders';
     let synced = 0;
     let upsertedOrders = [];
     if (ordersToUpsert.length > 0) {
@@ -92,20 +114,40 @@ export async function POST(request) {
       if (upsertError) {
         return NextResponse.json({
           success: false,
-          error: `Batch upsert failed: ${upsertError.message}`,
-          duration_ms: Date.now() - startTime,
+          stage: 'upsert_orders',
+          error: upsertError.message,
+          hint: upsertError.hint || null,
+          code: upsertError.code || null,
+          details: upsertError.details || null,
+          sample_order_keys: Object.keys(ordersToUpsert[0] || {}),
+          debug,
         }, { status: 500 });
       }
       upsertedOrders = data || [];
       synced = upsertedOrders.length;
     }
+    debug.steps.push({ step: 'orders_upserted', count: synced });
 
-    // 5. BATCH UPSERT customers in parallel
-    const customerPromise = customersToUpsert.length > 0
-      ? supabase.from('customers').upsert(customersToUpsert, { onConflict: 'shopify_customer_id' })
-      : Promise.resolve();
+    // 5. Upsert customers
+    debug.stage = 'upserting_customers';
+    let customerError = null;
+    if (customersToUpsert.length > 0) {
+      const { error } = await supabase
+        .from('customers')
+        .upsert(customersToUpsert, { onConflict: 'shopify_customer_id' });
+      if (error) {
+        customerError = {
+          message: error.message,
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        };
+      }
+    }
+    debug.steps.push({ step: 'customers_upserted', error: customerError });
 
-    // 6. LINE ITEMS: only for NEW orders (existing ones rarely change items)
+    // 6. Line items for NEW orders only
+    debug.stage = 'inserting_items';
     const newOrdersMap = new Map();
     upsertedOrders.forEach(o => {
       if (!existingMap.has(o.shopify_order_id)) {
@@ -113,8 +155,9 @@ export async function POST(request) {
       }
     });
 
-    const itemsPromise = (async () => {
-      if (newOrdersMap.size === 0) return;
+    let itemsError = null;
+    let itemsInserted = 0;
+    if (newOrdersMap.size > 0) {
       const allItems = [];
       for (const shopifyOrder of shopifyOrders) {
         const dbId = newOrdersMap.get(String(shopifyOrder.id));
@@ -123,28 +166,43 @@ export async function POST(request) {
         allItems.push(...items);
       }
       if (allItems.length > 0) {
-        await supabase.from('order_items').insert(allItems);
+        const { error } = await supabase.from('order_items').insert(allItems);
+        if (error) {
+          itemsError = {
+            message: error.message,
+            code: error.code,
+            hint: error.hint,
+            details: error.details,
+            sample_item_keys: Object.keys(allItems[0] || {}),
+          };
+        } else {
+          itemsInserted = allItems.length;
+        }
       }
-    })();
-
-    // Wait for both parallel operations
-    await Promise.all([customerPromise, itemsPromise]);
+    }
+    debug.steps.push({ step: 'items_inserted', count: itemsInserted, error: itemsError });
 
     return NextResponse.json({
       success: true,
       total_fetched: shopifyOrders.length,
       synced,
-      errors: errors.length > 0 ? errors.slice(0, 5) : undefined,
+      items_inserted: itemsInserted,
+      transform_errors: transformErrors.length > 0 ? transformErrors.slice(0, 5) : undefined,
+      customer_error: customerError,
+      items_error: itemsError,
       duration_ms: Date.now() - startTime,
+      debug,
       message: `${synced} orders synced in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
     });
 
   } catch (error) {
-    console.error('Sync error:', error);
     return NextResponse.json(
       {
         success: false,
+        stage: debug.stage,
         error: error.message,
+        stack: error.stack,
+        debug,
         duration_ms: Date.now() - startTime,
       },
       { status: 500 }
@@ -152,7 +210,6 @@ export async function POST(request) {
   }
 }
 
-// GET - check sync status
 export async function GET() {
   try {
     const supabase = createServerClient();
