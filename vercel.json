@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/courier/leopards/sync-status",
-      "schedule": "0 */2 * * *"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/courier/leopards/sync-payments",
