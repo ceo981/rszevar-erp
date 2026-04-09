@@ -488,7 +488,7 @@ function InventoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ search: '', category: 'all', stock: 'all' });
+  const [filters, setFilters] = useState({ search: '', category: 'all', stock: 'all', active: 'all' });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sortConfig, setSortConfig] = useState({ sort: 'title', order: 'asc' });
   const [view, setView] = useState('grouped'); // 'grouped' | 'flat'
@@ -501,6 +501,7 @@ function InventoryPage() {
       if (filters.search) params.set('search', filters.search);
       if (filters.category !== 'all') params.set('category', filters.category);
       if (filters.stock !== 'all') params.set('stock', filters.stock);
+      if (filters.active !== 'all') params.set('active', filters.active);
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
       if (data.success) {
@@ -538,8 +539,8 @@ function InventoryPage() {
     return <span style={{ color: 'var(--gold)' }}>{sortConfig.order === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const getStockColor = (qty) => { if (qty === 0) return 'var(--red)'; if (qty <= 5) return 'var(--orange)'; if (qty <= 15) return '#fbbf24'; return 'var(--green)'; };
-  const getStockBg = (qty) => { if (qty === 0) return 'var(--red-dim)'; if (qty <= 5) return 'var(--orange-dim)'; if (qty <= 15) return 'rgba(251,191,36,0.12)'; return 'var(--green-dim)'; };
+  const getStockColor = (qty) => { if (qty === 0) return 'var(--red)'; if (qty <= 3) return 'var(--orange)'; if (qty <= 10) return '#fbbf24'; return 'var(--green)'; };
+  const getStockBg = (qty) => { if (qty === 0) return 'var(--red-dim)'; if (qty <= 3) return 'var(--orange-dim)'; if (qty <= 10) return 'rgba(251,191,36,0.12)'; return 'var(--green-dim)'; };
 
   return (
     <div style={{ padding: 24 }}>
@@ -600,9 +601,15 @@ function InventoryPage() {
           ))}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
-          {[{ value: 'all', label: 'All Products' }, { value: 'low', label: 'Low Stock (≤5)' }, { value: 'out', label: 'Out of Stock' }].map(sf => (
+          {[{ value: 'all', label: 'All Products' }, { value: 'low', label: 'Low Stock (≤3)' }, { value: 'out', label: 'Out of Stock' }].map(sf => (
             <button key={sf.value} onClick={() => { setFilters(f => ({ ...f, stock: sf.value })); setPage(1); }}
               style={{ padding: '7px 14px', background: filters.stock === sf.value ? 'var(--gold-dim)' : 'transparent', border: `1px solid ${filters.stock === sf.value ? 'var(--gold)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: filters.stock === sf.value ? 'var(--gold)' : 'var(--text2)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{sf.label}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[{ value: 'all', label: 'All' }, { value: 'active', label: '✓ Active' }, { value: 'draft', label: '○ Draft' }].map(af => (
+            <button key={af.value} onClick={() => { setFilters(f => ({ ...f, active: af.value })); setPage(1); }}
+              style={{ padding: '7px 14px', background: filters.active === af.value ? 'var(--green-dim)' : 'transparent', border: `1px solid ${filters.active === af.value ? 'var(--green)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: filters.active === af.value ? 'var(--green)' : 'var(--text2)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{af.label}</button>
           ))}
         </div>
       </div>
