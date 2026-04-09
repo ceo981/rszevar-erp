@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { fetchAllProducts, transformProducts } from '@/lib/shopify';
 
-// Sync ALL products + variants from Shopify
-// DEBUG VERSION — surfaces any upsert error directly in the UI banner
+// Sync ALL products + variants from Shopify.
+// One DB row per VARIANT (uses shopify_variant_id as unique key).
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,15 +13,6 @@ export async function POST() {
   const startTime = Date.now();
   try {
     const supabase = createServerClient();
-
-    // ── Env check (if service key missing, fail loudly) ──
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json({
-        success: false,
-        error: 'SUPABASE_SERVICE_ROLE_KEY env var missing on Vercel',
-      }, { status: 500 });
-    }
-
     const shopifyProducts = await fetchAllProducts();
 
     if (shopifyProducts.length === 0) {
@@ -39,7 +30,7 @@ export async function POST() {
       allVariants.push(...transformProducts(p));
     }
 
-    // Deduplicate by shopify_variant_id
+    // Deduplicate by shopify_variant_id (safety)
     const seen = new Set();
     const uniqueVariants = allVariants.filter(v => {
       if (seen.has(v.shopify_variant_id)) return false;
@@ -47,40 +38,10 @@ export async function POST() {
       return true;
     });
 
-    if (uniqueVariants.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: `Got ${shopifyProducts.length} products from Shopify but transformProducts produced 0 variants`,
-        sample_product_keys: Object.keys(shopifyProducts[0] || {}),
-        sample_variants_count: (shopifyProducts[0]?.variants || []).length,
-      });
-    }
-
-    // ── SINGLE-ROW TEST FIRST ──
-    // Try inserting just the first variant on its own. If this fails, we get
-    // the full Postgres error message without 30+ batches hiding it.
-    const firstRow = uniqueVariants[0];
-    const { error: singleErr, data: singleData } = await supabase
-      .from('products')
-      .upsert([firstRow], { onConflict: 'shopify_variant_id' })
-      .select();
-
-    if (singleErr) {
-      return NextResponse.json({
-        success: false,
-        error: `SINGLE ROW TEST FAILED: ${singleErr.message}`,
-        error_code: singleErr.code,
-        error_details: singleErr.details,
-        error_hint: singleErr.hint,
-        sample_row_keys: Object.keys(firstRow),
-        sample_row: firstRow,
-      }, { status: 500 });
-    }
-
-    // ── Full batch upsert ──
-    let synced = 1; // already got the single test row
+    // Batch upsert (50 at a time to keep transactions small)
+    let synced = 0;
     const errors = [];
-    for (let i = 1; i < uniqueVariants.length; i += 50) {
+    for (let i = 0; i < uniqueVariants.length; i += 50) {
       const batch = uniqueVariants.slice(i, i + 50);
       const { error } = await supabase
         .from('products')
@@ -93,7 +54,7 @@ export async function POST() {
       }
     }
 
-    // If batches had any errors, surface them loudly
+    // If any batches failed, surface loudly so we don't miss silent errors again
     if (errors.length > 0) {
       return NextResponse.json({
         success: false,
@@ -114,12 +75,11 @@ export async function POST() {
       message: `${synced} variants synced from ${shopifyProducts.length} products in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
     });
   } catch (error) {
-    console.error('[products/sync] fatal:', error);
+    console.error('[products/sync] error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: `FATAL: ${error.message}`,
-        stack: error.stack?.split('\n').slice(0, 5).join(' | '),
+        error: error.message,
         duration_ms: Date.now() - startTime,
       },
       { status: 500 }
