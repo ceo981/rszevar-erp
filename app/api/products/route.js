@@ -79,21 +79,49 @@ export async function GET(request) {
     if (stockFilter === 'out') query = query.eq('stock_quantity', 0);
     if (stockFilter === 'low') query = query.lte('stock_quantity', 5).gt('stock_quantity', 0);
 
-    query = query.order(sort, { ascending: order === 'asc' }).range(0, MAX_FETCH - 1);
+    query = query.order(sort, { ascending: order === 'asc' });
 
-    const { data: allRows, error } = await query;
-    if (error) throw error;
+    // Paginate through all matching rows (Supabase caps single response ~1000)
+    const allRows = [];
+    {
+      const PAGE = 1000;
+      let off = 0;
+      while (off < MAX_FETCH) {
+        const { data: chunk, error } = await query.range(off, off + PAGE - 1);
+        if (error) throw error;
+        if (!chunk || chunk.length === 0) break;
+        allRows.push(...chunk);
+        if (chunk.length < PAGE) break;
+        off += PAGE;
+      }
+    }
 
     // ── Stats (over full products table, unfiltered) ──
-    const [totalRowsRes, outRes, lowRes, activeRes, valueRes] = await Promise.all([
+    // COUNT queries (head:true) are always accurate — no row limit.
+    const [totalRowsRes, outRes, lowRes, activeRes] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('stock_quantity', 0),
       supabase.from('products').select('*', { count: 'exact', head: true }).lte('stock_quantity', 5).gt('stock_quantity', 0),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      supabase.from('products').select('stock_quantity, selling_price, shopify_product_id').range(0, MAX_FETCH - 1),
     ]);
 
-    const valueRows = valueRes.data || [];
+    // For aggregates (sum, distinct) we must paginate — Supabase caps
+    // a single .select() response at ~1000 rows by default.
+    const valueRows = [];
+    const PAGE = 1000;
+    let offset = 0;
+    while (offset < MAX_FETCH) {
+      const { data: chunk, error: chunkErr } = await supabase
+        .from('products')
+        .select('stock_quantity, selling_price, shopify_product_id')
+        .range(offset, offset + PAGE - 1);
+      if (chunkErr) throw chunkErr;
+      if (!chunk || chunk.length === 0) break;
+      valueRows.push(...chunk);
+      if (chunk.length < PAGE) break;
+      offset += PAGE;
+    }
+
     const total_stock_value = valueRows.reduce(
       (s, p) => s + (p.stock_quantity || 0) * (p.selling_price || 0),
       0
