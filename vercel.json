@@ -7,6 +7,10 @@
     {
       "path": "/api/courier/leopards/sync-payments",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/analytics/compute-abc",
+      "schedule": "0 6 * * *"
     }
   ]
 }
