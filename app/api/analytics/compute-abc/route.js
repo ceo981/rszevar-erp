@@ -82,7 +82,7 @@ async function runCompute() {
     const chunk = orderIds.slice(i, i + 500);
     const { data, error } = await supabase
       .from('order_items')
-      .select('order_id, sku, quantity, price')
+      .select('order_id, sku, quantity, total_price')
       .in('order_id', chunk);
     if (error) throw new Error(`order_items fetch failed at chunk ${i}: ${error.message}`);
     lineItems.push(...(data || []));
@@ -102,8 +102,7 @@ async function runCompute() {
     if (!createdAt) continue;
 
     const qty     = parseInt(item.quantity || 0, 10);
-    const price   = parseFloat(item.price || 0);
-    const revenue = qty * price;
+    const revenue = parseFloat(item.total_price || 0);
 
     if (!stats[skuNorm]) {
       stats[skuNorm] = {
