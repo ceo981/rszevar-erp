@@ -63,6 +63,7 @@ export async function GET(request) {
     const search = searchParams.get('search');
     const category = searchParams.get('category');
     const stockFilter = searchParams.get('stock'); // low, out, all
+    const activeFilter = searchParams.get('active'); // all, active, draft
     const sort = searchParams.get('sort') || 'title';
     const order = searchParams.get('order') || 'asc';
 
@@ -77,7 +78,9 @@ export async function GET(request) {
     }
     if (category && category !== 'all') query = query.eq('category', category);
     if (stockFilter === 'out') query = query.eq('stock_quantity', 0);
-    if (stockFilter === 'low') query = query.lte('stock_quantity', 5).gt('stock_quantity', 0);
+    if (stockFilter === 'low') query = query.lte('stock_quantity', 3).gt('stock_quantity', 0);
+    if (activeFilter === 'active') query = query.eq('is_active', true);
+    if (activeFilter === 'draft') query = query.eq('is_active', false);
 
     query = query.order(sort, { ascending: order === 'asc' });
 
@@ -101,7 +104,7 @@ export async function GET(request) {
     const [totalRowsRes, outRes, lowRes, activeRes] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('stock_quantity', 0),
-      supabase.from('products').select('*', { count: 'exact', head: true }).lte('stock_quantity', 5).gt('stock_quantity', 0),
+      supabase.from('products').select('*', { count: 'exact', head: true }).lte('stock_quantity', 3).gt('stock_quantity', 0),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
     ]);
 
