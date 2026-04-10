@@ -36,7 +36,6 @@ const MODULES = [
   { id: 'settings', label: 'Settings', icon: '⚙️', perm: 'settings.view' },
   { id: 'users', label: 'Users', icon: '🧑‍💼', perm: 'settings.edit' },
   { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
-  { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
   { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
   { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
   { id: 'dead-stock', label: 'Dead Stock', icon: '🪦', perm: 'reports.view' },
