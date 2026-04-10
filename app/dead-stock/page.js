@@ -41,7 +41,7 @@ export default function DeadStockPage() {
       const params = new URLSearchParams({ collection, sort: sortBy });
       if (minValue) params.set('min_value', minValue);
       const res = await fetch(`/api/dead-stock?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch');
+      const errData = await res.json().catch(() => ({})); throw new Error(errData.error || `API error ${res.status}`);
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       setData(json);
