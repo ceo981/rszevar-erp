@@ -147,7 +147,6 @@ export default function ERPApp() {
         {activeModule === 'customers' && <CustomersPage />}
         {activeModule === 'settings' && <SettingsPage />}
         {activeModule === 'reports' && <ReportsPage />}
-        {activeModule === 'wholesale' && <WholesalePage />}
         {activeModule === 'complaints' && <ComplaintsPage />}
         {activeModule === 'users' && <UsersPage />}
         {activeModule === 'roles' && <RolesPage />}
