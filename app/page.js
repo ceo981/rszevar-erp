@@ -323,10 +323,26 @@ function InventoryPage() {
   const handleSync = async () => {
     setSyncing(true); setSyncResult(null);
     try {
+      // Step 1: REST sync (products + variants)
       const res = await fetch('/api/shopify/products', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
-      setSyncResult(data);
-      if (data.success) await fetchProducts();
+      if (!data.success) { setSyncResult(data); setSyncing(false); return; }
+
+      // Step 2: GraphQL sync (collections only — lightweight)
+      setSyncResult({ success: true, message: `${data.message || 'Products synced'} — now syncing collections...` });
+      try {
+        const collRes = await fetch('/api/shopify/sync-collections', { method: 'POST' });
+        const collData = await collRes.json();
+        setSyncResult({
+          success: true,
+          message: `${data.message || 'Products synced'} · ${collData.message || 'Collections synced'}`,
+        });
+      } catch (e) {
+        // Collections sync failed but products are fine
+        setSyncResult({ success: true, message: `${data.message} (collections sync failed: ${e.message})` });
+      }
+
+      await fetchProducts();
     } catch (e) { setSyncResult({ success: false, error: e.message }); }
     setSyncing(false);
   };
