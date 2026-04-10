@@ -8,6 +8,10 @@ import { createServerClient } from '@/lib/supabase';
 //   ?view=flat     → one entry per variant (old behavior, unchanged)
 // Stats always include BOTH total_products (distinct Shopify products) and
 // total_variants (row count).
+//
+// ABC Classification filters:
+//   ?abc=A|B|C|D          → filter by ABC class
+//   ?abc_window=90d|180d  → which window column to use (default 90d)
 // ============================================================================
 
 const MAX_FETCH = 10000; // safety cap — we have ~3-4k variants in practice
@@ -66,6 +70,10 @@ export async function GET(request) {
     const activeFilter = searchParams.get('active'); // all, active, draft
     const sort = searchParams.get('sort') || 'title';
     const order = searchParams.get('order') || 'asc';
+    // ABC filter params
+    const abc = searchParams.get('abc') || 'all';
+    const abcWindow = searchParams.get('abc_window') || '90d';
+    const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
 
     // ── Build filtered query ──
     let query = supabase.from('products').select('*');
@@ -81,6 +89,8 @@ export async function GET(request) {
     if (stockFilter === 'low') query = query.lte('stock_quantity', 3).gt('stock_quantity', 0);
     if (activeFilter === 'active') query = query.eq('is_active', true);
     if (activeFilter === 'draft') query = query.eq('is_active', false);
+    // ABC classification filter
+    if (abc !== 'all') query = query.eq(abcCol, abc);
 
     query = query.order(sort, { ascending: order === 'asc' });
 
