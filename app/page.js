@@ -323,28 +323,26 @@ function InventoryPage() {
   const handleSync = async () => {
     setSyncing(true); setSyncResult(null);
     try {
-      // Step 1: REST sync (products + variants)
       const res = await fetch('/api/shopify/products', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await res.json();
-      if (!data.success) { setSyncResult(data); setSyncing(false); return; }
-
-      // Step 2: GraphQL sync (collections only — lightweight)
-      setSyncResult({ success: true, message: `${data.message || 'Products synced'} — now syncing collections...` });
-      try {
-        const collRes = await fetch('/api/shopify/sync-collections', { method: 'POST' });
-        const collData = await collRes.json();
-        setSyncResult({
-          success: true,
-          message: `${data.message || 'Products synced'} · ${collData.message || 'Collections synced'}`,
-        });
-      } catch (e) {
-        // Collections sync failed but products are fine
-        setSyncResult({ success: true, message: `${data.message} (collections sync failed: ${e.message})` });
-      }
-
-      await fetchProducts();
+      setSyncResult(data);
+      if (data.success) await fetchProducts();
     } catch (e) { setSyncResult({ success: false, error: e.message }); }
     setSyncing(false);
+  };
+
+  const [syncingCollections, setSyncingCollections] = useState(false);
+  const handleSyncCollections = async () => {
+    setSyncingCollections(true); setSyncResult(null);
+    try {
+      const res = await fetch('/api/shopify/sync-collections', { method: 'POST' });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = { success: false, error: text.slice(0, 200) }; }
+      setSyncResult(data);
+      if (data.success) await fetchProducts();
+    } catch (e) { setSyncResult({ success: false, error: e.message }); }
+    setSyncingCollections(false);
   };
 
   const handleComputeABC = async () => {
@@ -396,6 +394,10 @@ function InventoryPage() {
           <button onClick={handleComputeABC} disabled={computing} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: computing ? 'var(--border)' : 'transparent', color: computing ? 'var(--text3)' : 'var(--gold)', border: `1px solid ${computing ? 'var(--border)' : 'var(--gold)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: computing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: computing ? 'spin 1s linear infinite' : 'none' }}>📊</span>
             {computing ? 'Computing...' : 'Compute ABC'}
+          </button>
+          <button onClick={handleSyncCollections} disabled={syncingCollections} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: syncingCollections ? 'var(--border)' : 'transparent', color: syncingCollections ? 'var(--text3)' : 'var(--cyan)', border: `1px solid ${syncingCollections ? 'var(--border)' : 'var(--cyan)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: syncingCollections ? 'wait' : 'pointer' }}>
+            <span style={{ display: 'inline-block', animation: syncingCollections ? 'spin 1s linear infinite' : 'none' }}>🏷️</span>
+            {syncingCollections ? 'Syncing...' : 'Sync Collections'}
           </button>
           <button onClick={handleSync} disabled={syncing} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: syncing ? 'var(--border)' : 'var(--gold)', color: syncing ? 'var(--text3)' : '#080808', border: 'none', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: syncing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
