@@ -12,7 +12,6 @@ import CustomersPage from './customers/page';
 import ComplaintsPage from './complaints/page';
 import SettingsPage from './settings/page';
 import ReportsPage from './reports/page';
-import WholesalePage from './wholesale/page';
 import UsersPage from './users/page';
 import RolesPage from './roles/page';
 import DeadStockPage from './dead-stock/page';
@@ -32,7 +31,6 @@ const MODULES = [
   { id: 'customers', label: 'Customers', icon: '👥', perm: 'customers.view' },
   { id: 'complaints', label: 'Complaints', icon: '📢', perm: 'customers.view' },
   { id: 'reports', label: 'Reports', icon: '📄', perm: 'reports.view' },
-  { id: 'wholesale', label: 'Wholesale', icon: '🏪', perm: 'wholesale.view' },
   { id: 'settings', label: 'Settings', icon: '⚙️', perm: 'settings.view' },
   { id: 'users', label: 'Users', icon: '🧑‍💼', perm: 'settings.edit' },
   { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
