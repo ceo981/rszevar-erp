@@ -15,6 +15,7 @@ import ReportsPage from './reports/page';
 import WholesalePage from './wholesale/page';
 import UsersPage from './users/page';
 import RolesPage from './roles/page';
+import DeadStockPage from './dead-stock/page';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
 // ============================================================================
@@ -36,6 +37,7 @@ const MODULES = [
   { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
   { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
   { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
+  { id: 'dead-stock', label: 'Dead Stock', icon: '🪦', perm: 'reports.view' },
 ];
 
 const STATUS_MAP = {
@@ -149,6 +151,7 @@ export default function ERPApp() {
         {activeModule === 'complaints' && <ComplaintsPage />}
         {activeModule === 'users' && <UsersPage />}
         {activeModule === 'roles' && <RolesPage />}
+        {activeModule === 'dead-stock' && <DeadStockPage />}
       </main>
     </div>
   );
