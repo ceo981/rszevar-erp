@@ -17,7 +17,7 @@ export async function GET(request) {
     // Also include NULL abc_90d = never classified (possibly new/unsynced products)
     const { data: deadProducts, error } = await supabase
       .from('products')
-      .select('id, title, handle, sku, stock_quantity, selling_price, collections, abc_90d, abc_180d, last_sold_at, updated_at')
+      .select('id, title, sku, stock_quantity, selling_price, collections, abc_90d, abc_180d, last_sold_at')
       .or('abc_90d.eq.D,abc_90d.is.null')
       .gt('stock_quantity', 0);
 
@@ -44,7 +44,6 @@ export async function GET(request) {
       return {
         id:                 p.id,
         title:              p.title,
-        handle:             p.handle,
         sku:                p.sku || '—',
         stock_quantity:     qty,
         selling_price:      price,
