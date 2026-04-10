@@ -81,7 +81,7 @@ export async function GET(request) {
   let customers = Object.values(customerMap).map(c => ({
     ...c,
     is_blacklisted: blacklistSet.has(c.phone),
-    is_vip: c.orders >= 3 && c.delivered >= 2,
+    is_vip: c.orders >= 10,
     is_repeat: c.orders >= 2,
     delivery_rate: c.orders ? ((c.delivered / c.orders) * 100).toFixed(0) : 0,
   }));
@@ -111,7 +111,7 @@ export async function GET(request) {
   const summary = {
     total: Object.keys(customerMap).length,
     repeat: Object.values(customerMap).filter(c => c.orders >= 2).length,
-    vip: Object.values(customerMap).filter(c => c.orders >= 3).length,
+    vip: Object.values(customerMap).filter(c => c.orders >= 10).length,
     blacklisted: blacklistSet.size,
     rto_customers: Object.values(customerMap).filter(c => c.rto > 0).length,
   };
