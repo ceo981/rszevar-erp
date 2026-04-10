@@ -1,115 +1,210 @@
-import { createClient } from '@supabase/supabase-js';
+'use client';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { useState, useEffect, useCallback } from 'react';
 
-export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const collection = searchParams.get('collection');
-    const minValue   = parseFloat(searchParams.get('min_value') || '0');
-    const sortBy     = searchParams.get('sort') || 'stock_value';
+const formatCurrency = (val) =>
+  'Rs. ' + Number(val || 0).toLocaleString('en-PK', { maximumFractionDigits: 0 });
 
-    // ─── 1. Fetch D-class + unclassified products with stock > 0 ───
-    // abc_90d = 'D' means no sales in last 90 days (computed by compute-abc cron)
-    // Also include NULL abc_90d = never classified (possibly new/unsynced products)
-    const { data: deadProducts, error } = await supabase
-      .from('products')
-      .select('id, title, handle, sku, stock_quantity, selling_price, collections, abc_90d, abc_180d, last_sold_at, updated_at')
-      .or('abc_90d.eq.D,abc_90d.is.null')
-      .gt('stock_quantity', 0);
+const formatDate = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
-    if (error) throw error;
+const daysBadge = (days, neverSold) => {
+  if (neverSold) return <span style={{ background: '#4B1C1C', color: '#F87171', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>Never Sold</span>;
+  if (days >= 180) return <span style={{ background: '#4B1C1C', color: '#F87171', padding: '2px 8px', borderRadius: 6, fontSize: 12 }}>{days}d</span>;
+  if (days >= 90) return <span style={{ background: '#3B2A00', color: '#FBBF24', padding: '2px 8px', borderRadius: 6, fontSize: 12 }}>{days}d</span>;
+  return <span style={{ background: '#1a2a1a', color: '#4ADE80', padding: '2px 8px', borderRadius: 6, fontSize: 12 }}>{days}d</span>;
+};
 
-    const now = new Date();
+const abcBadge = (cls) => {
+  const colors = { A: ['#1a3a1a','#4ADE80'], B: ['#1a2a3a','#60A5FA'], C: ['#2a1a3a','#A78BFA'], D: ['#3a1a1a','#F87171'], Unclassified: ['#2a2a2a','#9CA3AF'] };
+  const [bg, fg] = colors[cls] || colors['Unclassified'];
+  return <span style={{ background: bg, color: fg, padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{cls}</span>;
+};
 
-    // ─── 2. Enrich each product ───
-    let enriched = (deadProducts || []).map(p => {
-      const lastSale   = p.last_sold_at ? new Date(p.last_sold_at) : null;
-      const daysDead   = lastSale
-        ? Math.floor((now - lastSale) / (1000 * 60 * 60 * 24))
-        : 999;
-      const qty        = p.stock_quantity || 0;
-      const price      = parseFloat(p.selling_price) || 0;
-      const stockValue = qty * price;
+export default function DeadStockPage() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-      // Extract first collection name from JSONB array [{handle, title}]
-      let collectionName = '—';
-      if (Array.isArray(p.collections) && p.collections.length > 0) {
-        collectionName = p.collections[0].title || p.collections[0].handle || '—';
-      }
+  // Filters
+  const [collection, setCollection] = useState('all');
+  const [minValue, setMinValue] = useState('');
+  const [sortBy, setSortBy] = useState('stock_value');
+  const [search, setSearch] = useState('');
 
-      return {
-        id:                 p.id,
-        title:              p.title,
-        handle:             p.handle,
-        sku:                p.sku || '—',
-        stock_quantity:     qty,
-        selling_price:      price,
-        stock_value:        stockValue,
-        collections:        p.collections || [],
-        collection_name:    collectionName,
-        abc_90d:            p.abc_90d || 'Unclassified',
-        abc_180d:           p.abc_180d || '—',
-        last_sale_date:     lastSale ? lastSale.toISOString() : null,
-        days_dead:          daysDead,
-        never_sold:         !lastSale,
-      };
-    });
-
-    // ─── 3. Filter by collection ───
-    if (collection && collection !== 'all') {
-      enriched = enriched.filter(p =>
-        p.collections.some(c => c.title === collection || c.handle === collection)
-      );
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ collection, sort: sortBy });
+      if (minValue) params.set('min_value', minValue);
+      const res = await fetch(`/api/dead-stock?${params}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setData(json);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
+  }, [collection, minValue, sortBy]);
 
-    // ─── 4. Filter by min stock value ───
-    if (minValue > 0) {
-      enriched = enriched.filter(p => p.stock_value >= minValue);
-    }
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-    // ─── 5. Sort ───
-    enriched.sort((a, b) => {
-      if (sortBy === 'days_dead')  return b.days_dead - a.days_dead;
-      if (sortBy === 'inventory')  return b.stock_quantity - a.stock_quantity;
-      if (sortBy === 'title')      return a.title.localeCompare(b.title);
-      return b.stock_value - a.stock_value; // default
-    });
+  const exportCSV = () => {
+    if (!data?.products) return;
+    const headers = ['Title', 'SKU', 'Collection', 'ABC Class', 'Stock Qty', 'Price', 'Stock Value', 'Last Sale Date', 'Days Dead'];
+    const rows = filtered.map(p => [
+      `"${p.title}"`, p.sku, `"${p.collection_name}"`, p.abc_class,
+      p.inventory_quantity, p.price, p.stock_value,
+      p.last_sale_date ? formatDate(p.last_sale_date) : 'Never Sold',
+      p.never_sold ? 'Never Sold' : p.days_dead,
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `dead-stock-report-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
 
-    // ─── 6. Summary stats ───
-    const totalStockValue = enriched.reduce((s, p) => s + p.stock_value, 0);
-    const totalUnits      = enriched.reduce((s, p) => s + p.stock_quantity, 0);
-    const neverSoldCount  = enriched.filter(p => p.never_sold).length;
-    const soldButDead     = enriched.filter(p => !p.never_sold);
-    const avgDaysDead     = soldButDead.length
-      ? Math.round(soldButDead.reduce((s, p) => s + p.days_dead, 0) / soldButDead.length)
-      : 0;
+  const filtered = (data?.products || []).filter(p =>
+    !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
+  );
 
-    // ─── 7. Unique collections for filter dropdown ───
-    const collectionsSet = new Set();
-    (deadProducts || []).forEach(p => {
-      (p.collections || []).forEach(c => {
-        if (c.title) collectionsSet.add(c.title);
-      });
-    });
+  const s = data?.summary || {};
 
-    return Response.json({
-      products: enriched,
-      summary: {
-        total_products:   enriched.length,
-        total_stock_value: totalStockValue,
-        total_units:      totalUnits,
-        never_sold_count: neverSoldCount,
-        avg_days_dead:    avgDaysDead,
-      },
-      collections: Array.from(collectionsSet).sort(),
-    });
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#e5e5e5', padding: '24px', fontFamily: 'Inter, sans-serif' }}>
 
-  } catch (err) {
-    console.error('[dead-stock] Error:', err);
-    return Response.json({ error: err.message }, { status: 500 });
-  }
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>🪦 Dead Stock Report</h1>
+          <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: 13 }}>
+            Products with no sales in 90+ days — capital tied up
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={fetchData} disabled={loading} style={{ padding: '8px 16px', background: '#1f2937', color: '#e5e5e5', border: '1px solid #374151', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>
+            {loading ? '⏳ Loading...' : '🔄 Refresh'}
+          </button>
+          <button onClick={exportCSV} style={{ padding: '8px 16px', background: '#c9a96e', color: '#000', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+            ⬇ Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* ── Summary Cards ── */}
+      {!loading && data && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+          {[
+            { label: 'Dead Products', value: s.total_products, icon: '📦', color: '#F87171' },
+            { label: 'Capital Tied Up', value: formatCurrency(s.total_stock_value), icon: '💸', color: '#FBBF24' },
+            { label: 'Total Units', value: s.total_units?.toLocaleString(), icon: '🔢', color: '#60A5FA' },
+            { label: 'Never Sold', value: s.never_sold_count, icon: '🚫', color: '#F87171' },
+            { label: 'Avg Days Dead', value: s.avg_days_dead ? `${s.avg_days_dead}d` : '—', icon: '📅', color: '#A78BFA' },
+          ].map(card => (
+            <div key={card.label} style={{ background: '#111827', borderRadius: 10, padding: '16px 18px', border: '1px solid #1f2937' }}>
+              <div style={{ fontSize: 22 }}>{card.icon}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: card.color, margin: '4px 0 2px' }}>{card.value ?? '—'}</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{card.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Filters ── */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input
+          placeholder="🔍 Search product / SKU..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ padding: '8px 12px', background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#e5e5e5', fontSize: 13, width: 220 }}
+        />
+        <select value={collection} onChange={e => setCollection(e.target.value)}
+          style={{ padding: '8px 12px', background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#e5e5e5', fontSize: 13 }}>
+          <option value="all">All Collections</option>
+          {(data?.collections || []).map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input
+          type="number" placeholder="Min Stock Value (Rs)"
+          value={minValue}
+          onChange={e => setMinValue(e.target.value)}
+          style={{ padding: '8px 12px', background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#e5e5e5', fontSize: 13, width: 180 }}
+        />
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          style={{ padding: '8px 12px', background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#e5e5e5', fontSize: 13 }}>
+          <option value="stock_value">Sort: Stock Value ↓</option>
+          <option value="days_dead">Sort: Days Dead ↓</option>
+          <option value="inventory">Sort: Qty ↓</option>
+          <option value="title">Sort: Name A-Z</option>
+        </select>
+        <span style={{ color: '#6b7280', fontSize: 13 }}>{filtered.length} products</span>
+      </div>
+
+      {/* ── Error ── */}
+      {error && (
+        <div style={{ background: '#4B1C1C', border: '1px solid #F87171', borderRadius: 8, padding: 16, marginBottom: 20, color: '#F87171' }}>
+          ⚠️ Error: {error}
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#6b7280' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+          <div>Loading dead stock data...</div>
+        </div>
+      ) : (
+        <div style={{ background: '#111827', borderRadius: 12, border: '1px solid #1f2937', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#1f2937', borderBottom: '1px solid #374151' }}>
+                {['#', 'Product', 'Collection', 'ABC', 'Qty', 'Price', 'Stock Value', 'Last Sale', 'Days Dead'].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: h === 'Qty' || h === 'Price' || h === 'Stock Value' || h === '#' ? 'center' : 'left', color: '#9ca3af', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ textAlign: 'center', padding: 48, color: '#6b7280' }}>
+                    🎉 No dead stock found!
+                  </td>
+                </tr>
+              ) : filtered.map((p, i) => (
+                <tr key={p.id} style={{ borderBottom: '1px solid #1f2937', background: i % 2 === 0 ? 'transparent' : '#0d1117' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#1a2332'}
+                  onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : '#0d1117'}>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', color: '#6b7280' }}>{i + 1}</td>
+                  <td style={{ padding: '10px 14px', maxWidth: 220 }}>
+                    <div style={{ fontWeight: 500, color: '#e5e5e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.title}>{p.title}</div>
+                    {p.sku !== '—' && <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>SKU: {p.sku}</div>}
+                  </td>
+                  <td style={{ padding: '10px 14px', color: '#9ca3af', fontSize: 12 }}>{p.collection_name}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>{abcBadge(p.abc_class)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', color: '#e5e5e5', fontWeight: 600 }}>{p.inventory_quantity}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', color: '#9ca3af' }}>{formatCurrency(p.price)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center', color: '#FBBF24', fontWeight: 700 }}>{formatCurrency(p.stock_value)}</td>
+                  <td style={{ padding: '10px 14px', color: '#9ca3af', fontSize: 12, whiteSpace: 'nowrap' }}>{formatDate(p.last_sale_date)}</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>{daysBadge(p.days_dead, p.never_sold)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Footer note ── */}
+      {!loading && filtered.length > 0 && (
+        <div style={{ marginTop: 16, color: '#4b5563', fontSize: 12, textAlign: 'center' }}>
+          📊 Based on 90-day ABC classification window · D-class = no sales in last 90 days
+        </div>
+      )}
+    </div>
+  );
 }
