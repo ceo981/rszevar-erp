@@ -264,7 +264,8 @@ function InventoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ search: '', category: 'all', stock: 'all', active: 'all' });
+  const [filters, setFilters] = useState({ search: '', category: 'all', collection: 'all', stock: 'all', active: 'all' });
+  const [collections, setCollections] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sortConfig, setSortConfig] = useState({ sort: 'title', order: 'asc' });
   const [view, setView] = useState('grouped');
@@ -290,6 +291,7 @@ function InventoryPage() {
       if (filters.active !== 'all') params.set('active', filters.active);
       if (abcFilter !== 'all') params.set('abc', abcFilter);
       params.set('abc_window', abcWindow);
+      if (filters.collection !== 'all') params.set('collection', filters.collection);
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
       if (data.success) {
@@ -298,6 +300,7 @@ function InventoryPage() {
         setTotalPages(data.total_pages || 1);
         setStats(data.stats || {});
         setCategories(data.categories || []);
+        if (data.collections) setCollections(data.collections);
       }
     } catch (e) { console.error('Fetch products error:', e); }
     setLoading(false);
@@ -347,7 +350,7 @@ function InventoryPage() {
     else if (preset === 'dead') { setAbcFilter('D'); setFilters(f => ({ ...f, stock: 'all' })); }
     setPage(1);
   };
-  const clearPresets = () => { setAbcFilter('all'); setFilters(f => ({ ...f, stock: 'all' })); setPage(1); };
+  const clearPresets = () => { setAbcFilter('all'); setFilters(f => ({ ...f, stock: 'all', collection: 'all' })); setPage(1); };
 
   const SortIcon = ({ field }) => {
     if (sortConfig.sort !== field) return <span style={{ opacity: 0.3 }}>↕</span>;
@@ -484,10 +487,10 @@ function InventoryPage() {
         <input type="text" placeholder="Search by name, SKU, category..." value={filters.search}
           onChange={e => { setFilters(f => ({ ...f, search: e.target.value })); setPage(1); }}
           style={{ flex: '1 1 250px', maxWidth: 350, padding: '9px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-        <select value={filters.category} onChange={e => { setFilters(f => ({ ...f, category: e.target.value })); setPage(1); }}
+        <select value={filters.collection} onChange={e => { setFilters(f => ({ ...f, collection: e.target.value })); setPage(1); }}
           style={{ padding: '9px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
-          <option value="all">All Categories</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="all">All Collections</option>
+          {collections.map(c => <option key={c.handle} value={c.handle}>{c.title}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
           {[{ value: 'grouped', label: '📦 Grouped' }, { value: 'flat', label: '≡ Flat' }].map(v => (
@@ -520,7 +523,7 @@ function InventoryPage() {
           <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
             <div style={{ fontSize: 15, marginBottom: 8 }}>No products found</div>
-            <div style={{ fontSize: 13 }}>{filters.search || filters.stock !== 'all' || abcFilter !== 'all' ? 'Try different filters' : 'Click "Sync from Shopify" to pull your products'}</div>
+            <div style={{ fontSize: 13 }}>{filters.search || filters.stock !== 'all' || filters.collection !== 'all' || abcFilter !== 'all' ? 'Try different filters' : 'Click "Sync from Shopify" to pull your products'}</div>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
