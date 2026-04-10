@@ -109,10 +109,12 @@ export default function ERPApp() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <aside style={{ width: sidebarOpen ? 220 : 60, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100 }}>
-        <div style={{ padding: sidebarOpen ? '20px 16px' : '20px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: sidebarOpen ? 20 : 14, fontWeight: 700, color: 'var(--gold)', letterSpacing: 3 }}>{sidebarOpen ? 'RS ZEVAR' : 'RS'}</div>
-          {sidebarOpen && <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: 2, marginTop: 2 }}>ERP SYSTEM</div>}
-        </div>
+       <div style={{ padding: sidebarOpen ? '16px' : '12px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {sidebarOpen
+              ? <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 48, objectFit: 'contain', filter: 'drop-shadow(0 0 8px rgba(201,169,110,0.3))' }} />
+              : <img src="/rs_zevar_logo_transparent.png" alt="RS" style={{ height: 32, width: 32, objectFit: 'contain', objectPosition: 'left' }} />
+            }
+          </div>
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           {visibleModules.map(mod => (
             <button key={mod.id} onClick={() => !mod.coming && setActiveModule(mod.id)}
