@@ -44,6 +44,19 @@ async function runCompute() {
   if (resetErr) throw new Error(`reset_abc_stats RPC failed: ${resetErr.message}`);
 
   // ----- Step 2: Fetch eligible orders (paginated) -----
+  // Include everything that represents actual demand (customer wanted the product).
+  // Exclude only: cancelled, returned, and null-status orders (garbage/in-progress).
+  // This matters when data is limited — broader filter = cleaner Pareto distribution.
+  const ELIGIBLE_STATUSES = [
+    'pending',     // placed but not yet confirmed (some will cancel, accepted trade-off)
+    'confirmed',   // customer confirmed via call
+    'packed',      // packed, ready to ship
+    'dispatched',  // handed to courier
+    'in_transit',  // courier delivering
+    'delivered',   // completed
+    'processing',  // ambiguous but likely valid
+  ];
+
   const orders = [];
   let pageFrom = 0;
   const pageSize = 1000;
@@ -51,7 +64,7 @@ async function runCompute() {
     const { data, error } = await supabase
       .from('orders')
       .select('id, created_at')
-      .in('status', ['delivered', 'dispatched'])
+      .in('status', ELIGIBLE_STATUSES)
       .gte('created_at', cutoff180)
       .range(pageFrom, pageFrom + pageSize - 1);
     if (error) throw new Error(`orders fetch failed: ${error.message}`);
