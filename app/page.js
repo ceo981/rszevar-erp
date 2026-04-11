@@ -25,25 +25,23 @@ import AIAdvisorFloat from '../components/AIAdvisorFloat';
 // ============================================================================
 
 const MODULES = [
-  { id: 'dashboard', label: 'Dashboard', icon: '◫', perm: 'dashboard.view' },
-  { id: 'orders', label: 'Orders', icon: '📋', perm: 'orders.view' },
-  { id: 'inventory', label: 'Inventory', icon: '📦', perm: 'inventory.view' },
-  { id: 'accounts', label: 'Accounts', icon: '💰', perm: 'financial.view' },
-  { id: 'courier', label: 'Courier', icon: '🚚', perm: 'courier.view' },
-  { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e', perm: 'courier.view' },
-  { id: 'customers', label: 'Customers', icon: '👥', perm: 'customers.view' },
-  { id: 'complaints', label: 'Complaints', icon: '📢', perm: 'customers.view' },
-  { id: 'reports', label: 'Reports', icon: '📄', perm: 'reports.view' },
-  { id: 'wholesale', label: 'Wholesale', icon: '🏪', perm: 'wholesale.view' },
-  { id: 'settings', label: 'Settings', icon: '⚙️', perm: 'settings.view' },
-  { id: 'users', label: 'Users', icon: '🧑‍💼', perm: 'settings.edit' },
-  { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
-  { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
-  { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
-  { id: 'hr', label: 'HR & Payroll', icon: '💰', perm: 'settings.edit' },
-  { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
-  { id: 'dead-stock', label: 'Dead Stock', icon: '🪦', perm: 'reports.view' },
-  { id: 'ai-advisor', label: 'AI Advisor', icon: '🤖', perm: 'reports.view' },
+  { id: 'dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
+  { id: 'orders',       label: 'Orders',         icon: '📋', perm: 'orders.view' },
+  { id: 'inventory',    label: 'Inventory',      icon: '📦', perm: 'inventory.view' },
+  { id: 'accounts',     label: 'Accounts',       icon: '💰', perm: 'financial.view' },
+  { id: 'courier',      label: 'Courier',         icon: '🚚', perm: 'courier.view' },
+  { id: 'courier-sync', label: 'Courier Sync',   icon: '⟳',  perm: 'courier.view' },
+  { id: 'customers',    label: 'Customers',      icon: '👥', perm: 'customers.view' },
+  { id: 'complaints',   label: 'Complaints',     icon: '📢', perm: 'customers.view' },
+  { id: 'analytics',    label: 'Analytics',      icon: '📊', perm: 'analytics.view' },
+  { id: 'dead-stock',   label: 'Dead Stock',     icon: '🪦', perm: 'deadstock.view' },
+  { id: 'reports',      label: 'Reports',        icon: '📄', perm: 'reports.view' },
+  { id: 'employees',    label: 'Team',           icon: '👤', perm: 'settings.edit' },
+  { id: 'hr',           label: 'HR & Payroll',   icon: '👥', perm: 'hr.view' },
+  { id: 'ai-advisor',   label: 'RS ZEVAR AI',    icon: '💎', perm: 'ai.use' },
+  { id: 'settings',     label: 'Settings',       icon: '⚙️', perm: 'settings.view' },
+  { id: 'users',        label: 'Users',          icon: '🧑‍💼', perm: 'settings.edit' },
+  { id: 'roles',        label: 'Roles & Perms',  icon: '🔐', perm: 'settings.roles' },
 ];
 
 const STATUS_MAP = {
@@ -118,8 +116,11 @@ export default function ERPApp() {
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <aside style={{ width: sidebarOpen ? 220 : 60, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100 }}>
         <div style={{ padding: sidebarOpen ? '20px 16px' : '20px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
-          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: sidebarOpen ? 20 : 14, fontWeight: 700, color: 'var(--gold)', letterSpacing: 3 }}>{sidebarOpen ? 'RS ZEVAR' : 'RS'}</div>
-          {sidebarOpen && <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: 2, marginTop: 2 }}>ERP SYSTEM</div>}
+          {sidebarOpen ? (
+            <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 48, maxWidth: '100%', objectFit: 'contain' }} />
+          ) : (
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 14, fontWeight: 700, color: 'var(--gold)', letterSpacing: 2 }}>RS</div>
+          )}
         </div>
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           {visibleModules.map(mod => (
