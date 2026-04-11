@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { createShopifyFulfillment } from '@/lib/shopify';
-import { sendWhatsApp, msgOrderDispatched } from '@/lib/whatsapp';
+import { sendOrderDispatched } from '@/lib/whatsapp';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -211,12 +211,24 @@ export async function POST(request) {
     // ── 6. WhatsApp dispatch notification (best-effort) ──
     if (order.customer_phone) {
       try {
-        await sendWhatsApp(order.customer_phone, msgOrderDispatched({
+        // Fetch order items
+        const { data: orderItems } = await supabase
+          .from('order_items')
+          .select('title, variant_title, quantity')
+          .eq('order_id', order_id);
+
+        const itemsText = (orderItems || [])
+          .map(i => `${i.title}${i.variant_title ? ` (${i.variant_title})` : ''} x${i.quantity}`)
+          .join(', ') || 'N/A';
+
+        await sendOrderDispatched({
+          phone: order.customer_phone,
+          customer_name: order.customer_name,
           order_number: order.order_number,
+          items: itemsText,
           courier,
           tracking_number: tracking,
-          customer_name: order.customer_name,
-        }));
+        });
       } catch (e) {
         console.error('[dispatch] WhatsApp error:', e.message);
       }
