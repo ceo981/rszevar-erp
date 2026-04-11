@@ -260,6 +260,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
 // ─── Order Action Drawer ───────────────────────────────────────
 function OrderDrawer({ order, onClose, onRefresh }) {
   const [loading, setLoading] = useState(false);
+  const { canViewFinancial } = useUser();
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
   const [log, setLog] = useState([]);
@@ -659,7 +660,7 @@ export default function OrdersPage() {
           { label: 'RTO', value: c.rto || 0, color: '#ef4444' },
           { label: 'Paid', value: c.paid || 0, color: '#22c55e' },
           { label: 'Unpaid', value: c.unpaid || 0, color: '#f87171' },
-          { label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold },
+          ...(canViewFinancial ? [{ label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold }] : []),
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
