@@ -13,6 +13,19 @@ export async function GET(request) {
     const supabase = createServerClient();
     const { searchParams } = new URL(request.url);
 
+    // ── Order items fetch ──
+    const action = searchParams.get('action');
+    if (action === 'items') {
+      const order_id = searchParams.get('order_id');
+      if (!order_id) return NextResponse.json({ items: [] });
+      const { data } = await supabase
+        .from('order_items')
+        .select('title, variant_title, quantity, price, sku, image_url')
+        .eq('order_id', order_id)
+        .order('id');
+      return NextResponse.json({ items: data || [] });
+    }
+
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
     const status = searchParams.get('status');
