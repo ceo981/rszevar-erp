@@ -11,6 +11,7 @@ import AnalyticsPage from './analytics/page';
 import EmployeesPage from './employees/page';
 import CustomersPage from './customers/page';
 import ComplaintsPage from './complaints/page';
+import HRPage from './hr/page';
 import SettingsPage from './settings/page';
 import ReportsPage from './reports/page';
 import WholesalePage from './wholesale/page';
@@ -39,6 +40,7 @@ const MODULES = [
   { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
   { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
   { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
+  { id: 'hr', label: 'HR & Payroll', icon: '💰', perm: 'settings.edit' },
   { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
   { id: 'dead-stock', label: 'Dead Stock', icon: '🪦', perm: 'reports.view' },
   { id: 'ai-advisor', label: 'AI Advisor', icon: '🤖', perm: 'reports.view' },
@@ -155,6 +157,7 @@ export default function ERPApp() {
         {activeModule === 'reports' && <ReportsPage />}
         {activeModule === 'wholesale' && <WholesalePage />}
         {activeModule === 'complaints' && <ComplaintsPage />}
+        {activeModule === 'hr' && <HRPage />}
         {activeModule === 'users' && <UsersPage />}
         {activeModule === 'roles' && <RolesPage />}
         {activeModule === 'dead-stock' && <DeadStockPage />}
