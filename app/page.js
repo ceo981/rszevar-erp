@@ -68,6 +68,16 @@ export default function ERPApp() {
   const router = useRouter();
   const [activeModule, setActiveModule] = useState('dashboard');
   const [inventorySearchSku, setInventorySearchSku] = useState('');
+
+  // Listen for inventory navigation from order items click
+  useEffect(() => {
+    const handler = (e) => {
+      setInventorySearchSku(e.detail || '');
+      setActiveModule('inventory');
+    };
+    window.addEventListener('openInventorySku', handler);
+    return () => window.removeEventListener('openInventorySku', handler);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
