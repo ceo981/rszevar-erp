@@ -67,6 +67,7 @@ const ABC_COLORS = {
 export default function ERPApp() {
   const router = useRouter();
   const [activeModule, setActiveModule] = useState('dashboard');
+  const [inventorySearchSku, setInventorySearchSku] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -147,7 +148,7 @@ export default function ERPApp() {
       <main style={{ flex: 1, marginLeft: sidebarOpen ? 220 : 60, transition: 'margin-left 0.2s ease' }}>
         {activeModule === 'dashboard' && <DashboardPage onNavigate={setActiveModule} />}
         {activeModule === 'orders' && <OrdersPage />}
-        {activeModule === 'inventory' && <InventoryPage />}
+        {activeModule === 'inventory' && <InventoryPage initialSearch={inventorySearchSku} onSearchUsed={() => setInventorySearchSku('')} />}
         {activeModule === 'accounts' && <AccountsPage />}
         {activeModule === 'courier' && <CourierPage />}
         {activeModule === 'courier-sync' && <CourierSyncPage />}
@@ -270,7 +271,7 @@ function DashboardPage({ onNavigate }) {
 // ============================================================================
 // INVENTORY PAGE — with ABC Classification
 // ============================================================================
-function InventoryPage() {
+function InventoryPage({ initialSearch = '', onSearchUsed }) {
   const { canViewFinancial } = useUser();
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
@@ -281,7 +282,16 @@ function InventoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ search: '', category: 'all', collection: 'all', stock: 'all', active: 'all' });
+  const [filters, setFilters] = useState({ search: initialSearch || '', category: 'all', collection: 'all', stock: 'all', active: 'all' });
+
+  // Apply initialSearch when coming from order items click
+  useEffect(() => {
+    if (initialSearch) {
+      setFilters(f => ({ ...f, search: initialSearch }));
+      setPage(1);
+      if (onSearchUsed) onSearchUsed();
+    }
+  }, [initialSearch]);
   const [collections, setCollections] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sortConfig, setSortConfig] = useState({ sort: 'title', order: 'asc' });
