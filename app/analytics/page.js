@@ -1,4 +1,5 @@
 'use client';
+import { useUser } from '@/context/UserContext';
 import { useState, useEffect, useRef } from 'react';
 
 const gold = '#c9a96e';
@@ -165,6 +166,7 @@ function DonutChart({ data, title }) {
 
 // ── Main Analytics Page ───────────────────────────────────────
 export default function AnalyticsPage() {
+  const { canViewFinancial } = useUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('30');
@@ -211,11 +213,11 @@ export default function AnalyticsPage() {
           {/* Summary Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
             <StatCard label="Total Orders" value={s.total_orders || 0} icon="📋" color={gold} />
-            <StatCard label="Total Revenue" value={fmtK(s.total_revenue)} sub="COD value" icon="💰" color="#22c55e" />
+            {canViewFinancial && <StatCard label="Total Revenue" value={fmtK(s.total_revenue)} sub="COD value" icon="💰" color="#22c55e" />}
             <StatCard label="Delivered" value={s.delivered_count || 0} sub={`${s.delivery_rate}% rate`} icon="✅" color="#22c55e" />
             <StatCard label="RTO" value={s.rto_count || 0} sub={`${s.rto_rate}% rate`} icon="↩️" color="#ef4444" />
-            <StatCard label="Avg Order" value={fmt(s.avg_order_value)} icon="📊" color="#3b82f6" />
-            <StatCard label="COD Delivered" value={fmtK(s.delivered_revenue)} sub="collected" icon="🏦" color={gold} />
+            {canViewFinancial && <StatCard label="Avg Order" value={fmt(s.avg_order_value)} icon="📊" color="#3b82f6" />}
+            {canViewFinancial && <StatCard label="COD Delivered" value={fmtK(s.delivered_revenue)} sub="collected" icon="🏦" color={gold} />}
           </div>
 
           {/* Status breakdown */}
@@ -228,13 +230,15 @@ export default function AnalyticsPage() {
             ))}
           </div>
 
-          {/* Revenue trend */}
-          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
-            <LineChart data={data?.daily || []} title={`Revenue Trend — Last ${range} Days`} />
-          </div>
+          {/* Revenue trend — only super_admin */}
+          {canViewFinancial && (
+            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
+              <LineChart data={data?.daily || []} title={`Revenue Trend — Last ${range} Days`} />
+            </div>
+          )}
 
           {/* City + Products row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: canViewFinancial ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
             <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px' }}>
               <BarChart
                 data={data?.cities || []}
@@ -245,16 +249,18 @@ export default function AnalyticsPage() {
                 formatValue={v => `${v} orders`}
               />
             </div>
-            <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px' }}>
-              <BarChart
-                data={data?.cities || []}
-                valueKey="revenue"
-                labelKey="city"
-                color="#3b82f6"
-                title="Top Cities by Revenue"
-                formatValue={v => fmtK(v)}
-              />
-            </div>
+            {canViewFinancial && (
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px' }}>
+                <BarChart
+                  data={data?.cities || []}
+                  valueKey="revenue"
+                  labelKey="city"
+                  color="#3b82f6"
+                  title="Top Cities by Revenue"
+                  formatValue={v => fmtK(v)}
+                />
+              </div>
+            )}
           </div>
 
           {/* Top Products + Couriers */}
@@ -293,7 +299,7 @@ export default function AnalyticsPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${border}` }}>
-                    {['Date', 'Orders', 'Revenue', 'Delivered', 'RTO'].map(h => (
+                    {['Date', 'Orders', ...(canViewFinancial ? ['Revenue'] : []), 'Delivered', 'RTO'].map(h => (
                       <th key={h} style={{ padding: '10px 16px', textAlign: 'left', color: '#555', fontWeight: 500 }}>{h}</th>
                     ))}
                   </tr>
@@ -303,7 +309,7 @@ export default function AnalyticsPage() {
                     <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}>
                       <td style={{ padding: '10px 16px', color: gold }}>{d.date}</td>
                       <td style={{ padding: '10px 16px', color: '#fff' }}>{d.orders}</td>
-                      <td style={{ padding: '10px 16px', color: '#22c55e', fontWeight: 600 }}>{fmt(d.revenue)}</td>
+                      {canViewFinancial && <td style={{ padding: '10px 16px', color: '#22c55e', fontWeight: 600 }}>{fmt(d.revenue)}</td>}
                       <td style={{ padding: '10px 16px', color: '#22c55e' }}>{d.delivered}</td>
                       <td style={{ padding: '10px 16px', color: '#ef4444' }}>{d.rto}</td>
                     </tr>
