@@ -439,9 +439,10 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                     Confirm Order
                   </button>
                 </div>
-                
-                {/* Assignment section for confirmed orders */}
-                {s === 'confirmed' && (
+              )}
+
+              {/* Assignment section for confirmed orders */}
+              {s === 'confirmed' && (
                   <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                     <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
                       👤 Packing Assignment
@@ -472,7 +473,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                     📦 Mark as Packed
                   </button>
                 )}
-              )}
 
               {(s === 'confirmed' || s === 'processing' || s === 'pending') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
