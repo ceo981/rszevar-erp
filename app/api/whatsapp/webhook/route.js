@@ -1,167 +1,168 @@
-import crypto from 'crypto';
-import { createServerClient } from './supabase';
-import { transformOrder, transformLineItems } from './shopify';
-import { getSettings } from './settings';
-import { sendOrderConfirmInteractive } from './whatsapp';
-
-// Fallback if settings table is unreachable
-const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
-
 /**
- * Verify Shopify webhook HMAC signature.
+ * RS ZEVAR ERP — WhatsApp Webhook
+ * =================================
+ * GET  → Meta webhook verification (one-time setup)
+ * POST → Incoming button replies from customers
+ *
+ * Flow:
+ *  Customer clicks "✅ Yes, Confirm" → order confirmed + Shopify tag
+ *  Customer clicks "❌ No, Cancel"   → order cancelled + Shopify tag
  */
-export function verifyShopifyWebhook(rawBody, hmacHeader) {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (!hmacHeader || !secret) return false;
-  try {
-    const computed = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody, 'utf8')
-      .digest('base64');
 
-    const a = Buffer.from(computed);
-    const b = Buffer.from(hmacHeader);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// ─── GET: Meta webhook verification ────────────────────────────────────────
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const mode      = searchParams.get('hub.mode');
+  const token     = searchParams.get('hub.verify_token');
+  const challenge = searchParams.get('hub.challenge');
+
+  const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+
+  if (mode === 'subscribe' && token === verifyToken) {
+    console.log('[whatsapp-webhook] Verified ✅');
+    return new Response(challenge, { status: 200 });
+  }
+
+  return new Response('Forbidden', { status: 403 });
+}
+
+// ─── POST: Incoming button reply from customer ──────────────────────────────
+export async function POST(request) {
+  try {
+    const body = await request.json();
+
+    const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    // Only handle interactive button replies
+    if (message?.type !== 'interactive') {
+      return NextResponse.json({ received: true });
+    }
+
+    const buttonReply = message?.interactive?.button_reply;
+    if (!buttonReply) return NextResponse.json({ received: true });
+
+    const payload   = buttonReply.id;  // "CONFIRM_ZEVAR-123456" or "CANCEL_ZEVAR-123456"
+    const fromPhone = message.from;    // customer's phone
+
+    console.log(`[whatsapp-webhook] Button: ${payload} from ${fromPhone}`);
+
+    // Parse action and order number
+    const underscoreIdx = payload.indexOf('_');
+    const action        = payload.substring(0, underscoreIdx);        // CONFIRM or CANCEL
+    const orderNumber   = payload.substring(underscoreIdx + 1);       // ZEVAR-123456
+
+    if (!orderNumber || !['CONFIRM', 'CANCEL'].includes(action)) {
+      console.warn('[whatsapp-webhook] Unknown payload:', payload);
+      return NextResponse.json({ received: true });
+    }
+
+    // Find order in DB
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('id, status, shopify_order_id, order_number')
+      .eq('order_number', orderNumber)
+      .single();
+
+    if (error || !order) {
+      console.error('[whatsapp-webhook] Order not found:', orderNumber);
+      return NextResponse.json({ received: true });
+    }
+
+    // Ignore if already locked
+    const lockedStatuses = ['confirmed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto'];
+    if (lockedStatuses.includes(order.status)) {
+      console.log(`[whatsapp-webhook] Order ${orderNumber} already ${order.status} — ignoring`);
+      return NextResponse.json({ received: true });
+    }
+
+    if (action === 'CONFIRM') {
+      await supabase.from('orders').update({
+        status: 'confirmed',
+        confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', order.id);
+
+      if (order.shopify_order_id) {
+        await addShopifyTag(order.shopify_order_id, 'whatsapp_confirmed');
+      }
+
+      await supabase.from('order_activity_log').insert({
+        order_id: order.id,
+        action: 'confirmed',
+        notes: `Auto-confirmed via WhatsApp by customer (${fromPhone})`,
+        performed_at: new Date().toISOString(),
+      });
+
+      console.log(`[whatsapp-webhook] ✅ Order ${orderNumber} confirmed`);
+
+    } else if (action === 'CANCEL') {
+      await supabase.from('orders').update({
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      }).eq('id', order.id);
+
+      if (order.shopify_order_id) {
+        await addShopifyTag(order.shopify_order_id, 'whatsapp_cancelled');
+      }
+
+      await supabase.from('order_activity_log').insert({
+        order_id: order.id,
+        action: 'cancelled',
+        notes: `Auto-cancelled via WhatsApp by customer (${fromPhone})`,
+        performed_at: new Date().toISOString(),
+      });
+
+      console.log(`[whatsapp-webhook] ❌ Order ${orderNumber} cancelled`);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (e) {
+    console.error('[whatsapp-webhook] Error:', e.message);
+    return NextResponse.json({ received: true }); // Always 200 to Meta
   }
 }
 
-/**
- * Shared handler for all order webhooks.
- * Chunk 3: transformOrder is now async (reads settings + tag definitions).
- * LOCKED_STATUSES now come from settings with fallback.
- */
-export async function handleOrderWebhook(request, { topic, insertLineItems = false }) {
-  const startTime = Date.now();
+// ─── Add tag to Shopify order ───────────────────────────────────────────────
+async function addShopifyTag(shopifyOrderId, newTag) {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const token  = process.env.SHOPIFY_ACCESS_TOKEN;
+  if (!domain || !token) return;
 
-  // 1. Read raw body
-  const rawBody = await request.text();
-  const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
-  const shopDomain = request.headers.get('x-shopify-shop-domain');
-
-  // 2. HMAC verify
-  if (!verifyShopifyWebhook(rawBody, hmacHeader)) {
-    console.warn(`[webhook:${topic}] HMAC verification failed from ${shopDomain || 'unknown'}`);
-    return { status: 401, body: { success: false, error: 'Invalid HMAC signature' } };
-  }
-
-  // 3. Parse JSON
-  let shopifyOrder;
   try {
-    shopifyOrder = JSON.parse(rawBody);
-  } catch (e) {
-    return { status: 400, body: { success: false, error: 'Invalid JSON body' } };
-  }
+    const res = await fetch(
+      `https://${domain}/admin/api/2024-01/orders/${shopifyOrderId}.json?fields=id,tags`,
+      { headers: { 'X-Shopify-Access-Token': token } }
+    );
+    const { order } = await res.json();
+    const currentTags = order?.tags || '';
+    const tagsArr = currentTags.split(',').map(t => t.trim()).filter(Boolean);
 
-  const supabase = createServerClient();
+    if (!tagsArr.includes(newTag)) tagsArr.push(newTag);
 
-  // 4. Read locked statuses from settings (cached 60s — cheap)
-  let lockedStatuses = DEFAULT_LOCKED;
-  try {
-    const rules = await getSettings('business_rules');
-    if (rules['rules.locked_statuses'] && Array.isArray(rules['rules.locked_statuses'])) {
-      lockedStatuses = rules['rules.locked_statuses'];
-    }
-  } catch {}
-
-  // 5. Transform (NOW ASYNC — reads settings + tag definitions)
-  const orderData = await transformOrder(shopifyOrder);
-
-  // 6. Check existing + apply LOCKED_STATUSES rules
-  const { data: existing } = await supabase
-    .from('orders')
-    .select('id, status, payment_status')
-    .eq('shopify_order_id', orderData.shopify_order_id)
-    .maybeSingle();
-
-  if (existing) {
-    if (lockedStatuses.includes(existing.status)) {
-      delete orderData.status;
-    }
-    if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
-      delete orderData.payment_status;
-    }
-    if (existing.payment_status === 'refunded') {
-      delete orderData.payment_status;
-    }
-  }
-
-  // 7. Upsert
-  const { data: upserted, error: upsertError } = await supabase
-    .from('orders')
-    .upsert(orderData, { onConflict: 'shopify_order_id' })
-    .select('id')
-    .single();
-
-  if (upsertError) {
-    console.error(`[webhook:${topic}] upsert error:`, upsertError.message);
-    return { status: 500, body: { success: false, error: upsertError.message } };
-  }
-
-  const orderId = upserted?.id;
-  const wasNew = !existing;
-
-  // 8. Line items + customer for NEW orders only
-  if (insertLineItems && orderId && wasNew) {
-    const items = transformLineItems(shopifyOrder).map(i => ({ ...i, order_id: orderId }));
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from('order_items').insert(items);
-      if (itemsError) console.error(`[webhook:${topic}] line items error:`, itemsError.message);
-    }
-
-    if (shopifyOrder.customer) {
-      const c = shopifyOrder.customer;
-      await supabase.from('customers').upsert({
-        shopify_customer_id: String(c.id),
-        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown',
-        phone: c.phone || null,
-        email: c.email || null,
-        city: shopifyOrder.shipping_address?.city || null,
-        address: shopifyOrder.shipping_address?.address1 || null,
-      }, { onConflict: 'shopify_customer_id' });
-    }
-
-    // ── WhatsApp interactive order confirmation (best-effort) ──
-    const customerPhone =
-      shopifyOrder.shipping_address?.phone ||
-      shopifyOrder.customer?.phone ||
-      shopifyOrder.billing_address?.phone;
-    if (customerPhone) {
-      try {
-        await sendOrderConfirmInteractive({
-          phone: customerPhone,
-          order_number: orderData.order_number,
-          total_amount: orderData.total_amount,
-          customer_name: orderData.customer_name,
-        });
-      } catch (e) {
-        console.error('[webhook:orders/create] WhatsApp error:', e.message);
+    await fetch(
+      `https://${domain}/admin/api/2024-01/orders/${shopifyOrderId}.json`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': token,
+        },
+        body: JSON.stringify({ order: { id: shopifyOrderId, tags: tagsArr.join(', ') } }),
       }
-    }
+    );
+    console.log(`[whatsapp-webhook] Shopify tag "${newTag}" added`);
+  } catch (e) {
+    console.error('[whatsapp-webhook] Shopify tag error:', e.message);
   }
-
-  // 9. Activity log (best-effort)
-  if (orderId) {
-    try {
-      await supabase.from('order_activity_log').insert({
-        order_id: orderId,
-        action: `webhook:${topic}`,
-        notes: `Real-time ${topic} from Shopify (${wasNew ? 'new' : 'updated'})`,
-        performed_at: new Date().toISOString(),
-      });
-    } catch {}
-  }
-
-  return {
-    status: 200,
-    body: {
-      success: true,
-      topic,
-      order_number: orderData.order_number,
-      action: wasNew ? 'created' : 'updated',
-      duration_ms: Date.now() - startTime,
-    },
-  };
 }
