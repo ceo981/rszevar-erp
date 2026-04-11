@@ -1,7 +1,9 @@
 'use client';
+import { useUser } from '@/context/UserContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const gold = '#c9a96e';
+
 const card = '#141414';
 const border = '#222';
 
@@ -323,7 +325,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
-            ['COD Amount', fmt(order.total_amount)],
+            ['COD Amount', canViewFinancial ? fmt(order.total_amount) : null],
             ['Phone', order.customer_phone || '—'],
             ['Address', order.customer_address || '—'],
             ['Placed', timeAgo(order.created_at)],
@@ -331,7 +333,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             ['Tracking', order.tracking_number || '—'],
             ['Courier Status', order.courier_status_raw || '—'],
             ['Payment', order.payment_status || 'unpaid'],
-          ].map(([k, v]) => (
+          ].filter(([k, v]) => v !== null).map(([k, v]) => (
             <div key={k}>
               <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
               <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{v}</div>
@@ -441,6 +443,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
+  const { canViewFinancial } = useUser();
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
@@ -757,7 +760,7 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', ...(canViewFinancial ? ['COD'] : []), 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
@@ -782,7 +785,7 @@ export default function OrdersPage() {
                     </td>
                     <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
                     <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
-                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
+                    {canViewFinancial && <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>}
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
