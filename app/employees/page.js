@@ -66,9 +66,21 @@ function RoleBadge({ role }) {
 
 // ── Add/Edit Modal ────────────────────────────────────────────
 function EmployeeModal({ emp, onClose, onSave }) {
-  const [form, setForm] = useState(emp || { name: '', role: ROLES[6], phone: '', salary: '', notes: '', join_date: new Date().toISOString().split('T')[0], status: 'active' });
+  const [form, setForm] = useState(emp || {
+    name: '', role: ROLES[6], phone: '', salary: '', base_salary: '',
+    advance_limit: '', designation: '', cnic: '',
+    office_start: '09:00', office_end: '18:00', late_tolerance: 15,
+    notes: '', join_date: new Date().toISOString().split('T')[0], status: 'active'
+  });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  // Auto set advance_limit = 30% of salary when salary changes
+  const handleSalaryChange = (val) => {
+    const sal = parseFloat(val) || 0;
+    const advLimit = Math.round(sal * 0.3);
+    setForm(f => ({ ...f, salary: val, base_salary: val, advance_limit: advLimit }));
+  };
 
   const save = async () => {
     if (!form.name || !form.role) { setMsg('Name aur role zaroori hai'); return; }
@@ -88,7 +100,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
     <div>
       <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>{label}</div>
       {opts.select ? (
-        <select value={form[key]} onChange={e => setForm(f => ({...f, [key]: e.target.value}))}
+        <select value={form[key] || ''} onChange={e => setForm(f => ({...f, [key]: e.target.value}))}
           style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit' }}>
           {opts.options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
@@ -99,25 +111,80 @@ function EmployeeModal({ emp, onClose, onSave }) {
     </div>
   );
 
+  const sectionTitle = (title) => (
+    <div style={{ fontSize: 11, color: gold, fontWeight: 700, letterSpacing: 1, marginTop: 8, paddingBottom: 6, borderBottom: `1px solid #222` }}>
+      {title}
+    </div>
+  );
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 420, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{emp?.id ? 'Edit Employee' : 'Add Employee'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {inp('Full Name', 'name', 'text', { placeholder: 'Employee name' })}
-          {inp('Role', 'role', 'text', { select: true, options: ROLES })}
+
+          {sectionTitle('BASIC INFO')}
+          {inp('Full Name *', 'name', 'text', { placeholder: 'Employee name' })}
+          {inp('Designation', 'designation', 'text', { placeholder: 'e.g. Senior Packer' })}
+          {inp('Role *', 'role', 'text', { select: true, options: ROLES })}
           {inp('Phone', 'phone', 'tel', { placeholder: '03XX-XXXXXXX' })}
-          {inp('Monthly Salary (Rs)', 'salary', 'number', { placeholder: '0' })}
+          {inp('CNIC', 'cnic', 'text', { placeholder: 'XXXXX-XXXXXXX-X' })}
           {inp('Join Date', 'join_date', 'date')}
           {emp?.id && inp('Status', 'status', 'text', { select: true, options: ['active', 'inactive', 'on_leave'] })}
+
+          {sectionTitle('SALARY & ADVANCE')}
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Notes</div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Monthly Salary (Rs) *</div>
+            <input
+              type="number"
+              value={form.salary || ''}
+              onChange={e => handleSalaryChange(e.target.value)}
+              placeholder="e.g. 25000"
+              style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>
+              Advance Limit (Rs)
+              <span style={{ color: '#444', marginLeft: 6 }}>— auto 30% of salary</span>
+            </div>
+            <input
+              type="number"
+              value={form.advance_limit || ''}
+              onChange={e => setForm(f => ({ ...f, advance_limit: e.target.value }))}
+              placeholder="Auto calculated"
+              style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {sectionTitle('OFFICE TIMINGS')}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Start Time</div>
+              <input type="time" value={form.office_start || '09:00'} onChange={e => setForm(f => ({...f, office_start: e.target.value}))}
+                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>End Time</div>
+              <input type="time" value={form.office_end || '18:00'} onChange={e => setForm(f => ({...f, office_end: e.target.value}))}
+                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Late Grace (min)</div>
+              <input type="number" value={form.late_tolerance || 15} onChange={e => setForm(f => ({...f, late_tolerance: e.target.value}))}
+                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          {sectionTitle('NOTES')}
+          <div>
             <textarea value={form.notes || ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={2} placeholder="Optional..."
               style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
+
           {msg && <div style={{ color: '#ef4444', fontSize: 12 }}>{msg}</div>}
           <button onClick={save} disabled={saving} style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             {saving ? 'Saving...' : emp?.id ? 'Save Changes' : 'Add Employee'}
@@ -336,13 +403,23 @@ export default function EmployeesPage() {
                   <div style={{ color: '#888' }}>{emp.phone || '—'}</div>
                 </div>
                 <div>
-                  <div style={{ color: '#555', marginBottom: 2 }}>Salary</div>
-                  <div style={{ color: gold, fontWeight: 600 }}>{emp.salary ? fmt(emp.salary) : '—'}</div>
+                  <div style={{ color: '#555', marginBottom: 2 }}>Monthly Salary</div>
+                  <div style={{ color: gold, fontWeight: 600 }}>{emp.base_salary || emp.salary ? fmt(emp.base_salary || emp.salary) : '—'}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#555', marginBottom: 2 }}>Advance Limit</div>
+                  <div style={{ color: '#f97316' }}>{emp.advance_limit ? fmt(emp.advance_limit) : '—'}</div>
                 </div>
                 <div>
                   <div style={{ color: '#555', marginBottom: 2 }}>Joined</div>
                   <div style={{ color: '#888' }}>{emp.join_date || '—'}</div>
                 </div>
+                {emp.office_start && (
+                  <div>
+                    <div style={{ color: '#555', marginBottom: 2 }}>Timing</div>
+                    <div style={{ color: '#888' }}>{emp.office_start?.slice(0,5)} – {emp.office_end?.slice(0,5)}</div>
+                  </div>
+                )}
               </div>
 
               {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: '#1a1a1a', borderRadius: 6 }}>{emp.notes}</div>}
