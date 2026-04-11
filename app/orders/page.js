@@ -1,9 +1,7 @@
 'use client';
-import { useUser } from '@/context/UserContext';
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const gold = '#c9a96e';
-
 const card = '#141414';
 const border = '#222';
 
@@ -260,13 +258,15 @@ function FilterDropdown({ current, onChange, globalCounts }) {
 // ─── Order Action Drawer ───────────────────────────────────────
 function OrderDrawer({ order, onClose, onRefresh }) {
   const [loading, setLoading] = useState(false);
-  const { canViewFinancial } = useUser();
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
   const [log, setLog] = useState([]);
   const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
   const [cancelReason, setCancelReason] = useState('');
   const [confirmNotes, setConfirmNotes] = useState('');
+  const [packingStaff, setPackingStaff] = useState([]);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [currentAssignment, setCurrentAssignment] = useState(null);
 
   useEffect(() => {
     if (tab === 'log') {
@@ -275,6 +275,22 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         .then(d => setLog(d.log || []));
     }
   }, [tab, order.id]);
+
+  useEffect(() => {
+    // Load packing staff
+    fetch('/api/orders/assign')
+      .then(r => r.json())
+      .then(d => setPackingStaff(d.employees || []));
+    // Load current assignment
+    fetch(`/api/orders/assign?order_id=${order.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.assignment) {
+          setCurrentAssignment(d.assignment);
+          setAssignedTo(String(d.assignment.assigned_to));
+        }
+      });
+  }, [order.id]);
 
   const doAction = async (url, body, successMsg) => {
     setLoading(true); setMsg('');
@@ -291,10 +307,59 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     setLoading(false);
   };
 
-  const confirm = () => doAction('/api/orders/confirm', { order_id: order.id, notes: confirmNotes }, '✅ Order confirmed!');
+  const confirm = async () => {
+    await doAction('/api/orders/confirm', { order_id: order.id, notes: confirmNotes }, '✅ Order confirmed!');
+    // Auto-assign if packer selected
+    if (assignedTo) {
+      await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, assigned_to: parseInt(assignedTo) }),
+      });
+      const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
+      setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+    }
+  };
   const dispatch = () => doAction('/api/orders/dispatch', { order_id: order.id, ...dispatchForm }, '✅ Dispatched!');
   const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason }, '✅ Order cancelled');
   const setStatus = (status) => doAction('/api/orders/status', { order_id: order.id, status }, `✅ Status → ${status}`);
+
+  const assignOrder = async () => {
+    if (!assignedTo) return;
+    setLoading(true); setMsg('');
+    try {
+      const r = await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, assigned_to: parseInt(assignedTo) }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
+        setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+        setMsg(`✅ Assigned to ${emp?.name || 'packer'}!`);
+        onRefresh();
+      } else { setMsg('❌ ' + d.error); }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
+  };
+
+  const markPacked = async () => {
+    setLoading(true); setMsg('');
+    try {
+      const r = await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, action: 'packed' }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Marked as packed! ${d.items_packed} item(s) logged.`);
+        onRefresh();
+      } else { setMsg('❌ ' + d.error); }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
+  };
 
   const s = order.status;
 
@@ -326,7 +391,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
-            ['COD Amount', canViewFinancial ? fmt(order.total_amount) : null],
+            ['COD Amount', fmt(order.total_amount)],
             ['Phone', order.customer_phone || '—'],
             ['Address', order.customer_address || '—'],
             ['Placed', timeAgo(order.created_at)],
@@ -334,7 +399,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             ['Tracking', order.tracking_number || '—'],
             ['Courier Status', order.courier_status_raw || '—'],
             ['Payment', order.payment_status || 'unpaid'],
-          ].filter(([k, v]) => v !== null).map(([k, v]) => (
+          ].map(([k, v]) => (
             <div key={k}>
               <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
               <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{v}</div>
@@ -361,10 +426,52 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
                   <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
                     placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+                  {/* Assign to packer */}
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>👤 Assign to Packer</div>
+                  <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                    <option value="">— Select Packer (optional) —</option>
+                    {packingStaff.map(e => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                    ))}
+                  </select>
                   <button onClick={confirm} disabled={loading} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
                     Confirm Order
                   </button>
                 </div>
+                
+                {/* Assignment section for confirmed orders */}
+                {s === 'confirmed' && (
+                  <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
+                      👤 Packing Assignment
+                      {currentAssignment?.employee && (
+                        <span style={{ fontSize: 11, color: '#22c55e', marginLeft: 8, fontWeight: 400 }}>
+                          ✓ {currentAssignment.employee.name}
+                        </span>
+                      )}
+                    </div>
+                    <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                      style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                      <option value="">— Select Packer —</option>
+                      {packingStaff.map(e => (
+                        <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                      ))}
+                    </select>
+                    <button onClick={assignOrder} disabled={loading || !assignedTo}
+                      style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
+                      {currentAssignment ? '🔄 Reassign Packer' : '✅ Assign Packer'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Mark as Packed */}
+                {(s === 'confirmed') && currentAssignment && (
+                  <button onClick={markPacked} disabled={loading}
+                    style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    📦 Mark as Packed
+                  </button>
+                )}
               )}
 
               {(s === 'confirmed' || s === 'processing' || s === 'pending') && (
@@ -444,7 +551,6 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
-  const { canViewFinancial } = useUser();
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
@@ -660,7 +766,7 @@ export default function OrdersPage() {
           { label: 'RTO', value: c.rto || 0, color: '#ef4444' },
           { label: 'Paid', value: c.paid || 0, color: '#22c55e' },
           { label: 'Unpaid', value: c.unpaid || 0, color: '#f87171' },
-          ...(canViewFinancial ? [{ label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold }] : []),
+          { label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold },
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
@@ -761,7 +867,7 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', ...(canViewFinancial ? ['COD'] : []), 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
@@ -786,7 +892,7 @@ export default function OrdersPage() {
                     </td>
                     <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
                     <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
-                    {canViewFinancial && <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>}
+                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
