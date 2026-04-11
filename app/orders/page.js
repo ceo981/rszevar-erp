@@ -267,6 +267,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const [packingStaff, setPackingStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState('');
   const [currentAssignment, setCurrentAssignment] = useState(null);
+  const [orderItems, setOrderItems] = useState([]);
 
   useEffect(() => {
     if (tab === 'log') {
@@ -275,6 +276,13 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         .then(d => setLog(d.log || []));
     }
   }, [tab, order.id]);
+
+  useEffect(() => {
+    // Load order items
+    fetch(`/api/orders?action=items&order_id=${order.id}`)
+      .then(r => r.json())
+      .then(d => setOrderItems(d.items || []));
+  }, [order.id]);
 
   useEffect(() => {
     // Load packing staff
@@ -406,6 +414,33 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             </div>
           ))}
         </div>
+
+        {/* Order Items */}
+        {orderItems.length > 0 && (
+          <div style={{ padding: '12px 24px', borderBottom: `1px solid ${border}` }}>
+            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>📦 Order Items ({orderItems.length})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {orderItems.map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a1a', borderRadius: 7, padding: '8px 10px' }}>
+                  {item.image_url && (
+                    <img src={item.image_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                    {item.variant_title && item.variant_title !== 'Default Title' && (
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.variant_title}</div>
+                    )}
+                    {item.sku && <div style={{ fontSize: 10, color: '#475569' }}>SKU: {item.sku}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, color: '#c9a96e', fontWeight: 600 }}>x{item.quantity}</div>
+                    {item.price && <div style={{ fontSize: 11, color: '#555' }}>Rs {Number(item.price).toLocaleString()}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', borderBottom: `1px solid ${border}` }}>
           {['actions', 'log'].map(t => (
