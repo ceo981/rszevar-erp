@@ -1,15 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-
-const QUICK = [
-  '📊 Performance summary?',
-  '🪦 Dead stock advice?',
-  '📦 Restock kya karein?',
-  '💸 Pending settlement?',
-];
+import { useUser } from '@/app/context/UserContext';
 
 export default function AIAdvisorFloat() {
+  const { user, profile } = useUser();
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput]       = useState('');
@@ -17,9 +12,37 @@ export default function AIAdvisorFloat() {
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
+  const userRole = profile?.role || 'customer_support';
+  const userName = profile?.full_name || user?.email?.split('@')[0] || '';
+
+  // Role-based quick questions
+  const QUICK = {
+    super_admin: ['📊 Aaj ka summary?', '⚠️ Koi stuck order?', '💀 Dead stock?', '👥 Team workload?'],
+    operations_manager: ['📋 Pending orders?', '⚠️ Stuck orders?', '👥 Kaun busy hai?', '🚚 Dispatch queue?'],
+    inventory_manager: ['📦 Out of stock?', '💀 Dead stock?', '🔄 Kya restock karein?', '📊 ABC status?'],
+    dispatcher: ['🚚 Dispatch karne hain?', '⚠️ Koi urgent order?'],
+    customer_support: ['📦 Order status?', '👤 Customer reliable hai?', '🔍 Order dhundhna hai?'],
+    packing: ['📋 Mere assigned orders?', '✅ Kitna pack karna hai?'],
+  };
+
+  const quickQuestions = QUICK[userRole] || QUICK['customer_support'];
+
+  const roleGreeting = {
+    super_admin: `Assalam o Alaikum${userName ? ' ' + userName + ' sahab' : ''}! 👑`,
+    operations_manager: 'Assalam o Alaikum Operations Manager sahab! 💼',
+    inventory_manager: 'Assalam o Alaikum Inventory Manager sahab! 📦',
+    dispatcher: 'Assalam o Alaikum! 🚚',
+    customer_support: 'Assalam o Alaikum Customer Support sahab! 📞',
+    packing: 'Assalam o Alaikum! 📦',
+  };
+
   useEffect(() => {
     if (open && messages.length === 0) {
-      setMessages([{ role: 'assistant', content: 'Salam! 👋 Quick business sawaal poochein — main live ERP data se jawab dunga!' }]);
+      const greeting = roleGreeting[userRole] || 'Assalam o Alaikum!';
+      setMessages([{
+        role: 'assistant',
+        content: `${greeting}\nMain RS ZEVAR AI hoon — live ERP data se help karta hoon. Kya kaam hai? 🤖`,
+      }]);
     }
   }, [open]);
 
@@ -40,7 +63,11 @@ export default function AIAdvisorFloat() {
       const res = await fetch('/api/ai-advisor', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ messages: newMessages }),
+        body:    JSON.stringify({
+          messages: newMessages,
+          userRole,
+          userName,
+        }),
       });
 
       if (!res.ok) throw new Error(`Error ${res.status}`);
@@ -90,30 +117,36 @@ export default function AIAdvisorFloat() {
       {/* Chat Window */}
       {open && (
         <div className="ai-float-chat" style={{
-          position: 'fixed', bottom: 90, right: 24, width: 360, height: 480,
+          position: 'fixed', bottom: 160, right: 24, width: 370, height: 500,
           background: '#0d1117', border: '1px solid #374151', borderRadius: 16,
           display: 'flex', flexDirection: 'column', zIndex: 1000,
           boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
           fontFamily: 'Inter, sans-serif',
         }}>
           {/* Header */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>🤖</div>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0d1117', borderRadius: '16px 16px 0 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💎</div>
               <div>
-                <div style={{ fontWeight: 600, color: '#fff', fontSize: 13 }}>AI Advisor</div>
-                <div style={{ fontSize: 10, color: '#4ade80' }}>● Live ERP</div>
+                <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>RS ZEVAR AI</div>
+                <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
+                  Live ERP Connected
+                </div>
               </div>
             </div>
-            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
             {messages.map((msg, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+                {msg.role === 'assistant' && (
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginRight: 6, marginTop: 2 }}>💎</div>
+                )}
                 <div style={{
-                  maxWidth: '85%', padding: '8px 12px', fontSize: 13, lineHeight: 1.5,
+                  maxWidth: '82%', padding: '8px 12px', fontSize: 13, lineHeight: 1.55,
                   borderRadius: msg.role === 'user' ? '14px 14px 3px 14px' : '14px 14px 14px 3px',
                   background: msg.role === 'user' ? 'linear-gradient(135deg, #c9a96e, #a07840)' : '#1f2937',
                   color: msg.role === 'user' ? '#000' : '#e5e5e5',
@@ -129,7 +162,7 @@ export default function AIAdvisorFloat() {
             {/* Quick suggestions */}
             {messages.length === 1 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {QUICK.map((q, i) => (
+                {quickQuestions.map((q, i) => (
                   <button key={i} onClick={() => sendMessage(q)}
                     style={{ padding: '5px 10px', background: '#111827', color: '#c9a96e', border: '1px solid #374151', borderRadius: 12, cursor: 'pointer', fontSize: 11 }}>
                     {q}
@@ -153,24 +186,25 @@ export default function AIAdvisorFloat() {
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#e5e5e5', fontSize: 13, fontFamily: 'inherit' }}
               />
               <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
-                style={{ width: 28, height: 28, borderRadius: '50%', background: loading || !input.trim() ? '#374151' : '#c9a96e', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>
+                style={{ width: 30, height: 30, borderRadius: '50%', background: loading || !input.trim() ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
                 {loading ? '⏳' : '➤'}
               </button>
             </div>
+            <div style={{ fontSize: 10, color: '#374151', textAlign: 'center', marginTop: 6 }}>RS ZEVAR AI — Live ERP Data</div>
           </div>
         </div>
       )}
 
-      {/* Floating Button */}
+      {/* Floating Button — higher position */}
       <button onClick={() => setOpen(o => !o)} style={{
-        position: 'fixed', bottom: 24, right: 24, width: 56, height: 56,
+        position: 'fixed', bottom: 100, right: 24, width: 56, height: 56,
         borderRadius: '50%', background: open ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)',
         border: 'none', cursor: 'pointer', zIndex: 1001,
-        boxShadow: '0 4px 20px rgba(201,169,110,0.4)',
+        boxShadow: '0 4px 24px rgba(201,169,110,0.5)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 24, transition: 'all 0.2s',
       }}>
-        {open ? '×' : '🤖'}
+        {open ? '×' : '💎'}
       </button>
     </>
   );
