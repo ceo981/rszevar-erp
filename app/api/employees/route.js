@@ -21,11 +21,19 @@ export async function POST(request) {
   const { action, ...fields } = body;
 
   if (action === 'add') {
+    const sal = parseFloat(fields.salary || fields.base_salary || 0);
     const { data, error } = await supabase.from('employees').insert({
       name: fields.name,
       role: fields.role,
       phone: fields.phone || '',
-      salary: parseFloat(fields.salary || 0),
+      salary: sal,
+      base_salary: sal,
+      advance_limit: parseFloat(fields.advance_limit || Math.round(sal * 0.3)),
+      designation: fields.designation || '',
+      cnic: fields.cnic || '',
+      office_start: fields.office_start || '09:00:00',
+      office_end: fields.office_end || '18:00:00',
+      late_tolerance: parseInt(fields.late_tolerance || 15),
       join_date: fields.join_date || new Date().toISOString().split('T')[0],
       status: 'active',
       notes: fields.notes || '',
@@ -37,11 +45,19 @@ export async function POST(request) {
   }
 
   if (action === 'update') {
+    const sal = parseFloat(fields.salary || fields.base_salary || 0);
     const { error } = await supabase.from('employees').update({
       name: fields.name,
       role: fields.role,
       phone: fields.phone,
-      salary: parseFloat(fields.salary || 0),
+      salary: sal,
+      base_salary: sal,
+      advance_limit: parseFloat(fields.advance_limit || Math.round(sal * 0.3)),
+      designation: fields.designation || '',
+      cnic: fields.cnic || '',
+      office_start: fields.office_start || '09:00:00',
+      office_end: fields.office_end || '18:00:00',
+      late_tolerance: parseInt(fields.late_tolerance || 15),
       status: fields.status,
       notes: fields.notes,
       updated_at: new Date().toISOString(),
