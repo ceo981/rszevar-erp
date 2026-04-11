@@ -20,7 +20,7 @@ export async function GET(request) {
       if (!order_id) return NextResponse.json({ items: [] });
       const { data } = await supabase
         .from('order_items')
-        .select('title, sku, quantity, unit_price, total_price')
+        .select('title, sku, quantity, unit_price, total_price, image_url')
         .eq('order_id', order_id)
         .order('id');
       return NextResponse.json({ items: data || [] });
