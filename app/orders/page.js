@@ -421,11 +421,21 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>📦 Order Items ({orderItems.length})</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {orderItems.map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a1a', borderRadius: 7, padding: '8px 10px' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 4, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>💍</div>
+                <div key={i}
+                  onClick={() => { onClose(); setTimeout(() => { window.dispatchEvent(new CustomEvent('openInventorySku', { detail: item.sku })); }, 300); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a1a', borderRadius: 7, padding: '8px 10px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#252525'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
+                  title={item.sku ? 'Click to view in Inventory' : ''}
+                >
+                  {item.image_url ? (
+                    <img src={item.image_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0, border: '1px solid #333' }} />
+                  ) : (
+                    <div style={{ width: 36, height: 36, borderRadius: 4, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>💍</div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                    {item.sku && <div style={{ fontSize: 10, color: '#475569' }}>SKU: {item.sku}</div>}
+                    {item.sku && <div style={{ fontSize: 10, color: '#c9a96e66' }}>SKU: {item.sku} {item.sku ? '↗' : ''}</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 12, color: '#c9a96e', fontWeight: 600 }}>x{item.quantity}</div>
