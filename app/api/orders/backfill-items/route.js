@@ -47,7 +47,7 @@ export async function POST() {
       await Promise.all(batch.map(async (order) => {
         try {
           const res = await fetch(
-            `https://${domain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,line_items`,
+            `https://${domain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,line_items,line_items.image`,
             { headers: { 'X-Shopify-Access-Token': token } }
           );
 
@@ -66,6 +66,7 @@ export async function POST() {
             quantity: item.quantity || 1,
             unit_price: parseFloat(item.price || 0),
             total_price: parseFloat(item.price || 0) * (item.quantity || 1),
+            image_url: item.image?.src || null,
             created_at: new Date().toISOString(),
           }));
 
