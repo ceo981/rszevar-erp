@@ -1,4 +1,5 @@
 'use client';
+import { UserContext } from '@/context/UserContext';
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -12,6 +13,7 @@ import CustomersPage from './customers/page';
 import ComplaintsPage from './complaints/page';
 import SettingsPage from './settings/page';
 import ReportsPage from './reports/page';
+import WholesalePage from './wholesale/page';
 import UsersPage from './users/page';
 import RolesPage from './roles/page';
 import DeadStockPage from './dead-stock/page';
@@ -25,15 +27,17 @@ const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫', perm: 'dashboard.view' },
   { id: 'orders', label: 'Orders', icon: '📋', perm: 'orders.view' },
   { id: 'inventory', label: 'Inventory', icon: '📦', perm: 'inventory.view' },
-  { id: 'accounts', label: 'Accounts', icon: '💰', perm: 'reports.view' },
+  { id: 'accounts', label: 'Accounts', icon: '💰', perm: 'financial.view' },
   { id: 'courier', label: 'Courier', icon: '🚚', perm: 'courier.view' },
   { id: 'courier-sync', label: 'Courier Sync', icon: '⟳', color: '#c9a96e', perm: 'courier.view' },
   { id: 'customers', label: 'Customers', icon: '👥', perm: 'customers.view' },
   { id: 'complaints', label: 'Complaints', icon: '📢', perm: 'customers.view' },
   { id: 'reports', label: 'Reports', icon: '📄', perm: 'reports.view' },
+  { id: 'wholesale', label: 'Wholesale', icon: '🏪', perm: 'wholesale.view' },
   { id: 'settings', label: 'Settings', icon: '⚙️', perm: 'settings.view' },
   { id: 'users', label: 'Users', icon: '🧑‍💼', perm: 'settings.edit' },
   { id: 'roles', label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
+  { id: 'vendors', label: 'Vendors', icon: '🏭', coming: true, perm: 'vendors.view' },
   { id: 'employees', label: 'Team', icon: '👤', perm: 'settings.edit' },
   { id: 'analytics', label: 'Analytics', icon: '📊', perm: 'reports.view' },
   { id: 'dead-stock', label: 'Dead Stock', icon: '🪦', perm: 'reports.view' },
@@ -85,6 +89,7 @@ export default function ERPApp() {
   }, [router]);
 
   const isSuperAdmin = profile?.role === 'super_admin';
+  const canViewFinancial = isSuperAdmin;
   const can = useCallback((key) => isSuperAdmin || permissions.has(key), [isSuperAdmin, permissions]);
   const visibleModules = MODULES.filter((m) => !m.perm || can(m.perm));
 
@@ -107,14 +112,13 @@ export default function ERPApp() {
   }
 
   return (
+    <UserContext.Provider value={{ profile, isSuperAdmin, canViewFinancial, userRole: profile?.role }}>
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
       <aside style={{ width: sidebarOpen ? 220 : 60, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100 }}>
-       <div style={{ padding: sidebarOpen ? '16px' : '12px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {sidebarOpen
-              ? <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 48, objectFit: 'contain', filter: 'drop-shadow(0 0 8px rgba(201,169,110,0.3))' }} />
-              : <img src="/rs_zevar_logo_transparent.png" alt="RS" style={{ height: 32, width: 32, objectFit: 'contain', objectPosition: 'left' }} />
-            }
-          </div>
+        <div style={{ padding: sidebarOpen ? '20px 16px' : '20px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+          <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: sidebarOpen ? 20 : 14, fontWeight: 700, color: 'var(--gold)', letterSpacing: 3 }}>{sidebarOpen ? 'RS ZEVAR' : 'RS'}</div>
+          {sidebarOpen && <div style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: 2, marginTop: 2 }}>ERP SYSTEM</div>}
+        </div>
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           {visibleModules.map(mod => (
             <button key={mod.id} onClick={() => !mod.coming && setActiveModule(mod.id)}
@@ -149,6 +153,7 @@ export default function ERPApp() {
         {activeModule === 'customers' && <CustomersPage />}
         {activeModule === 'settings' && <SettingsPage />}
         {activeModule === 'reports' && <ReportsPage />}
+        {activeModule === 'wholesale' && <WholesalePage />}
         {activeModule === 'complaints' && <ComplaintsPage />}
         {activeModule === 'users' && <UsersPage />}
         {activeModule === 'roles' && <RolesPage />}
@@ -157,6 +162,7 @@ export default function ERPApp() {
       </main>
         <AIAdvisorFloat />
     </div>
+    </UserContext.Provider>
   );
 }
 
@@ -434,7 +440,7 @@ function InventoryPage() {
           { label: 'Total Products', value: stats.total_products ?? stats.total ?? 0, icon: '📦', color: 'var(--gold)' },
           { label: 'Total Variants', value: stats.total_variants ?? stats.total ?? 0, icon: '🎨', color: 'var(--cyan)' },
           { label: 'Total Units', value: stats.total_units || 0, icon: '🔢', color: 'var(--blue)' },
-          { label: 'Stock Value', value: `Rs ${((stats.total_stock_value || 0) / 1000).toFixed(0)}K`, icon: '💰', color: 'var(--green)' },
+          ...(canViewFinancial ? [{ label: 'Stock Value', value: `Rs ${((stats.total_stock_value || 0) / 1000).toFixed(0)}K`, icon: '💰', color: 'var(--green)' }] : []),
           { label: 'Low Stock', value: stats.low_stock || 0, icon: '⚠️', color: 'var(--orange)' },
           { label: 'Out of Stock', value: stats.out_of_stock || 0, icon: '🚫', color: 'var(--red)' },
           { label: 'Active', value: stats.active || 0, icon: '✅', color: 'var(--cyan)' },
@@ -558,10 +564,10 @@ function InventoryPage() {
                     { key: 'image', label: '', sortable: false, width: 50 },
                     { key: 'title', label: 'Product', sortable: true },
                     { key: 'sku', label: 'SKU', sortable: true },
-                    { key: 'selling_price', label: 'Price', sortable: true },
+                    ...(canViewFinancial ? [{ key: 'selling_price', label: 'Price', sortable: true }] : []),
                     { key: 'stock_quantity', label: 'Stock', sortable: true },
                     { key: 'abc', label: 'ABC', sortable: false, width: 50 },
-                    { key: revCol, label: `Rev (${abcWindow})`, sortable: true },
+                    ...(canViewFinancial ? [{ key: revCol, label: `Rev (${abcWindow})`, sortable: true }] : []),
                     { key: soldCol, label: `Sold`, sortable: true, width: 60 },
                     { key: 'status', label: 'Status', sortable: false },
                   ].map(col => (
@@ -593,7 +599,7 @@ function InventoryPage() {
                           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1, marginLeft: 16 }}>{group.vendor ? `${group.vendor} · ` : ''}{group.variant_count} variant{group.variant_count !== 1 ? 's' : ''}</div>
                         </td>
                         <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11, fontStyle: 'italic' }}>{group.variant_count} SKUs</td>
-                        <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {group.selling_price?.toLocaleString() || '—'}</td>
+                        {canViewFinancial && <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {group.selling_price?.toLocaleString() || '—'}</td>}
                         <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
                           <span style={{ padding: '3px 10px', borderRadius: 4, background: getStockBg(group.total_stock), color: getStockColor(group.total_stock), fontWeight: 600, fontSize: 12 }}>{group.total_stock}</span>
                           {group.has_out_of_stock && <span title="Some variants out of stock" style={{ marginLeft: 6, fontSize: 10, color: 'var(--red)' }}>⚠</span>}
@@ -615,12 +621,12 @@ function InventoryPage() {
                               <span style={{ color: 'var(--text3)' }}>└ </span>{variantLabel}
                             </td>
                             <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 11, fontFamily: 'monospace' }}>{v.sku || '—'}</td>
-                            <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>Rs {v.selling_price?.toLocaleString()}</td>
+                            {canViewFinancial && <td style={{ padding: '6px 10px', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>Rs {v.selling_price?.toLocaleString()}</td>}
                             <td style={{ padding: '6px 10px' }}>
                               <span style={{ padding: '2px 8px', borderRadius: 4, background: getStockBg(v.stock_quantity || 0), color: getStockColor(v.stock_quantity || 0), fontWeight: 600, fontSize: 11 }}>{v.stock_quantity ?? 0}</span>
                             </td>
                             <td style={{ padding: '6px 10px' }}><AbcBadge value={v[abcCol]} /></td>
-                            <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{v[revCol] ? `Rs ${Number(v[revCol]).toLocaleString()}` : '—'}</td>
+                            {canViewFinancial && <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{v[revCol] ? `Rs ${Number(v[revCol]).toLocaleString()}` : '—'}</td>}
                             <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 11 }}>{v[soldCol] || 0}</td>
                             <td></td>
                           </tr>
@@ -642,12 +648,12 @@ function InventoryPage() {
                       {product.vendor && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{product.vendor}</div>}
                     </td>
                     <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 12, fontFamily: 'monospace' }}>{product.sku || '—'}</td>
-                    <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {product.selling_price?.toLocaleString()}</td>
+                    {canViewFinancial && <td style={{ padding: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>Rs {product.selling_price?.toLocaleString()}</td>}
                     <td style={{ padding: '10px' }}>
                       <span style={{ padding: '3px 10px', borderRadius: 4, background: getStockBg(product.stock_quantity || 0), color: getStockColor(product.stock_quantity || 0), fontWeight: 600, fontSize: 12 }}>{product.stock_quantity ?? 0}</span>
                     </td>
                     <td style={{ padding: '10px' }}><AbcBadge value={product[abcCol]} /></td>
-                    <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{product[revCol] ? `Rs ${Number(product[revCol]).toLocaleString()}` : '—'}</td>
+                    {canViewFinancial && <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{product[revCol] ? `Rs ${Number(product[revCol]).toLocaleString()}` : '—'}</td>}
                     <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>{product[soldCol] || 0}</td>
                     <td style={{ padding: '10px' }}>
                       <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: product.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: product.is_active ? 'var(--green)' : 'var(--text3)' }}>{product.is_active ? 'Active' : 'Draft'}</span>
@@ -687,10 +693,10 @@ function InventoryPage() {
               <DetailRow label="Available" value={(selectedProduct.stock_quantity || 0) - (selectedProduct.reserved_quantity || 0)} />
             </DetailSection>
             <DetailSection title="Pricing">
-              <DetailRow label="Selling Price" value={`Rs ${selectedProduct.selling_price?.toLocaleString()}`} bold />
-              <DetailRow label="Cost Price" value={selectedProduct.cost_price ? `Rs ${selectedProduct.cost_price.toLocaleString()}` : '—'} />
-              {selectedProduct.cost_price > 0 && selectedProduct.selling_price > 0 && <DetailRow label="Margin" value={`${((1 - selectedProduct.cost_price / selectedProduct.selling_price) * 100).toFixed(0)}%`} color="var(--green)" />}
-              <DetailRow label="Stock Value" value={`Rs ${((selectedProduct.stock_quantity || 0) * (selectedProduct.selling_price || 0)).toLocaleString()}`} />
+              {canViewFinancial && <DetailRow label="Selling Price" value={`Rs ${selectedProduct.selling_price?.toLocaleString()}`} bold />}
+              {canViewFinancial && <DetailRow label="Cost Price" value={selectedProduct.cost_price ? `Rs ${selectedProduct.cost_price.toLocaleString()}` : '—'} />}
+              {canViewFinancial && selectedProduct.cost_price > 0 && selectedProduct.selling_price > 0 && <DetailRow label="Margin" value={`${((1 - selectedProduct.cost_price / selectedProduct.selling_price) * 100).toFixed(0)}%`} color="var(--green)" />}
+              {canViewFinancial && <DetailRow label="Stock Value" value={`Rs ${((selectedProduct.stock_quantity || 0) * (selectedProduct.selling_price || 0)).toLocaleString()}`} />}
             </DetailSection>
             <DetailSection title={`ABC Analytics (${abcWindow})`}>
               {(() => { const cls = selectedProduct[abcCol] || 'D'; const clr = getAbcColor(cls); return (<>
