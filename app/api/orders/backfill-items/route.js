@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function POST() {
   try {
-    const supabase = createServerClient();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
     const domain = process.env.SHOPIFY_STORE_DOMAIN;
     const token = process.env.SHOPIFY_ACCESS_TOKEN;
 
