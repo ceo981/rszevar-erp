@@ -29,7 +29,7 @@ export async function GET(request) {
       .from('employees')
       .select('id, name, role')
       .eq('status', 'active')
-      .in('role', ['Packing Team', 'packing_staff', 'Operations Manager', 'Dispatcher'])
+      .in('role', ['Packing Team', 'Operations Manager', 'Dispatcher'])
       .order('name');
 
     return NextResponse.json({ success: true, employees: employees || [] });
