@@ -1,5 +1,5 @@
 'use client';
-import { UserContext } from '@/context/UserContext';
+import { UserContext, useUser } from '@/context/UserContext';
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -267,6 +267,7 @@ function DashboardPage({ onNavigate }) {
 // INVENTORY PAGE — with ABC Classification
 // ============================================================================
 function InventoryPage() {
+  const { canViewFinancial } = useUser();
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [categories, setCategories] = useState([]);
