@@ -14,6 +14,7 @@ const TABS = [
   { id: 'kangaroo',       label: '🦘 Kangaroo',        ready: true, kind: 'diagnostics', check: 'kangaroo' },
   { id: 'tags',           label: '🏷️ Tags',            ready: true, kind: 'tags' },
   { id: 'notifications',  label: '🔔 Notifications',   category: 'notifications', ready: true, kind: 'settings' },
+  { id: 'whatsapp',       label: '💬 WhatsApp',         category: 'whatsapp',      ready: true, kind: 'whatsapp' },
   { id: 'system',         label: '💻 System Health',   ready: true, kind: 'diagnostics', check: 'system' },
   { id: 'audit',          label: '📋 Audit Log',       ready: true, kind: 'audit' },
 ];
@@ -314,6 +315,143 @@ function AuditLogTab() {
 }
 
 // ─── Diagnostics Tab (wraps individual views) ─────────────────────────────
+
+// ── WhatsApp Diagnostics Tab ─────────────────────────────────────────────────
+function WhatsAppTab({ isSuperAdmin }) {
+  const [status, setStatus] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testResult, setTestResult] = useState('');
+
+  useEffect(() => { checkStatus(); }, []);
+
+  async function checkStatus() {
+    try {
+      const r = await fetch('/api/whatsapp/status');
+      const d = await r.json();
+      setStatus(d);
+    } catch (e) {
+      setStatus({ error: e.message });
+    }
+  }
+
+  async function sendTest() {
+    if (!testPhone) return;
+    setTesting(true);
+    setTestResult('');
+    try {
+      const r = await fetch('/api/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: testPhone }),
+      });
+      const d = await r.json();
+      setTestResult(d.success ? '✅ Message sent! Check your WhatsApp.' : '❌ Failed: ' + (d.error || d.reason));
+    } catch (e) {
+      setTestResult('❌ Error: ' + e.message);
+    }
+    setTesting(false);
+  }
+
+  const card = { background: '#141414', border: '1px solid #222', borderRadius: 10, padding: '16px 20px', marginBottom: 12 };
+  const label = { fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 };
+  const value = { fontSize: 14, color: '#e2e8f0', fontWeight: 500 };
+
+  return (
+    <div style={{ padding: 4 }}>
+      <h3 style={{ color: '#c9a96e', marginBottom: 4, fontSize: 16 }}>💬 WhatsApp Status</h3>
+      <p style={{ fontSize: 12, color: '#555', marginBottom: 20 }}>Meta Cloud API connection status aur test messages</p>
+
+      {/* Connection Status */}
+      <div style={card}>
+        <div style={{ ...label }}>Connection</div>
+        {!status ? (
+          <div style={{ color: '#555' }}>Checking...</div>
+        ) : status.error ? (
+          <div style={{ color: '#ef4444' }}>❌ Error: {status.error}</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={label}>Phone Number ID</div>
+              <div style={value}>{status.phone_number_id ? '✅ ' + status.phone_number_id.slice(0,8) + '...' : '❌ Not set'}</div>
+            </div>
+            <div>
+              <div style={label}>Access Token</div>
+              <div style={value}>{status.token_set ? '✅ Set' : '❌ Not set'}</div>
+            </div>
+            <div>
+              <div style={label}>Webhook Verify Token</div>
+              <div style={value}>{status.webhook_token_set ? '✅ Set' : '❌ Not set'}</div>
+            </div>
+            <div>
+              <div style={label}>Overall Status</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: status.ready ? '#22c55e' : '#ef4444' }}>
+                {status.ready ? '✅ Ready' : '❌ Not configured'}
+              </div>
+            </div>
+          </div>
+        )}
+        <button onClick={checkStatus} style={{ marginTop: 12, background: '#1a1a1a', border: '1px solid #333', color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+          🔄 Refresh Status
+        </button>
+      </div>
+
+      {/* Templates Status */}
+      <div style={card}>
+        <div style={label}>Approved Templates</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+          {[
+            { name: 'rs_zevar_order_interactive', desc: 'Order confirmation with Yes/Cancel buttons' },
+            { name: 'rs_zevar_order_dispatched', desc: 'Dispatch notification with tracking' },
+          ].map(t => (
+            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#0f0f0f', borderRadius: 6 }}>
+              <span style={{ color: '#22c55e' }}>✅</span>
+              <div>
+                <div style={{ fontSize: 12, color: '#e2e8f0' }}>{t.name}</div>
+                <div style={{ fontSize: 11, color: '#555' }}>{t.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Webhook Status */}
+      <div style={card}>
+        <div style={label}>Shopify Webhook</div>
+        <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 6 }}>
+          <div>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-create</span></div>
+          <div style={{ marginTop: 4 }}>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-fulfilled</span></div>
+          <div style={{ marginTop: 8, fontSize: 11, color: '#555' }}>Shopify Admin → Settings → Notifications → Webhooks mein register karein</div>
+        </div>
+      </div>
+
+      {/* Test Message */}
+      {isSuperAdmin && (
+        <div style={card}>
+          <div style={label}>Test Message Bhejo</div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+            <input
+              value={testPhone}
+              onChange={e => setTestPhone(e.target.value)}
+              placeholder="03001234567"
+              style={{ flex: 1, background: '#0f0f0f', border: '1px solid #333', color: '#fff', borderRadius: 6, padding: '8px 12px', fontSize: 13 }}
+            />
+            <button onClick={sendTest} disabled={testing || !testPhone} style={{ background: '#c9a96e', color: '#000', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              {testing ? 'Sending...' : '📤 Send Test'}
+            </button>
+          </div>
+          {testResult && (
+            <div style={{ marginTop: 10, fontSize: 13, color: testResult.startsWith('✅') ? '#22c55e' : '#ef4444' }}>
+              {testResult}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>Test hello_world template message bhejega</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiagnosticsTab({ check, label }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -657,6 +795,7 @@ export default function SettingsPage() {
           {!loading && tab.kind === 'audit' && <AuditLogTab />}
           {!loading && tab.kind === 'tags' && <TagsTab isSuperAdmin={isSuperAdmin} />}
           {!loading && tab.kind === 'diagnostics' && <DiagnosticsTab check={tab.check} label={tab.label} />}
+          {!loading && tab.kind === 'whatsapp' && <WhatsAppTab isSuperAdmin={isSuperAdmin} />}
           {!loading && tab.kind === 'settings' && (
             <>
               <div style={sectionStyle}>
