@@ -19,6 +19,7 @@ function thisMonth() { return new Date().toISOString().slice(0, 7); }
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────
 function AttendanceTab({ employees }) {
+  const empMap = Object.fromEntries((employees || []).map(e => [e.id, e.name]));
   const [month, setMonth] = useState(thisMonth());
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -94,7 +95,7 @@ function AttendanceTab({ employees }) {
             <tbody>
               {records.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                  <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{r.employees?.name}</td>
+                  <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{empMap[r.employee_id] || '—'}</td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.date}</td>
                   <td style={{ padding: '8px 12px' }}>
                     <span style={{ background: statusColor[r.status] + '22', color: statusColor[r.status], padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
