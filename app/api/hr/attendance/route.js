@@ -44,20 +44,28 @@ export async function POST(request) {
     const graceMinutes = getPol('grace_minutes', 30);
     const officeStart = emp?.office_start || '11:00';
 
-    // Calculate late minutes (based on actual time_in vs office start + grace)
+    // Auto-detect late from time_in (system does this, HR doesn't manually set "Late")
     let late_minutes = 0;
-    if ((status === 'present' || status === 'late') && time_in) {
+    let final_status = status;
+    if (status === 'present' && time_in) {
       const [sh, sm] = officeStart.split(':').map(Number);
       const [th, tm] = time_in.split(':').map(Number);
       const deadlineMins = sh * 60 + sm + graceMinutes;
       const actualMins   = th * 60 + tm;
       late_minutes = Math.max(0, actualMins - deadlineMins);
+      // System auto-marks as 'late' internally if late_minutes > 0
+      if (late_minutes > 0) final_status = 'late';
     }
 
-    // Yearly leaves logic for absent
+    // 'leave' status = annual leave (planned)
+    if (status === 'leave') {
+      final_status = 'absent';
+    }
+
+    // Yearly leaves logic for absent/leave
     let leave_type = null;
     let yearly_leaves_info = null;
-    if (status === 'absent') {
+    if (status === 'absent' || status === 'leave') {
       const yearStart = date.slice(0, 4) + '-01-01';
       const yearEnd   = date.slice(0, 4) + '-12-31';
       const { count: usedLeaves } = await supabase
@@ -83,7 +91,7 @@ export async function POST(request) {
     const { data, error } = await supabase.from('employee_attendance').upsert({
       employee_id,
       date,
-      status,
+      status: final_status,
       time_in: time_in || null,
       time_out: time_out || null,
       late_minutes,
