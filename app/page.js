@@ -19,6 +19,7 @@ import UsersPage from './users/page';
 import RolesPage from './roles/page';
 import DeadStockPage from './dead-stock/page';
 import AIAdvisorPage from './ai-advisor/page';
+import WorkSubmitPage from './work-submit/page';
 import AIAdvisorFloat from '../components/AIAdvisorFloat';
 // ============================================================================
 // RS ZEVAR ERP v2.0 — Live Shopify Connected
@@ -39,6 +40,7 @@ const MODULES = [
   { id: 'employees',    label: 'Team',           icon: '👤', perm: 'settings.edit' },
   { id: 'hr',           label: 'HR & Payroll',   icon: '👥', perm: 'hr.view' },
   { id: 'ai-advisor',   label: 'RS ZEVAR AI',    icon: '💎', perm: 'ai.use' },
+  { id: 'work-submit',  label: 'Submit Work',    icon: '📋', perm: 'dashboard.view' },
   { id: 'settings',     label: 'Settings',       icon: '⚙️', perm: 'settings.view' },
   { id: 'users',        label: 'Users',          icon: '🧑‍💼', perm: 'settings.edit' },
   { id: 'roles',        label: 'Roles & Perms',  icon: '🔐', perm: 'settings.roles' },
@@ -173,7 +175,8 @@ export default function ERPApp() {
         {activeModule === 'users' && <UsersPage />}
         {activeModule === 'roles' && <RolesPage />}
         {activeModule === 'dead-stock' && <DeadStockPage />}
-        {activeModule === 'ai-advisor' && <AIAdvisorPage />}
+        {activeModule === 'ai-advisor'  && <AIAdvisorPage />}
+        {activeModule === 'work-submit' && <WorkSubmitPage />}
       </main>
         <AIAdvisorFloat />
     </div>
