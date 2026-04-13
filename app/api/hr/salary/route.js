@@ -31,137 +31,150 @@ export async function POST(request) {
   if (action === 'calculate') {
     const { employee_id, month } = body;
 
-    // 1. Get employee details
-    const { data: emp } = await supabase.from('employees')
-      .select('*').eq('id', employee_id).single();
+    // 1. Get employee
+    const { data: emp } = await supabase.from('employees').select('*').eq('id', employee_id).single();
     if (!emp) return NextResponse.json({ success: false, error: 'Employee not found' });
 
-    // 2. Get HR settings
+    // 2. Get HR policy settings
     const { data: settings } = await supabase.from('hr_settings').select('*');
-    const getSetting = (key, def) => {
-      const s = (settings || []).find(s => s.key === key);
-      return s ? parseFloat(s.value) : def;
-    };
-    const workingDaysPerMonth  = getSetting('working_days_per_month', 26);
-    const overtimeMultiplier   = getSetting('overtime_rate_multiplier', 1.5);
-    const lateDeductPerMinute  = getSetting('late_deduction_per_minute', 1);
+    const getSetting = (key, def) => { const s = (settings||[]).find(s=>s.key===key); return s ? parseFloat(s.value) : def; };
+    const graceMinutes         = getSetting('grace_minutes', 30);
     const maxLatesAllowed      = getSetting('max_lates_allowed', 6);
     const maxHalfDaysAllowed   = getSetting('max_half_days_allowed', 3);
-    const timeBonusAmount      = getSetting('time_bonus_amount', 500);
     const leaderboardBonus     = getSetting('leaderboard_bonus', 3000);
+    // time_bonus_amount is now PER EMPLOYEE (from employees table)
+    const timeBonusAmount      = emp.time_bonus_amount || 0;
 
-    // 3. Get attendance summary
+    // 3. Salary base (always 30 days, 10 hours/day)
+    const baseSalary  = Number(emp.base_salary || emp.salary || 0);
+    const perDay      = baseSalary / 30;
+    const perHour     = perDay / 10;
+
+    // 4. Get all attendance records for month
     const start = `${month}-01`;
-    const end = `${month}-31`;
-    const { data: attendance } = await supabase.from('employee_attendance')
-      .select('status, late_minutes')
+    const end   = `${month}-31`;
+    const { data: attRecords } = await supabase
+      .from('employee_attendance')
+      .select('status, late_minutes, leave_type, date')
       .eq('employee_id', employee_id)
-      .gte('date', start).lte('date', end);
+      .gte('date', start).lte('date', end)
+      .order('date', { ascending: true });
 
-    const attData = attendance || [];
-    const present = attData.filter(a => a.status === 'present' || a.status === 'late').length;
-    const absent = attData.filter(a => a.status === 'absent').length;
-    const late = attData.filter(a => a.status === 'late').length;
-    const halfDay = attData.filter(a => a.status === 'half_day').length;
-    const totalLateMinutes = attData.reduce((s, a) => s + (a.late_minutes || 0), 0);
+    const att = attRecords || [];
 
-    // 4. Get overtime
+    // Categorize
+    const lateRecords    = att.filter(a => a.status === 'late');
+    const halfDayRecords = att.filter(a => a.status === 'half_day');
+    const unpaidAbsents  = att.filter(a => a.status === 'absent' && a.leave_type === 'unpaid');
+    const annualLeaves   = att.filter(a => a.status === 'absent' && a.leave_type === 'annual_leave');
+
+    const present   = att.filter(a => a.status === 'present' || a.status === 'late').length;
+    const late      = lateRecords.length;
+    const halfDay   = halfDayRecords.length;
+    const absent    = att.filter(a => a.status === 'absent').length;
+
+    // 5. Late deduction — free passes apply to lates + half_days combined
+    // Sort late records by late_minutes DESC (worst offenses first for deduction)
+    const allLateOccasions = [
+      ...lateRecords.map(r => ({ type: 'late', minutes: r.late_minutes || 0 })),
+      ...halfDayRecords.map(r => ({ type: 'half_day', minutes: 0 })),
+    ].sort((a, b) => b.minutes - a.minutes);
+
+    const totalOccasions = allLateOccasions.length;
+    const freePasses     = maxLatesAllowed + maxHalfDaysAllowed;
+    const excessCount    = Math.max(0, totalOccasions - freePasses);
+
+    // Deduct the worst `excessCount` occasions
+    const toDeduct = allLateOccasions.slice(0, excessCount);
+    let lateDeduction = 0;
+    for (const occ of toDeduct) {
+      if (occ.type === 'half_day') {
+        lateDeduction += perDay * 0.5;
+      } else {
+        // Convert late_minutes to hours, deduct per hour
+        const hoursLate = occ.minutes / 60;
+        lateDeduction += hoursLate * perHour;
+      }
+    }
+    lateDeduction = Math.round(lateDeduction);
+
+    // 6. Absent deduction (only unpaid absents, not annual leaves)
+    const absentDeduction = Math.round(unpaidAbsents.length * perDay);
+
+    // 7. Overtime
     const { data: overtimeData } = await supabase.from('employee_overtime')
-      .select('hours')
-      .eq('employee_id', employee_id)
-      .gte('date', start).lte('date', end);
-    const totalOvertimeHours = (overtimeData || []).reduce((s, o) => s + Number(o.hours), 0);
+      .select('hours').eq('employee_id', employee_id).gte('date', start).lte('date', end);
+    const totalOvertimeHours = (overtimeData||[]).reduce((s,o)=>s+Number(o.hours),0);
+    const overtimePay = Math.round(totalOvertimeHours * perHour * getSetting('overtime_rate_multiplier', 1.5));
 
-    // 5. Get advances to deduct this month
+    // 8. Advances
     const { data: advances } = await supabase.from('employee_advances')
-      .select('amount, id')
-      .eq('employee_id', employee_id)
-      .eq('deduct_month', month)
-      .eq('status', 'pending');
-    const advanceDeduction = (advances || []).reduce((s, a) => s + Number(a.amount), 0);
+      .select('amount, id').eq('employee_id', employee_id)
+      .eq('deduct_month', month).eq('status', 'pending');
+    const advanceDeduction = (advances||[]).reduce((s,a)=>s+Number(a.amount),0);
 
-    // 6. Get unpaid leaves
-    const { data: leaves } = await supabase.from('employee_leaves')
-      .select('days')
-      .eq('employee_id', employee_id)
-      .eq('leave_type', 'unpaid')
-      .gte('start_date', start).lte('end_date', end);
-    const unpaidLeaveDays = (leaves || []).reduce((s, l) => s + Number(l.days), 0);
+    // 9. Time Bonus — if total late occasions within free passes
+    const earnedTimeBonus = totalOccasions <= freePasses ? timeBonusAmount : 0;
 
-    // 7. Salary Calculation
-    const baseSalary = Number(emp.base_salary || emp.salary || 0);
-    const perDayRate = baseSalary / workingDaysPerMonth;
-    const perHourRate = perDayRate / 8;
-
-    const overtimePay = Math.round(totalOvertimeHours * perHourRate * overtimeMultiplier);
-    const lateDeduction = Math.round(totalLateMinutes * lateDeductPerMinute);
-    const absentDeduction = Math.round(absent * perDayRate);
-    const halfDayDeduction = Math.round(halfDay * perDayRate * 0.5);
-    const unpaidLeaveDeduction = Math.round(unpaidLeaveDays * perDayRate);
-
-    // Time Bonus: agar late_days <= max_lates_allowed to bonus milega
-    const earnedTimeBonus = late <= maxLatesAllowed ? timeBonusAmount : 0;
-
-    // Leaderboard Bonus: check if this employee is top packer this month
+    // 10. Leaderboard Bonus
     let earnedLeaderboardBonus = 0;
     try {
-      const { data: packingLogs } = await supabase
-        .from('packing_log')
+      const { data: packingLogs } = await supabase.from('packing_log')
         .select('employee_id, items_packed')
-        .gte('completed_at', `${month}-01`)
-        .lte('completed_at', `${month}-31T23:59:59`);
-
+        .gte('completed_at', `${month}-01`).lte('completed_at', `${month}-31T23:59:59`);
       if (packingLogs?.length > 0) {
         const packMap = {};
-        for (const log of packingLogs) {
-          packMap[log.employee_id] = (packMap[log.employee_id] || 0) + (log.items_packed || 0);
-        }
-        const sorted = Object.entries(packMap).sort((a, b) => b[1] - a[1]);
-        if (sorted[0] && Number(sorted[0][0]) === Number(employee_id) && sorted[0][1] > 0) {
+        for (const log of packingLogs) packMap[log.employee_id] = (packMap[log.employee_id]||0) + (log.items_packed||0);
+        const sorted = Object.entries(packMap).sort((a,b)=>b[1]-a[1]);
+        if (sorted[0] && Number(sorted[0][0]) === Number(employee_id) && sorted[0][1] > 0)
           earnedLeaderboardBonus = leaderboardBonus;
-        }
       }
     } catch {}
 
-    const totalBonus = Number(body.bonus || 0) + earnedTimeBonus + earnedLeaderboardBonus;
+    const totalBonus = Number(body.bonus||0) + earnedTimeBonus + earnedLeaderboardBonus;
 
     const netSalary = Math.max(0,
-      baseSalary
-      + overtimePay
-      + totalBonus
-      - lateDeduction
-      - absentDeduction
-      - halfDayDeduction
-      - advanceDeduction
-      - unpaidLeaveDeduction
+      baseSalary + overtimePay + totalBonus
+      - lateDeduction - absentDeduction - advanceDeduction
     );
 
+    // Yearly leaves used this year
+    const yearStart = month.slice(0,4) + '-01-01';
+    const yearEnd   = month.slice(0,4) + '-12-31';
+    const { count: yearlyLeavesUsed } = await supabase.from('employee_attendance')
+      .select('*', { count: 'exact', head: true })
+      .eq('employee_id', employee_id).eq('leave_type', 'annual_leave')
+      .gte('date', yearStart).lte('date', yearEnd);
+
     const calculation = {
-      employee_id,
-      month,
+      employee_id, month,
       base_salary: baseSalary,
-      working_days: workingDaysPerMonth,
+      per_day: Math.round(perDay),
+      per_hour: Math.round(perHour),
       present_days: present,
       absent_days: absent,
       late_days: late,
       half_days: halfDay,
-      max_lates_allowed: maxLatesAllowed,
-      max_half_days_allowed: maxHalfDaysAllowed,
+      annual_leaves_used: yearlyLeavesUsed || 0,
+      yearly_leaves_allowed: emp.yearly_leaves_allowed || 14,
+      unpaid_absents: unpaidAbsents.length,
+      total_late_occasions: totalOccasions,
+      free_passes: freePasses,
+      excess_deducted: excessCount,
       overtime_hours: totalOvertimeHours,
       overtime_pay: overtimePay,
       bonus: totalBonus,
-      manual_bonus: Number(body.bonus || 0),
+      manual_bonus: Number(body.bonus||0),
       time_bonus: earnedTimeBonus,
       leaderboard_bonus: earnedLeaderboardBonus,
       late_deduction: lateDeduction,
-      absent_deduction: absentDeduction + halfDayDeduction,
+      absent_deduction: absentDeduction,
       advance_deduction: advanceDeduction,
-      unpaid_leave_deduction: unpaidLeaveDeduction,
       net_salary: netSalary,
       status: 'draft',
     };
 
-    return NextResponse.json({ success: true, calculation, advance_ids: (advances || []).map(a => a.id) });
+    return NextResponse.json({ success: true, calculation, advance_ids: (advances||[]).map(a=>a.id) });
   }
 
   // ── Save / Finalize salary ──
