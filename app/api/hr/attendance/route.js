@@ -21,8 +21,11 @@ export async function GET(request) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ success: false, error: error.message });
-  return NextResponse.json({ success: true, attendance: data || [] });
+  if (error) {
+    console.error('[attendance GET] error:', error.message);
+    return NextResponse.json({ success: false, error: error.message });
+  }
+  return NextResponse.json({ success: true, attendance: data || [], count: (data||[]).length });
 }
 
 export async function POST(request) {
@@ -150,6 +153,41 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ success: true, summary });
+  }
+
+  if (action === 'update') {
+    const { id, status, time_in, time_out, notes } = body;
+
+    // Get employee for recalculating late_minutes
+    const { data: rec } = await supabase.from('employee_attendance').select('employee_id').eq('id', id).single();
+    const { data: emp } = rec ? await supabase.from('employees').select('office_start').eq('id', rec.employee_id).single() : { data: null };
+    const { data: policyRows } = await supabase.from('hr_settings').select('key, value');
+    const getPol = (k, d) => { const r = (policyRows||[]).find(x=>x.key===k); return r ? parseFloat(r.value) : d; };
+    const graceMinutes = getPol('grace_minutes', 30);
+    const officeStart = emp?.office_start || '11:00';
+
+    let late_minutes = 0;
+    let final_status = status;
+    if (status === 'present' && time_in) {
+      const [sh, sm] = officeStart.split(':').map(Number);
+      const [th, tm] = time_in.split(':').map(Number);
+      const deadlineMins = sh * 60 + sm + graceMinutes;
+      const actualMins = th * 60 + tm;
+      late_minutes = Math.max(0, actualMins - deadlineMins);
+      if (late_minutes > 0) final_status = 'late';
+    }
+
+    const { error } = await supabase.from('employee_attendance').update({
+      status: final_status,
+      time_in: time_in || null,
+      time_out: time_out || null,
+      late_minutes,
+      notes: notes || '',
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
+
+    if (error) return NextResponse.json({ success: false, error: error.message });
+    return NextResponse.json({ success: true });
   }
 
   if (action === 'delete') {
