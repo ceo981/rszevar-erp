@@ -5,12 +5,7 @@
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { createServerClient } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +13,7 @@ export const maxDuration = 60;
 
 export async function POST() {
   const startTime = Date.now();
+  const supabase = createServerClient();
   try {
     // 1. Fetch all order_items with missing image_url but have a SKU
     const { data: items, error: itemsErr } = await supabase
@@ -113,6 +109,7 @@ export async function POST() {
 
 // GET — check how many items are missing images
 export async function GET() {
+  const supabase = createServerClient();
   try {
     const { count } = await supabase
       .from('order_items')
