@@ -11,7 +11,7 @@ export async function GET(request) {
   const employee_id = searchParams.get('employee_id');
   const month = searchParams.get('month'); // YYYY-MM
 
-  let query = supabase.from('employee_attendance').select('*, employees(name, role)').order('date', { ascending: false });
+  let query = supabase.from('employee_attendance').select('*').order('date', { ascending: false });
 
   if (employee_id) query = query.eq('employee_id', employee_id);
   if (month) {
