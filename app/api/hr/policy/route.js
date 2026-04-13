@@ -9,15 +9,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const DEFAULTS = {
-  office_start_time:      '11:00',
-  grace_minutes:          '30',
-  max_lates_allowed:      '6',
-  max_half_days_allowed:  '3',
-  time_bonus_amount:      '500',
-  leaderboard_bonus:      '3000',
-  working_days_per_month: '26',
+  office_start_time:        '11:00',
+  grace_minutes:            '30',
+  max_lates_allowed:        '6',
+  max_half_days_allowed:    '3',
+  leaderboard_bonus:        '3000',
   overtime_rate_multiplier: '1.5',
-  late_deduction_per_minute: '1',
 };
 
 export async function GET() {
