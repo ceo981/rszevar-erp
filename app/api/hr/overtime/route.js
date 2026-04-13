@@ -17,7 +17,7 @@ export async function GET(request) {
 
   if (employee_id) query = query.eq('employee_id', employee_id);
   if (month) {
-    query = query.gte('date', `${month}-01`).lte('date', `${month}-31`);
+    const [_y2, _m2] = month.split('-').map(Number); const _last2 = new Date(_y2, _m2, 0).getDate(); query = query.gte('date', `${month}-01`).lte('date', `${month}-${String(_last2).padStart(2,'0')}`);
   }
 
   const { data, error } = await query;
