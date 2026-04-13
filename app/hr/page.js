@@ -688,11 +688,8 @@ function PolicyTab() {
     grace_minutes: '30',
     max_lates_allowed: '6',
     max_half_days_allowed: '3',
-    time_bonus_amount: '500',
     leaderboard_bonus: '3000',
-    working_days_per_month: '26',
     overtime_rate_multiplier: '1.5',
-    late_deduction_per_minute: '1',
   });
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
@@ -737,27 +734,21 @@ function PolicyTab() {
         <Field label="Grace Period" k="grace_minutes" suffix="minutes" help="Kitne minutes baad aana late count hoga" />
         <Field label="Max Lates Allowed" k="max_lates_allowed" suffix="per month" help="Is se zyada late = time bonus nahi milega" />
         <Field label="Max Half Days Allowed" k="max_half_days_allowed" suffix="per month" />
-        <Field label="Working Days / Month" k="working_days_per_month" suffix="days" />
       </div>
 
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Bonuses</h3>
+      <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>* Time Bonus har employee ka alag alag hai — Team section mein employee edit karke set karo.</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <Field label="Time Bonus Amount" k="time_bonus_amount" suffix="Rs" help={`Agar late <= max_lates_allowed to milega`} />
         <Field label="Leaderboard Bonus" k="leaderboard_bonus" suffix="Rs" help="Month ka top packer ko milega" />
       </div>
 
-      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Deductions & Overtime</h3>
+      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Overtime</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <Field label="Late Deduction" k="late_deduction_per_minute" suffix="Rs/minute" />
-        <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour" />
+        <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour rate" />
       </div>
 
       <div style={{ background: '#1e293b', borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 13, color: '#94a3b8' }}>
-        <strong style={{ color: '#c9a96e' }}>Late ka Rule:</strong> Agar employee office start time se {policy.grace_minutes} minutes baad aaye ({policy.office_start_time} + {policy.grace_minutes}min = {(() => {
-          const [h, m] = (policy.office_start_time || '11:00').split(':').map(Number);
-          const total = h * 60 + m + Number(policy.grace_minutes || 30);
-          return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-        })()}) to late count hoga. Mahine mein {policy.max_lates_allowed} late tak time bonus milega.
+        <strong style={{ color: '#c9a96e' }}>Late ka Rule:</strong> Agar employee office start se {policy.grace_minutes} min baad aaye to late count hoga. {policy.max_lates_allowed} late + {policy.max_half_days_allowed} half day free hain. Baad wale ka salary cut hoga (hours × per hour rate). Deduction = Salary ÷ 30 days ÷ 10 hours.
       </div>
 
       {msg && <div style={{ marginBottom: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
