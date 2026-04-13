@@ -1013,7 +1013,7 @@ export default function OrdersPage() {
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
-      {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { setShowDraft(false); load(); }} />}
+      {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
       {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} />}
 
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
