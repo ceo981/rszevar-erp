@@ -33,17 +33,51 @@ export async function POST(request) {
   if (action === 'add') {
     const { employee_id, date, status, time_in, time_out, notes } = body;
 
-    // Calculate late minutes
+    // Get employee details (office timings + yearly leaves)
+    const { data: emp } = await supabase.from('employees')
+      .select('office_start, yearly_leaves_allowed')
+      .eq('id', employee_id).single();
+
+    // Get HR policy grace period
+    const { data: policyRows } = await supabase.from('hr_settings').select('key, value');
+    const getPol = (k, d) => { const r = (policyRows||[]).find(x=>x.key===k); return r ? parseFloat(r.value) : d; };
+    const graceMinutes = getPol('grace_minutes', 30);
+    const officeStart = emp?.office_start || '11:00';
+
+    // Calculate late minutes (based on actual time_in vs office start + grace)
     let late_minutes = 0;
-    if (status === 'present' || status === 'late') {
-      const { data: emp } = await supabase.from('employees').select('office_start, late_tolerance').eq('id', employee_id).single();
-      if (emp && time_in) {
-        const [sh, sm] = (emp.office_start || '09:00').split(':').map(Number);
-        const [th, tm] = time_in.split(':').map(Number);
-        const scheduledMins = sh * 60 + sm + (emp.late_tolerance || 15);
-        const actualMins = th * 60 + tm;
-        late_minutes = Math.max(0, actualMins - scheduledMins);
+    if ((status === 'present' || status === 'late') && time_in) {
+      const [sh, sm] = officeStart.split(':').map(Number);
+      const [th, tm] = time_in.split(':').map(Number);
+      const deadlineMins = sh * 60 + sm + graceMinutes;
+      const actualMins   = th * 60 + tm;
+      late_minutes = Math.max(0, actualMins - deadlineMins);
+    }
+
+    // Yearly leaves logic for absent
+    let leave_type = null;
+    let yearly_leaves_info = null;
+    if (status === 'absent') {
+      const yearStart = date.slice(0, 4) + '-01-01';
+      const yearEnd   = date.slice(0, 4) + '-12-31';
+      const { count: usedLeaves } = await supabase
+        .from('employee_attendance')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee_id)
+        .eq('leave_type', 'annual_leave')
+        .gte('date', yearStart)
+        .lte('date', yearEnd);
+
+      const allowed = emp?.yearly_leaves_allowed || 14;
+      const used    = usedLeaves || 0;
+      const remaining = allowed - used;
+
+      if (remaining > 0) {
+        leave_type = 'annual_leave'; // free — no salary cut
+      } else {
+        leave_type = 'unpaid';       // salary cut hogi
       }
+      yearly_leaves_info = { allowed, used, remaining: Math.max(0, remaining - 1) };
     }
 
     const { data, error } = await supabase.from('employee_attendance').upsert({
@@ -53,13 +87,14 @@ export async function POST(request) {
       time_in: time_in || null,
       time_out: time_out || null,
       late_minutes,
+      leave_type,
       notes: notes || '',
       source: 'manual',
       updated_at: new Date().toISOString(),
     }, { onConflict: 'employee_id,date' }).select().single();
 
     if (error) return NextResponse.json({ success: false, error: error.message });
-    return NextResponse.json({ success: true, record: data });
+    return NextResponse.json({ success: true, record: data, yearly_leaves_info });
   }
 
   // Bulk manual entry for a day
