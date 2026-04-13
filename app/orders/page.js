@@ -705,21 +705,27 @@ function OrderDrawer({ order, onClose, onRefresh }) {
               )}
 
               {(s === 'pending' || s === 'processing') && (
-                <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
+                <div style={{ background: card, border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
                   <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
                     placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  {/* Assign to packer */}
-                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>👤 Assign to Packer</div>
+                  {/* Assign to packer — REQUIRED */}
+                  <div style={{ fontSize: 11, color: assignedTo ? '#f59e0b' : '#ef4444', marginBottom: 5, fontWeight: 600 }}>
+                    👤 Packer Assign Karo (required)
+                  </div>
                   <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
-                    <option value="">— Select Packer (optional) —</option>
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : '#ef4444'}`, color: assignedTo ? '#fff' : '#ef4444', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                    <option value="">— Packer select karo —</option>
                     {packingStaff.map(e => (
                       <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
                     ))}
                   </select>
-                  <button onClick={confirm} disabled={loading} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
-                    Confirm Order
+                  {!assignedTo && (
+                    <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 8 }}>⚠️ Packer assign kiye baghair confirm nahi hoga</div>
+                  )}
+                  <button onClick={confirm} disabled={loading || !assignedTo}
+                    style={{ background: assignedTo ? '#3b82f6' : '#1a1a1a', color: assignedTo ? '#fff' : '#555', border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'not-allowed', width: '100%' }}>
+                    {assignedTo ? '✅ Confirm Order' : '🔒 Pehle Packer Select Karo'}
                   </button>
                 </div>
               )}
