@@ -61,6 +61,20 @@ export async function POST(request) {
     }).select().single();
 
     if (error) return NextResponse.json({ success: false, error: error.message });
+
+    // Auto-deduct from Operations cash wallet
+    await supabase.from('operations_cash_log').insert({
+      type: 'advance',
+      amount: parseFloat(amount),
+      description: `Advance — ${emp?.name || 'Employee'}`,
+      employee_id: parseInt(employee_id),
+      notes: notes || '',
+      requested_by: given_by || 'HR',
+      status: 'approved',
+      date: body.given_date || new Date().toISOString().split('T')[0],
+      reference_id: data.id,
+    });
+
     return NextResponse.json({ success: true, advance: data });
   }
 
