@@ -13,7 +13,7 @@ export async function GET(request) {
   const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
 
   const start = `${month}-01`;
-  const end   = `${month}-31`;
+  const [_y, _m] = month.split('-').map(Number); const _lastDay = new Date(_y, _m, 0).getDate(); const end = `${month}-${String(_lastDay).padStart(2, '0')}`;
 
   // 1. Packing log for the month
   const { data: logs, error } = await supabase
