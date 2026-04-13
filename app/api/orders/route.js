@@ -18,12 +18,36 @@ export async function GET(request) {
     if (action === 'items') {
       const order_id = searchParams.get('order_id');
       if (!order_id) return NextResponse.json({ items: [] });
-      const { data } = await supabase
+
+      const { data: items } = await supabase
         .from('order_items')
         .select('title, sku, quantity, unit_price, total_price, image_url')
         .eq('order_id', order_id)
         .order('id');
-      return NextResponse.json({ items: data || [] });
+
+      const rows = items || [];
+
+      // Enrich: items jinka image_url null ho, products table se SKU match karke image lao
+      const missingSkus = [...new Set(rows.filter(i => !i.image_url && i.sku).map(i => i.sku))];
+      if (missingSkus.length > 0) {
+        const { data: prods } = await supabase
+          .from('products')
+          .select('sku, image_url')
+          .in('sku', missingSkus)
+          .not('image_url', 'is', null);
+
+        const skuMap = {};
+        for (const p of prods || []) {
+          if (p.sku && p.image_url && !skuMap[p.sku]) skuMap[p.sku] = p.image_url;
+        }
+        for (const item of rows) {
+          if (!item.image_url && item.sku && skuMap[item.sku]) {
+            item.image_url = skuMap[item.sku];
+          }
+        }
+      }
+
+      return NextResponse.json({ items: rows });
     }
 
     const page = parseInt(searchParams.get('page') || '1');
