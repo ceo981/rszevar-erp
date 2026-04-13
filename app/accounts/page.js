@@ -370,7 +370,6 @@ export default function AccountsPage() {
   const TABS = [
     { id: 'overview', label: '📊 Overview' },
     { id: 'settlements', label: '✅ Settlements' },
-    { id: 'expenses', label: '💸 Expenses' },
     { id: 'vendors', label: '🏭 Vendors' },
   ];
 
@@ -378,7 +377,7 @@ export default function AccountsPage() {
     <div style={{ padding: '24px 32px', maxWidth: 1200, fontFamily: "'Söhne', 'Helvetica Neue', sans-serif" }}>
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: '#eee', letterSpacing: -0.5, marginBottom: 4 }}>Accounts</div>
-        <div style={{ fontSize: 13, color: '#555' }}>COD settlements, expenses & vendor ledger</div>
+        <div style={{ fontSize: 13, color: '#555' }}>COD settlements & vendor ledger</div>
       </div>
       <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#111', borderRadius: 10, padding: 4, width: 'fit-content', border: '1px solid #1e1e1e' }}>
         {TABS.map(t => (
@@ -395,7 +394,6 @@ export default function AccountsPage() {
       </div>
       {tab === 'overview' && <OverviewTab summary={summary} byCourier={byCourier} loading={summaryLoading} />}
       {tab === 'settlements' && <SettlementsTab />}
-      {tab === 'expenses' && <ExpensesTab />}
       {tab === 'vendors' && <VendorsTab />}
     </div>
   );
