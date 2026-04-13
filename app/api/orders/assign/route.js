@@ -24,12 +24,13 @@ export async function GET(request) {
       return NextResponse.json({ success: true, assignment: data || null });
     }
 
-    // Get all packing staff for dropdown
+    // Get all packing staff for dropdown — DB se live, hardcoded nahi
     const { data: employees } = await supabase
       .from('employees')
-      .select('id, name, role')
+      .select('id, name, role, designation')
       .eq('status', 'active')
-      .in('role', ['Packing Team', 'Operations Manager', 'Dispatcher'])
+      .in('role', ['Packing Team', 'Operations Manager', 'Dispatcher', 'Other'])
+      .order('role')
       .order('name');
 
     return NextResponse.json({ success: true, employees: employees || [] });
