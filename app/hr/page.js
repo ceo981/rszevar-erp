@@ -22,7 +22,7 @@ function AttendanceTab({ employees }) {
   const [month, setMonth] = useState(thisMonth());
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ employee_id: '', date: today(), status: 'present', time_in: '09:00', time_out: '18:00', notes: '' });
+  const [form, setForm] = useState({ employee_id: '', date: today(), status: 'present', time_in: '11:00', time_out: '21:00', notes: '' });
   const [msg, setMsg] = useState('');
 
   const load = useCallback(async () => {
@@ -48,7 +48,7 @@ function AttendanceTab({ employees }) {
     load();
   }
 
-  const statusColor = { present: '#22c55e', absent: '#ef4444', late: '#f59e0b', half_day: '#8b5cf6' };
+  const statusColor = { present: '#22c55e', absent: '#ef4444', leave: '#8b5cf6', late: '#f59e0b', half_day: '#6366f1' };
 
   return (
     <div>
@@ -68,14 +68,16 @@ function AttendanceTab({ employees }) {
           <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} style={inputStyle}>
             <option value="present">Present</option>
             <option value="absent">Absent</option>
-            <option value="late">Late</option>
-            <option value="half_day">Half Day</option>
+            <option value="leave">Leave</option>
           </select>
           <input type="time" value={form.time_in} onChange={e => setForm(f => ({ ...f, time_in: e.target.value }))} style={inputStyle} placeholder="Time In" />
           <input type="time" value={form.time_out} onChange={e => setForm(f => ({ ...f, time_out: e.target.value }))} style={inputStyle} placeholder="Time Out" />
           <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} placeholder="Notes (optional)" />
           <button type="submit" style={btnStyle}>Save</button>
         </form>
+        <p style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+          ⏰ <strong style={{ color: '#f59e0b' }}>Late auto-detect:</strong> System time_in se khud calculate karta hai. Agar grace period ke baad aaya to late_minutes automatically set honge.
+        </p>
         {msg && <div style={{ marginTop: 10, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
       </div>
 
