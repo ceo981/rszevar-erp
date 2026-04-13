@@ -45,7 +45,7 @@ export async function POST(request) {
     if (action === 'add_vendor') {
       const { name, phone, category, payment_terms, contact_person, email } = body;
       if (!name) return NextResponse.json({ success: false, error: 'Name required' });
-      const { data, error } = await supabase.from('vendors').insert({ name, phone: phone || '', category: category || 'General', type: category || 'General', payment_terms: payment_terms || '', contact_person: contact_person || '', email: email || '', created_at: new Date().toISOString() }).select().single();
+      const { data, error } = await supabase.from('vendors').insert({ name, phone: phone || '', category: category || 'General', payment_terms: payment_terms || '', contact_person: contact_person || '', email: email || '', created_at: new Date().toISOString() }).select().single();
       if (error) throw error;
       return NextResponse.json({ success: true, vendor: data });
     }
