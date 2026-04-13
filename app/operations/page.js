@@ -577,7 +577,6 @@ export default function OperationsPage({ user }) {
 
   const TABS = [
     { id: 'cash', label: '💰 Cash & Expenses' },
-    { id: 'advances', label: '💸 Advances' },
   ];
 
   return (
@@ -603,7 +602,6 @@ export default function OperationsPage({ user }) {
       </div>
 
       {tab === 'cash' && <CashTab isManager={isManager} isCEO={isCEO} />}
-      {tab === 'advances' && <AdvancesTab isCEO={isCEO} />}
     </div>
   );
 }
