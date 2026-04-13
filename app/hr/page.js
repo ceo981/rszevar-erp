@@ -19,18 +19,21 @@ function thisMonth() { return new Date().toISOString().slice(0, 7); }
 // ATTENDANCE TAB
 // ─────────────────────────────────────────────
 function AttendanceTab({ employees }) {
-  const empMap = Object.fromEntries((employees || []).map(e => [e.id, e.name]));
+  const empMap = Object.fromEntries((employees || []).map(e => [String(e.id), e.name]));
   const [month, setMonth] = useState(thisMonth());
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ employee_id: '', date: today(), status: 'present', time_in: '11:00', time_out: '21:00', notes: '' });
   const [msg, setMsg] = useState('');
+  const [editRecord, setEditRecord] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(`/api/hr/attendance?month=${month}`);
-    const d = await r.json();
-    setRecords(d.attendance || []);
+    try {
+      const r = await fetch(`/api/hr/attendance?month=${month}`);
+      const d = await r.json();
+      setRecords(d.attendance || []);
+    } catch(e) { console.error('Attendance load error:', e); }
     setLoading(false);
   }, [month]);
 
@@ -38,13 +41,30 @@ function AttendanceTab({ employees }) {
 
   async function handleAdd(e) {
     e.preventDefault();
+    if (!form.employee_id) { setMsg('❌ Employee select karo'); return; }
+    // Duplicate check
+    const exists = records.find(r => String(r.employee_id) === String(form.employee_id) && r.date === form.date);
+    if (exists) {
+      setMsg(`⚠️ ${empMap[String(form.employee_id)] || 'Is employee'} ki ${form.date} ki entry pehle se hai — edit karo`);
+      setTimeout(() => setMsg(''), 4000);
+      return;
+    }
     const r = await fetch('/api/hr/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', ...form }) });
     const d = await r.json();
-    if (d.success) { setMsg('✅ Saved!'); load(); } else setMsg('❌ ' + d.error);
-    setTimeout(() => setMsg(''), 3000);
+    if (d.success) { setMsg('✅ Saved!'); load(); } else setMsg('❌ ' + (d.error || 'Error'));
+    setTimeout(() => setMsg(''), 4000);
+  }
+
+  async function handleEdit(e) {
+    e.preventDefault();
+    const r = await fetch('/api/hr/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update', ...editRecord }) });
+    const d = await r.json();
+    if (d.success) { setMsg('✅ Updated!'); setEditRecord(null); load(); } else setMsg('❌ ' + (d.error || 'Error'));
+    setTimeout(() => setMsg(''), 4000);
   }
 
   async function handleDelete(id) {
+    if (!window.confirm('Delete karo?')) return;
     await fetch('/api/hr/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) });
     load();
   }
@@ -76,11 +96,52 @@ function AttendanceTab({ employees }) {
           <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} placeholder="Notes (optional)" />
           <button type="submit" style={btnStyle}>Save</button>
         </form>
-        <p style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
-          ⏰ <strong style={{ color: '#f59e0b' }}>Late auto-detect:</strong> System time_in se khud calculate karta hai. Agar grace period ke baad aaya to late_minutes automatically set honge.
-        </p>
+
         {msg && <div style={{ marginTop: 10, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
       </div>
+
+      {/* Edit Modal */}
+      {editRecord && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1e293b', borderRadius: 12, padding: 24, width: 480, border: '1px solid #334155' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ color: '#c9a96e', margin: 0 }}>Edit Attendance</h3>
+              <button onClick={() => setEditRecord(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <form onSubmit={handleEdit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Employee</div>
+                <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{empMap[String(editRecord.employee_id)] || '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Date</div>
+                <div style={{ color: '#e2e8f0' }}>{editRecord.date}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Status</div>
+                <select value={editRecord.status} onChange={e => setEditRecord(r => ({...r, status: e.target.value}))} style={inputStyle}>
+                  <option value="present">Present</option>
+                  <option value="absent">Absent</option>
+                  <option value="leave">Leave</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Time In</div>
+                <input type="time" value={editRecord.time_in?.slice(0,5) || ''} onChange={e => setEditRecord(r => ({...r, time_in: e.target.value}))} style={inputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Time Out</div>
+                <input type="time" value={editRecord.time_out?.slice(0,5) || ''} onChange={e => setEditRecord(r => ({...r, time_out: e.target.value}))} style={inputStyle} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Notes</div>
+                <input value={editRecord.notes || ''} onChange={e => setEditRecord(r => ({...r, notes: e.target.value}))} style={inputStyle} placeholder="Optional" />
+              </div>
+              <button type="submit" style={btnStyle}>💾 Save Changes</button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : (
         <div style={{ overflowX: 'auto' }}>
@@ -105,8 +166,9 @@ function AttendanceTab({ employees }) {
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.time_in || '-'}</td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.time_out || '-'}</td>
                   <td style={{ padding: '8px 12px', color: r.late_minutes > 0 ? '#f59e0b' : '#94a3b8' }}>{r.late_minutes || 0} min</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>
+                  <td style={{ padding: '8px 12px', display: 'flex', gap: 8 }}>
+                    <button onClick={() => setEditRecord({ ...r })} style={{ background: 'none', border: 'none', color: '#c9a96e', cursor: 'pointer' }} title="Edit">✏️</button>
+                    <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Delete">🗑️</button>
                   </td>
                 </tr>
               ))}
