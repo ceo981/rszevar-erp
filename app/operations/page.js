@@ -2,8 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const EXPENSE_CATEGORIES = [
-  'Khana / Pani', 'Packaging', 'Accessories', 'Saaf Safai',
-  'Transport', 'Utilities', 'Miscellaneous',
+  'Lunch', 'Water', 'Accessories', 'Utilities', 'Other',
 ];
 
 function fmt(n) {
@@ -56,7 +55,7 @@ function CashTab({ isManager, isCEO }) {
   const [showCashModal, setShowCashModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [cashForm, setCashForm] = useState({ amount: '', notes: '' });
-  const [expForm, setExpForm] = useState({ description: '', amount: '', category: 'Khana / Pani', date: today(), notes: '' });
+  const [expForm, setExpForm] = useState({ description: '', amount: '', category: 'Lunch', date: today(), notes: '', bill_file: null, bill_preview: null });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -117,17 +116,34 @@ function CashTab({ isManager, isCEO }) {
   async function addExpense() {
     if (!expForm.description || !expForm.amount) { showMsg('❌ Description aur amount required'); return; }
     setSaving(true);
+
+    let bill_url = null;
+    if (expForm.bill_file) {
+      const formData = new FormData();
+      formData.append('file', expForm.bill_file);
+      formData.append('bucket', 'expense-bills');
+      // Upload to Supabase storage via API
+      const uploadRes = await fetch('/api/operations?action=upload_bill', {
+        method: 'POST',
+        body: formData,
+      }).catch(() => null);
+      if (uploadRes?.ok) {
+        const uploadData = await uploadRes.json();
+        bill_url = uploadData.url || null;
+      }
+    }
+
     const r = await fetch('/api/operations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add_expense', ...expForm, added_by: 'Sharjeel' }),
+      body: JSON.stringify({ action: 'add_expense', ...expForm, bill_url, bill_file: undefined, bill_preview: undefined, added_by: 'Sharjeel' }),
     });
     const d = await r.json();
     setSaving(false);
     if (d.success) {
       showMsg('✅ Expense add ho gaya!');
       setShowExpenseModal(false);
-      setExpForm({ description: '', amount: '', category: 'Khana / Pani', date: today(), notes: '' });
+      setExpForm({ description: '', amount: '', category: 'Lunch', date: today(), notes: '', bill_file: null, bill_preview: null });
       load();
     } else showMsg('❌ ' + d.error);
   }
@@ -241,7 +257,7 @@ function CashTab({ isManager, isCEO }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-                {['Date', 'Type', 'Description', 'Category', 'Amount', ''].map(h => (
+                {['Date', 'Type', 'Description', 'Category', 'Amount', 'Bill', ''].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400 }}>{h}</th>
                 ))}
               </tr>
@@ -264,6 +280,12 @@ function CashTab({ isManager, isCEO }) {
                     </td>
                     <td style={{ ...tdStyle, color: isCashIn ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
                       {isCashIn ? '+' : '-'}{fmt(l.amount)}
+                    </td>
+                    <td style={tdStyle}>
+                      {l.bill_url
+                        ? <a href={l.bill_url} target="_blank" rel="noopener noreferrer" style={{ color: '#c9a96e', fontSize: 18, textDecoration: 'none' }} title="Bill dekho">📎</a>
+                        : <span style={{ color: '#333', fontSize: 12 }}>—</span>
+                      }
                     </td>
                     <td style={tdStyle}>
                       {isCEO && (
@@ -336,6 +358,40 @@ function CashTab({ isManager, isCEO }) {
               <label style={labelStyle}>Notes (optional)</label>
               <input placeholder="Koi extra detail..." value={expForm.notes}
                 onChange={e => setExpForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Bill / Receipt (optional)</label>
+              <div style={{ border: '1px dashed #2a2a2a', borderRadius: 8, padding: 14, textAlign: 'center', background: '#1a1a1a', cursor: 'pointer', position: 'relative' }}
+                onClick={() => document.getElementById('bill-upload').click()}>
+                <input id="bill-upload" type="file" accept="image/*,.pdf"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+                    setExpForm(f => ({ ...f, bill_file: file, bill_preview: preview }));
+                  }} />
+                {expForm.bill_preview ? (
+                  <div>
+                    <img src={expForm.bill_preview} alt="Bill" style={{ maxHeight: 120, maxWidth: '100%', borderRadius: 6, marginBottom: 8 }} />
+                    <div style={{ fontSize: 11, color: '#22c55e' }}>✅ {expForm.bill_file?.name}</div>
+                  </div>
+                ) : expForm.bill_file ? (
+                  <div style={{ fontSize: 12, color: '#22c55e' }}>✅ {expForm.bill_file?.name}</div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>📎</div>
+                    <div style={{ fontSize: 12, color: '#555' }}>Click karke bill upload karo</div>
+                    <div style={{ fontSize: 10, color: '#333', marginTop: 4 }}>Image ya PDF — optional</div>
+                  </div>
+                )}
+              </div>
+              {expForm.bill_file && (
+                <button onClick={() => setExpForm(f => ({ ...f, bill_file: null, bill_preview: null }))}
+                  style={{ marginTop: 6, background: 'none', border: 'none', color: '#555', fontSize: 11, cursor: 'pointer' }}>
+                  ✕ Remove
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={addExpense} disabled={saving}
