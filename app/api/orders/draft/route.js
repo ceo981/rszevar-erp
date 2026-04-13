@@ -57,8 +57,8 @@ export async function POST(request) {
           city: customer_city || 'Karachi',
           country: 'Pakistan',
         },
-        note: `Source: ${source || 'WhatsApp'} | ${note || 'ERP se create kiya'}`,
-        tags: `draft,${source || 'whatsapp'},erp-order`,
+        note: note || '',
+        tags: source || 'WhatsApp',
       },
     });
 
@@ -80,7 +80,7 @@ export async function POST(request) {
       payment_method:    'COD',
       status:            'pending',
       payment_status:    'unpaid',
-      tags:              ['draft', source || 'whatsapp'],
+      tags:              [source || 'WhatsApp'],
       is_wholesale:      false,
       is_international:  false,
       is_walkin:         false,
