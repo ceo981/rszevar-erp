@@ -54,17 +54,24 @@ export async function POST(request) {
         .limit(1)
         .single();
 
-      // Get order items count
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('line_items')
-        .eq('id', order_id)
-        .single();
+      // Get actual item count from order_items table
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('quantity')
+        .eq('order_id', order_id);
 
-      const lineItems = orderData?.line_items || [];
-      const itemCount = Array.isArray(lineItems)
-        ? lineItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0)
-        : 0;
+      // Fallback: shopify_raw se bhi try karo agar order_items empty ho
+      let itemCount = (orderItems || []).reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+      if (itemCount === 0) {
+        const { data: orderRaw } = await supabase
+          .from('orders')
+          .select('shopify_raw')
+          .eq('id', order_id)
+          .single();
+        const lineItems = orderRaw?.shopify_raw?.line_items || [];
+        itemCount = lineItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+      }
+      if (itemCount === 0) itemCount = 1; // minimum 1
 
       // Update assignment status
       if (assignment) {
