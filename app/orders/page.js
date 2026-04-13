@@ -751,8 +751,29 @@ export default function OrdersPage() {
     }
   };
 
+  const [fixingImages, setFixingImages] = useState(false);
+
+  const fixImages = async () => {
+    setFixingImages(true);
+    showMsg('info', '⟳ Order items ki images fix ho rahi hain...');
+    try {
+      const r = await fetch('/api/orders/fix-images', { method: 'POST' });
+      const d = await r.json();
+      if (d.success) {
+        showMsg('success', d.message || `✓ Images fixed: ${d.fixed}`);
+        await load();
+      } else {
+        showMsg('error', `✗ ${d.error || 'Image fix failed'}`);
+      }
+    } catch (e) {
+      showMsg('error', `✗ ${e.message}`);
+    } finally {
+      setFixingImages(false);
+    }
+  };
+
   const c = stats || {};
-  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing;
+  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing || fixingImages;
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
@@ -894,6 +915,29 @@ export default function OrdersPage() {
           title="Reconcile Leopards COD payments (auto-mark paid orders)"
         >
           {leopardsPaymentsSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Checking…</>) : (<>💰 Leopards Payments</>)}
+        </button>
+
+        <button
+          onClick={fixImages}
+          disabled={anySyncing}
+          style={{
+            background: fixingImages ? '#1a1a1a' : 'rgba(251, 146, 60, 0.15)',
+            border: `1px solid ${fixingImages ? border : '#fb923c'}`,
+            color: fixingImages ? '#888' : '#fb923c',
+            borderRadius: 8,
+            padding: '9px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: anySyncing ? 'not-allowed' : 'pointer',
+            opacity: (anySyncing && !fixingImages) ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontFamily: 'inherit',
+          }}
+          title="Order items mein missing product images fix karo (SKU match)"
+        >
+          {fixingImages ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Fixing…</>) : (<>🖼️ Fix Images</>)}
         </button>
 
         <style jsx>{`
