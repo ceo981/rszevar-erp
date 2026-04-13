@@ -42,9 +42,13 @@ export async function POST(request) {
       const s = (settings || []).find(s => s.key === key);
       return s ? parseFloat(s.value) : def;
     };
-    const workingDaysPerMonth = getSetting('working_days_per_month', 26);
-    const overtimeMultiplier = getSetting('overtime_rate_multiplier', 1.5);
-    const lateDeductPerMinute = getSetting('late_deduction_per_minute', 1);
+    const workingDaysPerMonth  = getSetting('working_days_per_month', 26);
+    const overtimeMultiplier   = getSetting('overtime_rate_multiplier', 1.5);
+    const lateDeductPerMinute  = getSetting('late_deduction_per_minute', 1);
+    const maxLatesAllowed      = getSetting('max_lates_allowed', 6);
+    const maxHalfDaysAllowed   = getSetting('max_half_days_allowed', 3);
+    const timeBonusAmount      = getSetting('time_bonus_amount', 500);
+    const leaderboardBonus     = getSetting('leaderboard_bonus', 3000);
 
     // 3. Get attendance summary
     const start = `${month}-01`;
@@ -95,10 +99,36 @@ export async function POST(request) {
     const halfDayDeduction = Math.round(halfDay * perDayRate * 0.5);
     const unpaidLeaveDeduction = Math.round(unpaidLeaveDays * perDayRate);
 
+    // Time Bonus: agar late_days <= max_lates_allowed to bonus milega
+    const earnedTimeBonus = late <= maxLatesAllowed ? timeBonusAmount : 0;
+
+    // Leaderboard Bonus: check if this employee is top packer this month
+    let earnedLeaderboardBonus = 0;
+    try {
+      const { data: packingLogs } = await supabase
+        .from('packing_log')
+        .select('employee_id, items_packed')
+        .gte('completed_at', `${month}-01`)
+        .lte('completed_at', `${month}-31T23:59:59`);
+
+      if (packingLogs?.length > 0) {
+        const packMap = {};
+        for (const log of packingLogs) {
+          packMap[log.employee_id] = (packMap[log.employee_id] || 0) + (log.items_packed || 0);
+        }
+        const sorted = Object.entries(packMap).sort((a, b) => b[1] - a[1]);
+        if (sorted[0] && Number(sorted[0][0]) === Number(employee_id) && sorted[0][1] > 0) {
+          earnedLeaderboardBonus = leaderboardBonus;
+        }
+      }
+    } catch {}
+
+    const totalBonus = Number(body.bonus || 0) + earnedTimeBonus + earnedLeaderboardBonus;
+
     const netSalary = Math.max(0,
       baseSalary
       + overtimePay
-      + Number(body.bonus || 0)
+      + totalBonus
       - lateDeduction
       - absentDeduction
       - halfDayDeduction
@@ -115,9 +145,14 @@ export async function POST(request) {
       absent_days: absent,
       late_days: late,
       half_days: halfDay,
+      max_lates_allowed: maxLatesAllowed,
+      max_half_days_allowed: maxHalfDaysAllowed,
       overtime_hours: totalOvertimeHours,
       overtime_pay: overtimePay,
-      bonus: Number(body.bonus || 0),
+      bonus: totalBonus,
+      manual_bonus: Number(body.bonus || 0),
+      time_bonus: earnedTimeBonus,
+      leaderboard_bonus: earnedLeaderboardBonus,
       late_deduction: lateDeduction,
       absent_deduction: absentDeduction + halfDayDeduction,
       advance_deduction: advanceDeduction,
