@@ -69,7 +69,8 @@ function EmployeeModal({ emp, onClose, onSave }) {
   const [form, setForm] = useState(emp || {
     name: '', role: ROLES[6], phone: '', salary: '', base_salary: '',
     advance_limit: '', designation: '', cnic: '',
-    office_start: '09:00', office_end: '18:00', late_tolerance: 15,
+    office_start: '11:00', office_end: '21:00',
+    time_bonus_amount: '', yearly_leaves_allowed: '14',
     notes: '', join_date: new Date().toISOString().split('T')[0], status: 'active'
   });
   const [saving, setSaving] = useState(false);
@@ -80,6 +81,19 @@ function EmployeeModal({ emp, onClose, onSave }) {
     const sal = parseFloat(val) || 0;
     const advLimit = Math.round(sal * 0.3);
     setForm(f => ({ ...f, salary: val, base_salary: val, advance_limit: advLimit }));
+  };
+
+  // Advance limit cannot exceed 30%
+  const handleAdvanceChange = (val) => {
+    const sal = parseFloat(form.salary || 0);
+    const maxAdv = Math.round(sal * 0.3);
+    const entered = parseFloat(val) || 0;
+    if (sal > 0 && entered > maxAdv) {
+      setMsg(`⚠️ Advance limit ${sal} ki 30% se zyada nahi ho sakti (Max: Rs ${maxAdv.toLocaleString()})`);
+      return;
+    }
+    setMsg('');
+    setForm(f => ({ ...f, advance_limit: val }));
   };
 
   const save = async () => {
@@ -154,27 +168,40 @@ function EmployeeModal({ emp, onClose, onSave }) {
             <input
               type="number"
               value={form.advance_limit || ''}
-              onChange={e => setForm(f => ({ ...f, advance_limit: e.target.value }))}
+              onChange={e => handleAdvanceChange(e.target.value)}
               placeholder="Auto calculated"
               style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
             />
           </div>
 
           {sectionTitle('OFFICE TIMINGS')}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Start Time</div>
-              <input type="time" value={form.office_start || '09:00'} onChange={e => setForm(f => ({...f, office_start: e.target.value}))}
+              <input type="time" value={form.office_start || '11:00'} onChange={e => setForm(f => ({...f, office_start: e.target.value}))}
                 style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>End Time</div>
-              <input type="time" value={form.office_end || '18:00'} onChange={e => setForm(f => ({...f, office_end: e.target.value}))}
+              <input type="time" value={form.office_end || '21:00'} onChange={e => setForm(f => ({...f, office_end: e.target.value}))}
                 style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Late Grace (min)</div>
-              <input type="number" value={form.late_tolerance || 15} onChange={e => setForm(f => ({...f, late_tolerance: e.target.value}))}
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Time Bonus (Rs)
+                <span style={{ color: '#444', marginLeft: 6 }}>— agar month mein allowed late limit ke andar raha</span>
+              </div>
+              <input type="number" value={form.time_bonus_amount || ''} onChange={e => setForm(f => ({...f, time_bonus_amount: e.target.value}))}
+                placeholder="e.g. 500"
+                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Yearly Leaves Allowed
+                <span style={{ color: '#444', marginLeft: 6 }}>— free leaves, baad mein salary cut</span>
+              </div>
+              <input type="number" value={form.yearly_leaves_allowed || '14'} onChange={e => setForm(f => ({...f, yearly_leaves_allowed: e.target.value}))}
+                placeholder="e.g. 14"
                 style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
