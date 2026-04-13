@@ -267,7 +267,9 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const [packingStaff, setPackingStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState('');
   const [currentAssignment, setCurrentAssignment] = useState(null);
-  const [orderItems, setOrderItems] = useState([]);
+  const [orderItems, setOrderItems] = useState(
+    (order.order_items || []).sort((a, b) => (a.id || 0) - (b.id || 0))
+  );
 
   useEffect(() => {
     if (tab === 'log') {
@@ -278,10 +280,11 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   }, [tab, order.id]);
 
   useEffect(() => {
-    // Load order items
+    // Refresh items from DB (catches images fixed after page load)
     fetch(`/api/orders?action=items&order_id=${order.id}`)
       .then(r => r.json())
-      .then(d => setOrderItems(d.items || []));
+      .then(d => { if (d.items?.length > 0) setOrderItems(d.items); })
+      .catch(() => {});
   }, [order.id]);
 
   useEffect(() => {
