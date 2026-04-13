@@ -178,6 +178,7 @@ function VendorsTab() {
   const [tForm, setTForm] = useState({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [modalMsg, setModalMsg] = useState('');
 
   const load = useCallback(async () => {
     const r = await fetch('/api/accounts/vendors');
@@ -195,25 +196,48 @@ function VendorsTab() {
   useEffect(() => { if (selected) loadV(selected); }, [selected, loadV]);
 
   function sm(m) { setMsg(m); setTimeout(() => setMsg(''), 4000); }
+  function mm(m) { setModalMsg(m); setTimeout(() => setModalMsg(''), 4000); }
 
   async function addVendor() {
-    if (!vForm.name) return;
+    if (!vForm.name) { mm('❌ Vendor name required hai'); return; }
     setSaving(true);
-    const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_vendor', ...vForm }) });
-    const d = await r.json();
+    setModalMsg('');
+    try {
+      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_vendor', ...vForm }) });
+      const d = await r.json();
+      if (d.success) {
+        setShowAdd(false);
+        setVForm({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' });
+        sm('✅ Vendor add ho gaya!');
+        load();
+      } else {
+        mm('❌ ' + (d.error || 'Error hua'));
+      }
+    } catch (e) {
+      mm('❌ Network error: ' + e.message);
+    }
     setSaving(false);
-    if (d.success) { sm('✅ Vendor add ho gaya!'); setShowAdd(false); setVForm({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' }); load(); }
-    else sm('❌ ' + d.error);
   }
 
   async function addTxn(type) {
-    if (!tForm.amount) return;
+    if (!tForm.amount) { mm('❌ Amount required hai'); return; }
     setSaving(true);
-    const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_transaction', vendor_id: selected, payment_type: type, ...tForm }) });
-    const d = await r.json();
+    setModalMsg('');
+    try {
+      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_transaction', vendor_id: selected, payment_type: type, ...tForm }) });
+      const d = await r.json();
+      if (d.success) {
+        setShowTxn(null);
+        setTForm({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' });
+        sm('✅ Entry add ho gayi!');
+        load(); loadV(selected);
+      } else {
+        mm('❌ ' + (d.error || 'Error hua'));
+      }
+    } catch (e) {
+      mm('❌ Network error: ' + e.message);
+    }
     setSaving(false);
-    if (d.success) { sm('✅ Entry add ho gayi!'); setShowTxn(null); setTForm({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' }); load(); loadV(selected); }
-    else sm('❌ ' + d.error);
   }
 
   async function delTxn(id) {
@@ -315,6 +339,7 @@ function VendorsTab() {
               <div key={k}><label style={S.label}>{l}</label><input placeholder={p} value={vForm[k]||''} onChange={e=>setVForm(f=>({...f,[k]:e.target.value}))} style={S.input}/></div>
             ))}
             <div><label style={S.label}>Category</label><select value={vForm.category} onChange={e=>setVForm(f=>({...f,category:e.target.value}))} style={S.input}>{['General','Jewelry','Packaging','Accessories','Raw Material','Other'].map(c=><option key={c}>{c}</option>)}</select></div>
+            {modalMsg && <div style={{padding:'10px 14px',borderRadius:8,background:modalMsg.startsWith('✅')?'#1a2a1a':'#2a1a1a',color:modalMsg.startsWith('✅')?'#22c55e':'#ef4444',fontSize:13}}>{modalMsg}</div>}
             <button onClick={addVendor} disabled={saving} style={{...S.btn,background:'#c9a96e',color:'#000',fontWeight:700}}>{saving?'Saving...':'Add Vendor'}</button>
           </div>
         </Modal>
@@ -329,6 +354,7 @@ function VendorsTab() {
             </div>
             {showTxn==='purchase'&&<><div><label style={S.label}>Item Description</label><input placeholder="Kya maal aya..." value={tForm.item_description} onChange={e=>setTForm(f=>({...f,item_description:e.target.value}))} style={S.input}/></div><div><label style={S.label}>Payment Due Date</label><input type="date" value={tForm.due_date} onChange={e=>setTForm(f=>({...f,due_date:e.target.value}))} style={S.input}/></div></>}
             <div><label style={S.label}>Reference / Note</label><input placeholder="Invoice no..." value={tForm.note} onChange={e=>setTForm(f=>({...f,note:e.target.value}))} style={S.input}/></div>
+            {modalMsg && <div style={{padding:'10px 14px',borderRadius:8,background:modalMsg.startsWith('✅')?'#1a2a1a':'#2a1a1a',color:modalMsg.startsWith('✅')?'#22c55e':'#ef4444',fontSize:13}}>{modalMsg}</div>}
             <button onClick={()=>addTxn(showTxn)} disabled={saving} style={{...S.btn,background:showTxn==='purchase'?'#1a2a1a':'#2a1a1a',borderColor:showTxn==='purchase'?'#22c55e44':'#ef444444',color:showTxn==='purchase'?'#22c55e':'#ef4444'}}>{saving?'Saving...':showTxn==='purchase'?'Save Maal Entry':'Save Payment'}</button>
           </div>
         </Modal>
