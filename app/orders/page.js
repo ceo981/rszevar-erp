@@ -93,13 +93,7 @@ function DraftOrderModal({ onClose, onCreated }) {
       <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 540, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: '#a855f7' }}>+ Draft Order (WhatsApp)</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <a href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank" rel="noopener noreferrer"
-                title="Shopify mein kholein" style={{ background: 'none', border: `1px solid #333`, color: '#555', fontSize: 12, cursor: 'pointer', padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
-                🔗 Shopify
-              </a>
-              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
-            </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -586,7 +580,15 @@ function OrderDrawer({ order, onClose, onRefresh }) {
               ))}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {order.shopify_order_id && (
+              <a href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank" rel="noopener noreferrer"
+                style={{ background: 'none', border: `1px solid #333`, color: '#555', fontSize: 12, padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
+                🔗 Shopify
+              </a>
+            )}
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
         </div>
 
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
