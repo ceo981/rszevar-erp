@@ -22,6 +22,11 @@ export async function POST(request) {
 
   if (action === 'add') {
     const sal = parseFloat(fields.salary || fields.base_salary || 0);
+    const maxAdv = Math.round(sal * 0.3);
+    const reqAdv = parseFloat(fields.advance_limit || maxAdv);
+    if (reqAdv > maxAdv) {
+      return NextResponse.json({ success: false, error: `Advance limit salary ki 30% se zyada nahi ho sakti. Max: Rs ${maxAdv}` }, { status: 400 });
+    }
     const { data, error } = await supabase.from('employees').insert({
       name: fields.name,
       role: fields.role,
@@ -31,9 +36,10 @@ export async function POST(request) {
       advance_limit: parseFloat(fields.advance_limit || Math.round(sal * 0.3)),
       designation: fields.designation || '',
       cnic: fields.cnic || '',
-      office_start: fields.office_start || '09:00:00',
-      office_end: fields.office_end || '18:00:00',
-      late_tolerance: parseInt(fields.late_tolerance || 15),
+      office_start: fields.office_start || '11:00:00',
+      office_end: fields.office_end || '21:00:00',
+      time_bonus_amount: parseInt(fields.time_bonus_amount || 0),
+      yearly_leaves_allowed: parseInt(fields.yearly_leaves_allowed || 14),
       join_date: fields.join_date || new Date().toISOString().split('T')[0],
       status: 'active',
       notes: fields.notes || '',
@@ -55,9 +61,10 @@ export async function POST(request) {
       advance_limit: parseFloat(fields.advance_limit || Math.round(sal * 0.3)),
       designation: fields.designation || '',
       cnic: fields.cnic || '',
-      office_start: fields.office_start || '09:00:00',
-      office_end: fields.office_end || '18:00:00',
-      late_tolerance: parseInt(fields.late_tolerance || 15),
+      office_start: fields.office_start || '11:00:00',
+      office_end: fields.office_end || '21:00:00',
+      time_bonus_amount: parseInt(fields.time_bonus_amount || 0),
+      yearly_leaves_allowed: parseInt(fields.yearly_leaves_allowed || 14),
       status: fields.status,
       notes: fields.notes,
       updated_at: new Date().toISOString(),
