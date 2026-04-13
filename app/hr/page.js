@@ -2,11 +2,13 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const TABS = [
-  { id: 'attendance', label: '📅 Attendance', },
-  { id: 'advances',   label: '💸 Advances',   },
-  { id: 'leaves',     label: '🌴 Leaves',      },
-  { id: 'overtime',   label: '⏰ Overtime',     },
-  { id: 'salary',     label: '💰 Salary',       },
+  { id: 'attendance',  label: '📅 Attendance',  },
+  { id: 'advances',    label: '💸 Advances',    },
+  { id: 'leaves',      label: '🌴 Leaves',       },
+  { id: 'overtime',    label: '⏰ Overtime',      },
+  { id: 'salary',      label: '💰 Salary',        },
+  { id: 'leaderboard', label: '🏆 Leaderboard',  },
+  { id: 'policy',      label: '⚙️ HR Policy',    },
 ];
 
 function fmt(n) { return Number(n || 0).toLocaleString(); }
@@ -599,6 +601,171 @@ function SalaryTab({ employees }) {
   );
 }
 
+
+// ─────────────────────────────────────────────
+// LEADERBOARD TAB
+// ─────────────────────────────────────────────
+function LeaderboardTab() {
+  const [month, setMonth] = useState(thisMonth());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/hr/leaderboard?month=${month}`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setData(d); })
+      .finally(() => setLoading(false));
+  }, [month]);
+
+  const medals = ['🥇', '🥈', '🥉'];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
+        <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
+        {data && <span style={{ color: '#94a3b8', fontSize: 14 }}>Leaderboard Bonus: <strong style={{ color: '#c9a96e' }}>Rs. {Number(data.bonus_amount).toLocaleString()}</strong></span>}
+      </div>
+
+      {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : !data?.leaderboard?.length ? (
+        <div style={{ color: '#475569', textAlign: 'center', padding: 40 }}>Is month mein koi packing log nahi hai</div>
+      ) : (
+        <div>
+          {/* Winner card */}
+          {data.winner && (
+            <div style={{ background: 'linear-gradient(135deg, #c9a96e22, #1e293b)', border: '1px solid #c9a96e44', borderRadius: 12, padding: 20, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 48 }}>🏆</div>
+              <div>
+                <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Is Month Ka Winner</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#c9a96e' }}>{data.winner.name}</div>
+                <div style={{ color: '#94a3b8', fontSize: 14 }}>{data.winner.total_items} items packed · {data.winner.total_orders} orders</div>
+                <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600 }}>+ Rs. {Number(data.bonus_amount).toLocaleString()} Bonus (salary mein auto-add)</div>
+              </div>
+            </div>
+          )}
+
+          {/* Full leaderboard */}
+          <div style={{ background: '#1e293b', borderRadius: 10, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155' }}>
+                  {['Rank', 'Employee', 'Items Packed', 'Orders', 'Bonus'].map(h => (
+                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.leaderboard.map((row, i) => (
+                  <tr key={row.employee_id} style={{ borderBottom: '1px solid #1e293b', background: i === 0 ? '#c9a96e11' : 'transparent' }}>
+                    <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ fontWeight: 600, color: i === 0 ? '#c9a96e' : '#e2e8f0' }}>{row.name}</div>
+                      <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
+                    </td>
+                    <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>{row.total_items}</td>
+                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
+                    <td style={{ padding: '12px 16px', color: i === 0 ? '#22c55e' : '#475569', fontWeight: i === 0 ? 700 : 400 }}>
+                      {i === 0 ? `Rs. ${Number(data.bonus_amount).toLocaleString()} 🏆` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Winner ka bonus salary calculate karte waqt automatically add ho jayega</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// HR POLICY TAB
+// ─────────────────────────────────────────────
+function PolicyTab() {
+  const [policy, setPolicy] = useState({
+    office_start_time: '11:00',
+    grace_minutes: '30',
+    max_lates_allowed: '6',
+    max_half_days_allowed: '3',
+    time_bonus_amount: '500',
+    leaderboard_bonus: '3000',
+    working_days_per_month: '26',
+    overtime_rate_multiplier: '1.5',
+    late_deduction_per_minute: '1',
+  });
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    fetch('/api/hr/policy')
+      .then(r => r.json())
+      .then(d => { if (d.success) setPolicy(d.policy); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    const r = await fetch('/api/hr/policy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(policy) });
+    const d = await r.json();
+    setMsg(d.success ? '✅ Policy save ho gayi!' : '❌ ' + d.error);
+    setTimeout(() => setMsg(''), 3000);
+  }
+
+  const Field = ({ label, k, suffix = '', type = 'number', help = '' }) => (
+    <div style={{ background: '#0f172a', borderRadius: 8, padding: 14 }}>
+      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type={type}
+          value={policy[k] || ''}
+          onChange={e => setPolicy(p => ({ ...p, [k]: e.target.value }))}
+          style={{ ...inputStyle, width: 100, textAlign: 'center', fontSize: 16, fontWeight: 700 }}
+        />
+        {suffix && <span style={{ color: '#475569', fontSize: 13 }}>{suffix}</span>}
+      </div>
+      {help && <div style={{ color: '#334155', fontSize: 11, marginTop: 4 }}>{help}</div>}
+    </div>
+  );
+
+  if (loading) return <div style={{ color: '#94a3b8' }}>Loading...</div>;
+
+  return (
+    <div>
+      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Office Timing & Late Policy</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <Field label="Office Start Time" k="office_start_time" type="time" help="Yeh time ke baad late count hoga" />
+        <Field label="Grace Period" k="grace_minutes" suffix="minutes" help="Kitne minutes baad aana late count hoga" />
+        <Field label="Max Lates Allowed" k="max_lates_allowed" suffix="per month" help="Is se zyada late = time bonus nahi milega" />
+        <Field label="Max Half Days Allowed" k="max_half_days_allowed" suffix="per month" />
+        <Field label="Working Days / Month" k="working_days_per_month" suffix="days" />
+      </div>
+
+      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Bonuses</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <Field label="Time Bonus Amount" k="time_bonus_amount" suffix="Rs" help={`Agar late <= max_lates_allowed to milega`} />
+        <Field label="Leaderboard Bonus" k="leaderboard_bonus" suffix="Rs" help="Month ka top packer ko milega" />
+      </div>
+
+      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Deductions & Overtime</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <Field label="Late Deduction" k="late_deduction_per_minute" suffix="Rs/minute" />
+        <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour" />
+      </div>
+
+      <div style={{ background: '#1e293b', borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 13, color: '#94a3b8' }}>
+        <strong style={{ color: '#c9a96e' }}>Late ka Rule:</strong> Agar employee office start time se {policy.grace_minutes} minutes baad aaye ({policy.office_start_time} + {policy.grace_minutes}min = {(() => {
+          const [h, m] = (policy.office_start_time || '11:00').split(':').map(Number);
+          const total = h * 60 + m + Number(policy.grace_minutes || 30);
+          return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+        })()}) to late count hoga. Mahine mein {policy.max_lates_allowed} late tak time bonus milega.
+      </div>
+
+      {msg && <div style={{ marginBottom: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
+      <button onClick={save} style={btnStyle}>💾 Save Policy</button>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────
 // MAIN HR PAGE
 // ─────────────────────────────────────────────
@@ -637,7 +804,9 @@ export default function HRPage() {
         {activeTab === 'advances'   && <AdvancesTab   employees={employees} />}
         {activeTab === 'leaves'     && <LeavesTab     employees={employees} />}
         {activeTab === 'overtime'   && <OvertimeTab   employees={employees} />}
-        {activeTab === 'salary'     && <SalaryTab     employees={employees} />}
+        {activeTab === 'salary'      && <SalaryTab     employees={employees} />}
+        {activeTab === 'leaderboard' && <LeaderboardTab />}
+        {activeTab === 'policy'      && <PolicyTab />}
       </div>
     </div>
   );
