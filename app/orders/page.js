@@ -267,9 +267,22 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const [packingStaff, setPackingStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState('');
   const [currentAssignment, setCurrentAssignment] = useState(null);
-  const [orderItems, setOrderItems] = useState(
-    (order.order_items || []).sort((a, b) => (a.id || 0) - (b.id || 0))
-  );
+  // Items: DB order_items agar hain, warna shopify_raw se seedha
+  const buildItems = (ord) => {
+    if (ord.order_items?.length > 0) {
+      return ord.order_items.sort((a, b) => (a.id || 0) - (b.id || 0));
+    }
+    // Fallback: shopify_raw.line_items (purane orders ke liye)
+    return (ord.shopify_raw?.line_items || []).map(item => ({
+      title: item.title + (item.variant_title ? ` - ${item.variant_title}` : ''),
+      sku: item.sku || null,
+      quantity: item.quantity,
+      unit_price: parseFloat(item.price) || 0,
+      total_price: (parseFloat(item.price) || 0) * item.quantity,
+      image_url: item.image?.src || null,
+    }));
+  };
+  const [orderItems, setOrderItems] = useState(() => buildItems(order));
 
   useEffect(() => {
     if (tab === 'log') {
@@ -280,7 +293,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   }, [tab, order.id]);
 
   useEffect(() => {
-    // Refresh items from DB (catches images fixed after page load)
+    // DB se fresh items fetch (images updated ho sakti hain)
     fetch(`/api/orders?action=items&order_id=${order.id}`)
       .then(r => r.json())
       .then(d => { if (d.items?.length > 0) setOrderItems(d.items); })
@@ -754,29 +767,8 @@ export default function OrdersPage() {
     }
   };
 
-  const [fixingImages, setFixingImages] = useState(false);
-
-  const fixImages = async () => {
-    setFixingImages(true);
-    showMsg('info', '⟳ Order items ki images fix ho rahi hain...');
-    try {
-      const r = await fetch('/api/orders/fix-images', { method: 'POST' });
-      const d = await r.json();
-      if (d.success) {
-        showMsg('success', d.message || `✓ Images fixed: ${d.fixed}`);
-        await load();
-      } else {
-        showMsg('error', `✗ ${d.error || 'Image fix failed'}`);
-      }
-    } catch (e) {
-      showMsg('error', `✗ ${e.message}`);
-    } finally {
-      setFixingImages(false);
-    }
-  };
-
   const c = stats || {};
-  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing || fixingImages;
+  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing;
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
@@ -920,28 +912,6 @@ export default function OrdersPage() {
           {leopardsPaymentsSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Checking…</>) : (<>💰 Leopards Payments</>)}
         </button>
 
-        <button
-          onClick={fixImages}
-          disabled={anySyncing}
-          style={{
-            background: fixingImages ? '#1a1a1a' : 'rgba(251, 146, 60, 0.15)',
-            border: `1px solid ${fixingImages ? border : '#fb923c'}`,
-            color: fixingImages ? '#888' : '#fb923c',
-            borderRadius: 8,
-            padding: '9px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: anySyncing ? 'not-allowed' : 'pointer',
-            opacity: (anySyncing && !fixingImages) ? 0.5 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontFamily: 'inherit',
-          }}
-          title="Order items mein missing product images fix karo (SKU match)"
-        >
-          {fixingImages ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Fixing…</>) : (<>🖼️ Fix Images</>)}
-        </button>
 
         <style jsx>{`
           @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
