@@ -189,7 +189,7 @@ function AdvancesTab({ employees }) {
               <tr key={a.id} style={{ borderBottom: '1px solid #1e293b' }}>
                 <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{a.employees?.name}</td>
                 <td style={{ padding: '8px 12px', color: '#ef4444', fontWeight: 600 }}>Rs. {fmt(a.amount)}</td>
-                <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.given_date}</td>
+                <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.given_date ? new Date(a.given_date).toLocaleDateString('en-PK', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                 <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.deduct_month || '-'}</td>
                 <td style={{ padding: '8px 12px' }}>
                   <span style={{ background: a.status === 'pending' ? '#ef444422' : '#22c55e22', color: a.status === 'pending' ? '#ef4444' : '#22c55e', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
