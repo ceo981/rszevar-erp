@@ -52,7 +52,7 @@ export async function POST(request) {
 
     // 4. Get all attendance records for month
     const start = `${month}-01`;
-    const end   = `${month}-31`;
+    const [_y, _m] = month.split('-').map(Number); const _lastDay = new Date(_y, _m, 0).getDate(); const end = `${month}-${String(_lastDay).padStart(2, '0')}`;
     const { data: attRecords } = await supabase
       .from('employee_attendance')
       .select('status, late_minutes, leave_type, date')
