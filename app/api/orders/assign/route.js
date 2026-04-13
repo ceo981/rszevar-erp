@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { addShopifyOrderNote } from '@/lib/shopify';
+import { addShopifyOrderNote, updateShopifyOrderTags } from '@/lib/shopify';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -142,11 +142,18 @@ export async function POST(request) {
       performed_at: new Date().toISOString(),
     });
 
-    // ── Shopify: add note ──
-    const { data: ord } = await supabase.from('orders').select('shopify_order_id').eq('id', order_id).single();
+    // ── Shopify: add note to order timeline ──
+    const { data: ord } = await supabase.from('orders').select('shopify_order_id, tags').eq('id', order_id).single();
     if (ord?.shopify_order_id && emp?.name) {
       try {
-        await addShopifyOrderNote(ord.shopify_order_id, `Packing assigned to: ${emp.name}`);
+        // Check if draft order (tags include 'draft') — use different endpoint
+        const isDraft = Array.isArray(ord.tags) && ord.tags.includes('draft');
+        if (!isDraft) {
+          // Real order — add note
+          await addShopifyOrderNote(ord.shopify_order_id, `Packing assigned to: ${emp.name}`);
+        }
+        // Also add tag for assigned employee
+        await updateShopifyOrderTags(ord.shopify_order_id, [`packing:${emp.name}`], []);
       } catch (e) {
         console.error('[assign] Shopify note error:', e.message);
       }
