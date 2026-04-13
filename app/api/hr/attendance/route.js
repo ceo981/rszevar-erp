@@ -16,7 +16,9 @@ export async function GET(request) {
   if (employee_id) query = query.eq('employee_id', employee_id);
   if (month) {
     const start = `${month}-01`;
-    const end = `${month}-31`;
+    const [y, m] = month.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const end = `${month}-${String(lastDay).padStart(2, '0')}`;
     query = query.gte('date', start).lte('date', end);
   }
 
@@ -131,7 +133,7 @@ export async function POST(request) {
   if (action === 'monthly_summary') {
     const { employee_id, month } = body;
     const start = `${month}-01`;
-    const end = `${month}-31`;
+    const [_y, _m] = month.split('-').map(Number); const _lastDay = new Date(_y, _m, 0).getDate(); const end = `${month}-${String(_lastDay).padStart(2, '0')}`;
 
     const { data: records } = await supabase.from('employee_attendance')
       .select('status, late_minutes')
