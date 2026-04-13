@@ -112,7 +112,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'order_id and assigned_to required' }, { status: 400 });
     }
 
-    // Upsert assignment
+    // Insert or update assignment
     const { error } = await supabase
       .from('order_assignments')
       .upsert({
@@ -124,7 +124,7 @@ export async function POST(request) {
         notes: notes || '',
         assigned_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
-      }, { onConflict: 'order_id' });
+      }, { onConflict: 'order_id', ignoreDuplicates: false });
 
     if (error) throw error;
 
