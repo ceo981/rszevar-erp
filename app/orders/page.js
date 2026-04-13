@@ -79,8 +79,11 @@ function DraftOrderModal({ onClose, onCreated }) {
       });
       const d = await r.json();
       if (d.success) {
-        setMsg(`✅ Draft order ${d.draft_order_name} create ho gaya!`);
-        setTimeout(() => { onCreated?.(); onClose(); }, 2000);
+        // Shopify draft order directly open karo — wahan se shipping, discount, create order
+        const shopifyDraftUrl = `https://rszevar.myshopify.com/admin/draft_orders/${d.draft_order_id}`;
+        window.open(shopifyDraftUrl, '_blank');
+        onCreated?.();
+        onClose();
       } else setMsg('❌ ' + d.error);
     } catch(e) { setMsg('❌ ' + e.message); }
     setCreating(false);
