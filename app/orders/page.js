@@ -419,6 +419,17 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     invoice: order.order_number || '',
     notes: '',
   });
+  const [showLeopardsModal, setShowLeopardsModal] = useState(false);
+  const [leopardsForm, setLeopardsForm] = useState({
+    name: order.customer_name || '',
+    phone: order.customer_phone || '',
+    address: order.customer_address || '',
+    city: order.customer_city || 'Karachi',
+    amount: order.total_price || order.total_amount || '',
+    notes: '',
+    weight: 500,
+    pieces: 1,
+  });
   const [cancelReason, setCancelReason] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -510,6 +521,51 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     }
   };
   const dispatch = () => doAction('/api/orders/dispatch', { order_id: order.id, ...dispatchForm }, '✅ Dispatched!');
+
+  const bookLeopardsNow = async () => {
+    setLoading(true);
+    setMsg('');
+    // Get order items for special instructions
+    let itemsText = leopardsForm.notes || '';
+    if (!itemsText) {
+      try {
+        const ir = await fetch(`/api/orders?id=${order.id}&include_items=true`);
+        const id = await ir.json();
+        if (id.items?.length) {
+          itemsText = id.items.map(i => `${i.title}${i.variant_title ? ` (${i.variant_title})` : ''} SKU:${i.sku || ''} x${i.quantity}`).join(', ');
+        }
+      } catch(e) {}
+    }
+    try {
+      const r = await fetch('/api/orders/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          courier: 'Leopards',
+          courier_notes: itemsText || 'Jewelry',
+          override_name: leopardsForm.name,
+          override_phone: leopardsForm.phone,
+          override_address: leopardsForm.address,
+          override_city: leopardsForm.city,
+          override_amount: leopardsForm.amount,
+          override_weight: leopardsForm.weight,
+          override_pieces: leopardsForm.pieces,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Leopards booked! Tracking: ${d.tracking || 'Pending'}`);
+        setShowLeopardsModal(false);
+        setTimeout(() => { onRefresh?.(); onClose(); }, 1500);
+      } else {
+        setMsg('❌ ' + (d.error || 'Booking failed'));
+      }
+    } catch (e) {
+      setMsg('❌ ' + e.message);
+    }
+    setLoading(false);
+  };
 
   const bookKangaroo = async () => {
     setLoading(true);
@@ -809,24 +865,22 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>📦 Dispatch Order</div>
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Select Courier</div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {['PostEx', 'Leopards'].map(c => (
-                        <button key={c} onClick={() => setDispatchForm(f => ({...f, courier: c}))}
-                          style={{ flex: 1, padding: '8px', background: dispatchForm.courier === c ? '#a855f722' : '#1a1a1a', border: `1px solid ${dispatchForm.courier === c ? '#a855f7' : border}`, color: dispatchForm.courier === c ? '#a855f7' : '#888', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          {c}
-                        </button>
-                      ))}
-                    </div>
+                    <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Via PostEx (auto-book)</div>
                   </div>
                   <input value={dispatchForm.notes} onChange={e => setDispatchForm(f => ({...f, notes: e.target.value}))}
                     placeholder="Item description (e.g. Mala Set)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  <button onClick={dispatch} disabled={loading} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8 }}>
-                    Book & Dispatch via {dispatchForm.courier}
+                  <button onClick={() => { setDispatchForm(f => ({...f, courier: 'PostEx'})); dispatch(); }} disabled={loading}
+                    style={{ background: '#4caf7922', border: '1px solid #4caf7944', color: '#4caf79', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8, fontFamily: 'inherit' }}>
+                    🚚 Book via PostEx
                   </button>
-                  <button onClick={() => { setKangarooForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', invoice: order.order_number||'', notes: '' }); setShowKangarooModal(true); }} disabled={loading}
-                    style={{ background: '#f59e0b22', border: '1px solid #f59e0b55', color: '#f59e0b', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
-                    🦘 Book via Kangaroo
+                  <button onClick={() => { setLeopardsForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', notes: '', weight: 500, pieces: 1 }); setShowLeopardsModal(true); }} disabled={loading}
+                    style={{ background: '#e87d4422', border: '1px solid #e87d4444', color: '#e87d44', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8, fontFamily: 'inherit' }}>
+                    🐆 Book via Leopards
+                  </button>
+                  <button
+                    onClick={() => alert('Kangaroo API abhi fix ho rahi hai — kangaroo.pk/clientdashboard se manually book karo')}
+                    style={{ background: '#1a1a1a', border: '1px solid #444', color: '#666', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'not-allowed', width: '100%', fontFamily: 'inherit' }}>
+                    🦘 Kangaroo — Manual booking se karo (portal pe jao)
                   </button>
                 </div>
               )}
@@ -930,6 +984,69 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   {loading ? '⏳ Booking...' : '🦘 Confirm & Book'}
                 </button>
                 <button onClick={() => setShowKangarooModal(false)}
+                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leopards Booking Modal ── */}
+      {showLeopardsModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#111', border: '1px solid #e87d4444', borderRadius: 14, padding: 28, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#e87d44' }}>🐆 Book via Leopards</div>
+              <button onClick={() => setShowLeopardsModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Customer Name', 'name', 'text'],
+                ['Phone', 'phone', 'text'],
+                ['City', 'city', 'text'],
+                ['COD Amount (Rs.)', 'amount', 'number'],
+              ].map(([label, key, type]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
+                  <input type={type} value={leopardsForm[key]} onChange={e => setLeopardsForm(f => ({...f, [key]: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
+                <textarea value={leopardsForm.address} onChange={e => setLeopardsForm(f => ({...f, address: e.target.value}))}
+                  rows={2} style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Weight (grams)</div>
+                  <input type="number" value={leopardsForm.weight} onChange={e => setLeopardsForm(f => ({...f, weight: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Pieces</div>
+                  <input type="number" value={leopardsForm.pieces} onChange={e => setLeopardsForm(f => ({...f, pieces: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (auto order items se bharega)</div>
+                <input value={leopardsForm.notes} onChange={e => setLeopardsForm(f => ({...f, notes: e.target.value}))}
+                  placeholder="Leave empty for auto order items..."
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+                ⚠️ Submit karne se: Leopards pe booking hogi → ERP dispatched → Shopify fulfilled
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={bookLeopardsNow} disabled={loading}
+                  style={{ flex: 1, background: '#e87d44', color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {loading ? '⏳ Booking...' : '🐆 Confirm & Book'}
+                </button>
+                <button onClick={() => setShowLeopardsModal(false)}
                   style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Cancel
                 </button>
