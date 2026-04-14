@@ -68,14 +68,18 @@ async function bookKangaroo(order, courier_notes) {
   let data;
   try { data = JSON.parse(text); } catch (e) { throw new Error(`Kangaroo API invalid response: ${text.slice(0, 100)}`); }
 
-  if (data.status === 201 || data.status === '201') {
-    // Response: { orders: { "KN123456789": { print: url } } }
-    const orderKeys = Object.keys(data.orders || {});
+  // Success: status 201 OR message contains "created"
+  if (data.status === 201 || data.status === '201' || String(data.message || '').toLowerCase().includes('created')) {
+    // Extract tracking number from orders object
+    const ordersObj = data.orders || data.order || {};
+    const orderKeys = Object.keys(ordersObj);
     if (orderKeys.length > 0) {
       const trackingNumber = orderKeys[0];
-      const printUrl = data.orders[trackingNumber]?.print || null;
+      const printUrl = ordersObj[trackingNumber]?.print || null;
       return { tracking: trackingNumber, print_url: printUrl, raw: data };
     }
+    // Booking succeeded but no tracking number yet
+    return { tracking: null, print_url: null, raw: data };
   }
   throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
