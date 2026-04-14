@@ -9,24 +9,28 @@ export async function GET() {
 
   try {
     const { token, userId } = await getKangarooToken();
-    result.auth = { ok: true, userId, token_preview: token.slice(0, 10) + '...' };
+    result.auth = { ok: true, userId };
+
+    // Use timestamp to ensure unique invoice
+    const uniqueInvoice = 'TEST-' + Date.now();
 
     const payload = {
       orders: [{
         cname: 'Test Customer',
-        caddress: 'Test Address Block 5 Karachi',
+        caddress: 'Block 5 Gulshan Karachi',
         cnumber: '03001234567',
         amount: '1000',
-        invoice: 'TEST-DEBUG-001',
+        invoice: uniqueInvoice,
         city: 'Karachi',
         Productname: 'Jewelry',
-        Productcode: 'TEST',
-        comments: 'Test order',
+        Productcode: '',
+        comments: '',
         Ordertype: 'COD',
       }]
     };
 
     result.payload_sent = payload;
+    result.invoice_used = uniqueInvoice;
 
     const res = await fetch('https://api.kangaroo.pk/order/create', {
       method: 'POST',
@@ -41,16 +45,13 @@ export async function GET() {
     });
 
     result.http_status = res.status;
-    result.response_headers = Object.fromEntries(res.headers.entries());
     const text = await res.text();
-    result.response_raw = text.slice(0, 1000);
-
-    try { result.response_json = JSON.parse(text); } catch (e) { result.parse_error = 'Not JSON — HTML response'; }
+    result.response_raw = text.slice(0, 800);
+    try { result.response_json = JSON.parse(text); } catch (e) { result.html_error = true; }
 
   } catch (e) {
     result.error = e.message;
-    result.stack = e.stack?.slice(0, 300);
   }
 
-  return NextResponse.json(result, { status: 200 });
+  return NextResponse.json(result);
 }
