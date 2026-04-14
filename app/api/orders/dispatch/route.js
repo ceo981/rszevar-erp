@@ -143,7 +143,11 @@ export async function POST(request) {
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
       else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces);
       tracking = result?.tracking;
-      printUrl = result?.print_url || null;
+      printUrl = result?.print_url || result?.tracking_url || null;
+      // For Leopards, also store tracking URL separately
+      if (result?.tracking_url) {
+        await supabase.from('orders').update({ courier_tracking_url: result.tracking_url }).eq('id', order_id);
+      }
     } catch (e) {
       bookingError = e.message;
       // Kangaroo: STRICT — do not proceed if booking failed
@@ -206,7 +210,8 @@ export async function POST(request) {
         const fulfillment = await createShopifyFulfillment(
           order.shopify_order_id,
           tracking,
-          courier
+          courier,
+          printUrl
         );
         shopifyFulfillmentId = fulfillment?.id ? String(fulfillment.id) : null;
 
