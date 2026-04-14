@@ -70,22 +70,14 @@ async function bookKangaroo(order, courier_notes) {
 
   // Success: status 201 OR message contains "created"
   if (data.status === 201 || data.status === '201' || String(data.message || '').toLowerCase().includes('created')) {
-    // Log full response for debugging
-    console.log('Kangaroo booking response:', JSON.stringify(data));
-    // Extract tracking number from orders object
-    const ordersObj = data.orders || data.order || data.Orders || {};
+    const ordersObj = data.result?.orders || data.orders || data.order || {};
     const orderKeys = Object.keys(ordersObj);
     if (orderKeys.length > 0) {
       const trackingNumber = orderKeys[0];
-      const printUrl = ordersObj[trackingNumber]?.print || ordersObj[trackingNumber]?.Print || null;
+      const printUrl = ordersObj[trackingNumber]?.print || null;
       return { tracking: trackingNumber, print_url: printUrl, raw: data };
     }
-    // Try other possible locations
-    if (data.tracking || data.tracking_number || data.cn) {
-      return { tracking: data.tracking || data.tracking_number || data.cn, print_url: null, raw: data };
-    }
-    // Return with full raw so we can see structure
-    return { tracking: `RAW:${JSON.stringify(data).slice(0, 200)}`, print_url: null, raw: data };
+    return { tracking: null, print_url: null, raw: data };
   }
   throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
@@ -189,8 +181,11 @@ export async function POST(request) {
       tracking = result?.tracking;
       // slip URL for orders table, tracking URL for Shopify
       const slipUrl = result?.print_url || null;
-      const trackingUrl = result?.tracking_url || (tracking ? `https://lcs.appsbymoose.com/track/${tracking}` : null);
-      printUrl = trackingUrl; // Shopify gets tracking URL, not slip
+      // Kangaroo tracking URL, Leopards uses lcs.appsbymoose.com
+      const trackingUrl = result?.tracking_url ||
+        (tracking && courier === 'Leopards' ? `https://lcs.appsbymoose.com/track/${tracking}` : null) ||
+        (tracking && courier === 'Kangaroo' ? `https://kangaroo.pk/track/${tracking}` : null);
+      printUrl = trackingUrl;
       if (slipUrl) {
         await supabase.from('orders').update({ courier_tracking_url: slipUrl }).eq('id', order_id);
       }
