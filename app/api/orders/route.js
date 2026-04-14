@@ -160,9 +160,24 @@ export async function GET(request) {
       kangaroo: kangarooCount || 0,
     };
 
+    // ── Batch-fetch assignments for these orders ──
+    let ordersWithAssignment = orders || [];
+    if (ordersWithAssignment.length > 0) {
+      const orderIds = ordersWithAssignment.map(o => o.id);
+      const { data: assignments } = await supabase
+        .from('order_assignments')
+        .select('order_id, employee:assigned_to(name)')
+        .in('order_id', orderIds);
+      if (assignments && assignments.length > 0) {
+        const aMap = {};
+        assignments.forEach(a => { if (a.order_id && a.employee?.name) aMap[a.order_id] = a.employee.name; });
+        ordersWithAssignment = ordersWithAssignment.map(o => ({ ...o, assigned_to_name: aMap[o.id] || null }));
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      orders: orders || [],
+      orders: ordersWithAssignment,
       total: count || 0,
       page,
       limit,
