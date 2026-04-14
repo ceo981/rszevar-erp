@@ -945,7 +945,15 @@ function PolicyTab() {
       </div>
 
       {msg && <div style={{ marginBottom: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
-      <button onClick={save} style={btnStyle}>💾 Save Policy</button>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button onClick={save} style={btnStyle}>💾 Save Policy</button>
+        <button
+          onClick={() => window.open('/api/hr/print-report?upto=2026-03-31', '_blank')}
+          style={{ ...btnStyle, background: '#1e293b', color: '#c9a96e', border: '1px solid #c9a96e44' }}
+        >
+          📄 Print HR Rules + Leave Report
+        </button>
+      </div>
     </div>
   );
 }
