@@ -56,11 +56,13 @@ async function bookKangaroo(order, courier_notes) {
       orders: [{
         Customername: order.customer_name || '',
         Customeraddress: order.customer_address || '',
-        Customernumber: order.customer_phone || '',
-        Amount: String(order.total_amount || order.total_price || 0),
+        Customernumber: String(order.customer_phone || '').replace(/\D/g, ''),
+        Amount: String(Math.round(parseFloat(order.total_amount || order.total_price || 0))),
         Invoice: order.order_number || String(order.id),
         City: order.customer_city || 'Karachi',
-        specialInstruction: courier_notes || '',
+        Pieces: '1',
+        Weight: '500',
+        specialInstruction: courier_notes || 'Jewelry',
       }],
     }),
   });
