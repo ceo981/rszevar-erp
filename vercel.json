@@ -11,6 +11,10 @@
     {
       "path": "/api/analytics/compute-abc",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/courier/kangaroo/sync-status",
+      "schedule": "0 9 * * *"
     }
   ]
 }
