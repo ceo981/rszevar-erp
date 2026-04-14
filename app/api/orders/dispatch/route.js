@@ -70,16 +70,22 @@ async function bookKangaroo(order, courier_notes) {
 
   // Success: status 201 OR message contains "created"
   if (data.status === 201 || data.status === '201' || String(data.message || '').toLowerCase().includes('created')) {
+    // Log full response for debugging
+    console.log('Kangaroo booking response:', JSON.stringify(data));
     // Extract tracking number from orders object
-    const ordersObj = data.orders || data.order || {};
+    const ordersObj = data.orders || data.order || data.Orders || {};
     const orderKeys = Object.keys(ordersObj);
     if (orderKeys.length > 0) {
       const trackingNumber = orderKeys[0];
-      const printUrl = ordersObj[trackingNumber]?.print || null;
+      const printUrl = ordersObj[trackingNumber]?.print || ordersObj[trackingNumber]?.Print || null;
       return { tracking: trackingNumber, print_url: printUrl, raw: data };
     }
-    // Booking succeeded but no tracking number yet
-    return { tracking: null, print_url: null, raw: data };
+    // Try other possible locations
+    if (data.tracking || data.tracking_number || data.cn) {
+      return { tracking: data.tracking || data.tracking_number || data.cn, print_url: null, raw: data };
+    }
+    // Return with full raw so we can see structure
+    return { tracking: `RAW:${JSON.stringify(data).slice(0, 200)}`, print_url: null, raw: data };
   }
   throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
