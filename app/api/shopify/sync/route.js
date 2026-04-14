@@ -153,7 +153,7 @@ export async function POST(request) {
       }
     }
 
-    // 7. Line items for NEW orders only
+    // 7. Line items — NEW orders + existing orders missing items
     const newOrdersMap = new Map();
     upsertedOrders.forEach(o => {
       if (!existingMap.has(o.shopify_order_id)) {
@@ -161,8 +161,18 @@ export async function POST(request) {
       }
     });
 
+    // Also track existing orders for items backfill
+    const existingNoItemsMap = new Map();
+    upsertedOrders.forEach(o => {
+      if (existingMap.has(o.shopify_order_id)) {
+        existingNoItemsMap.set(o.shopify_order_id, o.id);
+      }
+    });
+
     let itemsError = null;
     let itemsInserted = 0;
+
+    // New orders — insert items
     if (newOrdersMap.size > 0) {
       const allItems = [];
       for (const shopifyOrder of shopifyOrders) {
@@ -175,6 +185,23 @@ export async function POST(request) {
         const { error } = await supabase.from('order_items').insert(allItems);
         if (error) itemsError = { message: error.message, code: error.code };
         else itemsInserted = allItems.length;
+      }
+    }
+
+    // Existing orders — fill missing items (check count first)
+    if (existingNoItemsMap.size > 0) {
+      for (const shopifyOrder of shopifyOrders) {
+        const dbId = existingNoItemsMap.get(String(shopifyOrder.id));
+        if (!dbId) continue;
+        const { count } = await supabase
+          .from('order_items').select('*', { count: 'exact', head: true }).eq('order_id', dbId);
+        if ((count || 0) === 0) {
+          const items = transformLineItems(shopifyOrder).map(i => ({ ...i, order_id: dbId }));
+          if (items.length > 0) {
+            await supabase.from('order_items').insert(items);
+            itemsInserted += items.length;
+          }
+        }
       }
     }
 
