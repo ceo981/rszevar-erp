@@ -669,7 +669,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' }}>
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />
-      <div style={{ width: 480, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{ width: 580, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.order_number || '#' + order.id}</div>
@@ -714,29 +714,29 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
         {/* Order Items */}
         {orderItems.length > 0 && (
-          <div style={{ padding: '12px 24px', borderBottom: `1px solid ${border}` }}>
-            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>📦 Order Items ({orderItems.length})</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ padding: '14px 24px', borderBottom: `1px solid ${border}` }}>
+            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>📦 Order Items ({orderItems.length})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {orderItems.map((item, i) => (
                 <div key={i}
                   onClick={() => { onClose(); setTimeout(() => { window.dispatchEvent(new CustomEvent('openInventorySku', { detail: item.sku })); }, 300); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a1a', borderRadius: 7, padding: '8px 10px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#1a1a1a', borderRadius: 9, padding: '10px 12px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#252525'}
                   onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
                   title={item.sku ? 'Click to view in Inventory' : ''}
                 >
                   {item.image_url ? (
-                    <img src={item.image_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0, border: '1px solid #333' }} />
+                    <img src={item.image_url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 7, flexShrink: 0, border: '1px solid #333' }} />
                   ) : (
-                    <div style={{ width: 36, height: 36, borderRadius: 4, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>💍</div>
+                    <div style={{ width: 60, height: 60, borderRadius: 7, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>💍</div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                    {item.sku && <div style={{ fontSize: 10, color: '#c9a96e66' }}>SKU: {item.sku} {item.sku ? '↗' : ''}</div>}
+                    <div style={{ fontSize: 14, color: '#fff', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                    {item.sku && <div style={{ fontSize: 11, color: '#c9a96e99', marginTop: 3 }}>SKU: {item.sku} {item.sku ? '↗' : ''}</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 12, color: '#c9a96e', fontWeight: 600 }}>x{item.quantity}</div>
-                    {item.unit_price && <div style={{ fontSize: 11, color: '#555' }}>Rs {Number(item.unit_price).toLocaleString()}</div>}
+                    <div style={{ fontSize: 15, color: '#c9a96e', fontWeight: 700 }}>x{item.quantity}</div>
+                    {item.unit_price && <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Rs {Number(item.unit_price).toLocaleString()}</div>}
                   </div>
                 </div>
               ))}
@@ -1080,13 +1080,14 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState({ type: null, value: null }); // unified filter
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
   const [leopardsStatusSyncing, setLeopardsStatusSyncing] = useState(false);
   const [leopardsPaymentsSyncing, setLeopardsPaymentsSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
-  const PER_PAGE = 30;
+  const PER_PAGE = 50;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1096,7 +1097,13 @@ export default function OrdersPage() {
       if (filter.type && filter.value) params.append(filter.type, filter.value);
       const r = await fetch(`/api/orders?${params}`);
       const d = await r.json();
-      setOrders(d.orders || []);
+      const newOrders = d.orders || [];
+      if (page === 1) {
+        setOrders(newOrders);
+      } else {
+        setOrders(prev => [...prev, ...newOrders]);
+      }
+      setHasMore(newOrders.length === PER_PAGE);
       if (d.stats) setStats(d.stats);
       if (d.global_counts) setGlobalCounts(d.global_counts);
     } catch {}
@@ -1437,7 +1444,7 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Type', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Assigned', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
@@ -1466,7 +1473,12 @@ export default function OrdersPage() {
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 14, textAlign: 'center' }}>{typeIcon || <span style={{ color: '#333' }}>—</span>}</td>
+                    <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                      {order.assigned_to_name
+                        ? <span style={{ color: '#f59e0b', fontWeight: 600 }}>{order.assigned_to_name}</span>
+                        : <span style={{ color: '#333' }}>—</span>
+                      }
+                    </td>
                     <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <button onClick={e => { e.stopPropagation(); setSelected(order); }}
@@ -1483,13 +1495,15 @@ export default function OrdersPage() {
 
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#555' }}>Showing {orders.length} orders</span>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: page === 1 ? '#333' : '#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: page === 1 ? 'not-allowed' : 'pointer' }}>← Prev</button>
-            <span style={{ fontSize: 12, color: '#555', padding: '5px 10px' }}>Page {page}</span>
-            <button onClick={() => setPage(p => p + 1)} disabled={orders.length < PER_PAGE}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: orders.length < PER_PAGE ? '#333' : '#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: orders.length < PER_PAGE ? 'not-allowed' : 'pointer' }}>Next →</button>
-          </div>
+          {hasMore && (
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={loading}
+              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: loading ? '#444' : gold, borderRadius: 6, padding: '6px 18px', fontSize: 12, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+            >
+              {loading ? '⟳ Loading...' : 'Show More ↓'}
+            </button>
+          )}
         </div>
       </div>
     </div>
