@@ -177,32 +177,63 @@ async function syncLeopards() {
 
 // ─── Kangaroo Sync ────────────────────────────────────────────
 async function syncKangaroo() {
-  // Use the dedicated Kangaroo sync route which uses new API
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
+  const results = { courier: 'Kangaroo', synced: 0, delivered: 0, rto: 0, in_transit: 0, cod_collected: 0, updated: 0, errors: [] };
 
-    const res = await fetch(`${baseUrl}/api/courier/kangaroo/sync-status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ triggered_by: 'sync_all' }),
-    });
-    const data = await res.json();
-    return {
-      courier: 'Kangaroo',
-      success: data.success,
-      synced: data.total_tracked || 0,
-      delivered: 0,
-      rto: 0,
-      in_transit: 0,
-      cod_collected: 0,
-      updated: data.updated_orders || 0,
-      error: data.error || null,
-    };
+  try {
+    const { trackKangarooBatch, mapKangarooStatus, getKangarooToken } = await import('../../../lib/kangaroo.js');
+    // Test token first
+    await getKangarooToken();
+
+    // Get active Kangaroo orders
+    const { data: orders } = await supabase
+      .from('orders')
+      .select('id, order_number, tracking_number, status')
+      .eq('courier_name', 'Kangaroo')
+      .not('tracking_number', 'is', null)
+      .not('tracking_number', 'eq', '')
+      .not('status', 'in', '("delivered","returned","cancelled","refunded","rto")');
+
+    if (!orders || orders.length === 0) {
+      results.success = true;
+      results.message = 'Koi active Kangaroo order nahi';
+      return results;
+    }
+
+    const trackingNumbers = orders.map(o => o.tracking_number);
+    const trackResults = await trackKangarooBatch(trackingNumbers);
+
+    const LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+
+    for (const result of trackResults) {
+      results.synced++;
+      if (!result.success) { results.errors.push({ tracking: result.tracking, error: result.error }); continue; }
+
+      const order = orders.find(o => o.tracking_number === result.tracking);
+      if (!order) continue;
+
+      const rawStatus = result.data?.Orderstatus || result.data?.orderstatus || null;
+      const mappedStatus = mapKangarooStatus(rawStatus);
+
+      if (!mappedStatus || LOCKED.includes(order.status) || mappedStatus === order.status) continue;
+
+      const patch = { status: mappedStatus, courier_status_raw: rawStatus, courier_last_synced_at: new Date().toISOString() };
+      if (mappedStatus === 'delivered') {
+        patch.delivered_at = new Date().toISOString();
+        results.delivered++;
+      }
+      if (mappedStatus === 'returned') results.rto++;
+
+      const { error } = await supabase.from('orders').update(patch).eq('id', order.id);
+      if (!error) results.updated++;
+    }
+
+    results.success = true;
   } catch (e) {
-    return { courier: 'Kangaroo', success: false, error: e.message, synced: 0 };
+    results.success = false;
+    results.error = e.message;
   }
+
+  return results;
 }
 
 // ─── Status Normalizers ───────────────────────────────────────
