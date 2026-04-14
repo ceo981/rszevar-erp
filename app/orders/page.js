@@ -418,6 +418,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     amount: order.total_price || order.total_amount || '',
     invoice: order.order_number || '',
     notes: '',
+    ordertype: 'COD',
   });
   const [showLeopardsModal, setShowLeopardsModal] = useState(false);
   const [leopardsForm, setLeopardsForm] = useState({
@@ -577,7 +578,8 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         body: JSON.stringify({
           order_id: order.id,
           courier: 'Kangaroo',
-          courier_notes: kangarooForm.notes,
+          kangaroo_ordertype: kangarooForm.ordertype || 'COD',
+          kangaroo_comment: kangarooForm.notes || '',
           override_name: kangarooForm.name,
           override_phone: kangarooForm.phone,
           override_address: kangarooForm.address,
@@ -944,6 +946,16 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Order Type</div>
+                <select value={kangarooForm.ordertype} onChange={e => setKangarooForm(f => ({...f, ordertype: e.target.value}))}
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+                  <option value="COD">COD</option>
+                  <option value="Replacement">Replacement</option>
+                  <option value="Voucher">Voucher</option>
+                  <option value="Cash Refund">Cash Refund</option>
+                </select>
+              </div>
               {[
                 ['Customer Name', 'name', 'text', 'Customer ka naam'],
                 ['Phone', 'phone', 'text', '03xx-xxxxxxx'],
