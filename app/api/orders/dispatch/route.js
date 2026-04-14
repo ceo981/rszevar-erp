@@ -84,8 +84,22 @@ async function bookKangaroo(order, courier_notes) {
   throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
 
-async function bookLeopards(order, courier_notes, weight, pieces) {
+async function bookLeopards(order, courier_notes, weight, pieces, supabaseClient) {
   const { bookLeopardPacket } = await import('../../../../lib/leopards.js');
+
+  // Auto-fetch order items for special instructions
+  let specialInstructions = courier_notes || '';
+  if (!specialInstructions && supabaseClient) {
+    const { data: items } = await supabaseClient
+      .from('order_items')
+      .select('title, variant_title, sku, quantity')
+      .eq('order_id', order.id);
+    if (items?.length) {
+      specialInstructions = items
+        .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU ${i.sku}` : ''} x${i.quantity}`)
+        .join(', ');
+    }
+  }
 
   const result = await bookLeopardPacket({
     customerName: order.customer_name || '',
@@ -94,12 +108,12 @@ async function bookLeopards(order, courier_notes, weight, pieces) {
     customerCity: order.customer_city || 'Karachi',
     codAmount: order.total_amount || order.total_price || 0,
     orderId: order.order_number || String(order.id),
-    specialInstructions: courier_notes || 'Jewelry',
+    specialInstructions: specialInstructions || 'Jewelry',
     weight: parseInt(weight || 500),
     pieces: parseInt(pieces || 1),
   });
 
-  return { tracking: result.tracking, print_url: result.slip_url, raw: result.raw };
+  return { tracking: result.tracking, print_url: result.slip_url, tracking_url: result.tracking_url, raw: result.raw };
 }
 
 // ─── Main Dispatch Handler ──────────────────────────────────────────────────
@@ -141,7 +155,7 @@ export async function POST(request) {
       let result;
       if (courier === 'PostEx') result = await bookPostEx(order, courier_notes);
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
-      else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces);
+      else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces, supabase);
       tracking = result?.tracking;
       printUrl = result?.print_url || result?.tracking_url || null;
       // For Leopards, also store tracking URL separately
