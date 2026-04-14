@@ -877,10 +877,9 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                     style={{ background: '#e87d4422', border: '1px solid #e87d4444', color: '#e87d44', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8, fontFamily: 'inherit' }}>
                     🐆 Book via Leopards
                   </button>
-                  <button
-                    onClick={() => alert('Kangaroo API abhi fix ho rahi hai — kangaroo.pk/clientdashboard se manually book karo')}
-                    style={{ background: '#1a1a1a', border: '1px solid #444', color: '#666', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'not-allowed', width: '100%', fontFamily: 'inherit' }}>
-                    🦘 Kangaroo — Manual booking se karo (portal pe jao)
+                  <button onClick={() => { setKangarooForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', invoice: order.order_number||'', notes: '' }); setShowKangarooModal(true); }} disabled={loading}
+                    style={{ background: '#f59e0b22', border: '1px solid #f59e0b55', color: '#f59e0b', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
+                    🦘 Book via Kangaroo
                   </button>
                 </div>
               )}
