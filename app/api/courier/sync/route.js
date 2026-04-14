@@ -177,76 +177,32 @@ async function syncLeopards() {
 
 // ─── Kangaroo Sync ────────────────────────────────────────────
 async function syncKangaroo() {
-  const clientId = process.env.KANGAROO_CLIENT_ID || '549';
-  const pass = process.env.KANGAROO_API_PASSWORD;
-  if (!pass) return { courier: 'Kangaroo', success: false, error: 'API password missing', synced: 0 };
-
-  const results = { courier: 'Kangaroo', synced: 0, delivered: 0, rto: 0, in_transit: 0, cod_collected: 0, errors: [] };
-
+  // Use the dedicated Kangaroo sync route which uses new API
   try {
-    // Kangaroo: get consignment list
-    const res = await fetch(`https://kangaroo.pk/orderapi.php`, {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+
+    const res = await fetch(`${baseUrl}/api/courier/kangaroo/sync-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        clientid: clientId,
-        pass: pass,
-        request: 'orderlist',
-        status: 'all',
-      }),
+      body: JSON.stringify({ triggered_by: 'sync_all' }),
     });
-
     const data = await res.json();
-    const orders = data?.orders || data?.data || [];
-
-    for (const order of orders) {
-      const trackingNo = order.cn || order.tracking_no || order.consignment_no;
-      if (!trackingNo) continue;
-
-      const status = normalizeKangarooStatus(order.status || '');
-      const codAmount = parseFloat(order.cod || order.cod_amount || 0);
-
-      const upsertData = {
-        tracking_number: String(trackingNo),
-        courier_name: 'Kangaroo',
-        customer_name: order.consignee || order.customer_name || '',
-        customer_phone: order.phone || '',
-        customer_address: order.address || '',
-        city: order.city || '',
-        cod_amount: codAmount,
-        status: status,
-        courier_status_raw: order.status || '',
-        last_tracked_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: existing } = await supabase
-        .from('courier_bookings')
-        .select('id')
-        .eq('tracking_number', String(trackingNo))
-        .eq('courier_name', 'Kangaroo')
-        .maybeSingle();
-
-      if (existing) {
-        await supabase.from('courier_bookings').update(upsertData).eq('id', existing.id);
-      } else {
-        upsertData.created_at = new Date().toISOString();
-        await supabase.from('courier_bookings').insert(upsertData);
-      }
-
-      results.synced++;
-      if (status === 'delivered') { results.delivered++; results.cod_collected += codAmount; }
-      if (status === 'rto') results.rto++;
-      if (status === 'in_transit') results.in_transit++;
-    }
-
-    results.success = true;
+    return {
+      courier: 'Kangaroo',
+      success: data.success,
+      synced: data.total_tracked || 0,
+      delivered: 0,
+      rto: 0,
+      in_transit: 0,
+      cod_collected: 0,
+      updated: data.updated_orders || 0,
+      error: data.error || null,
+    };
   } catch (e) {
-    results.success = false;
-    results.error = e.message;
+    return { courier: 'Kangaroo', success: false, error: e.message, synced: 0 };
   }
-
-  return results;
 }
 
 // ─── Status Normalizers ───────────────────────────────────────
