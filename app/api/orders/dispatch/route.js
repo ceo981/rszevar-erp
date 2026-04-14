@@ -155,6 +155,21 @@ export async function POST(request) {
       total_amount: override_amount || orderRaw.total_amount || orderRaw.total_price,
     };
 
+    // ── Fetch order items for special instructions (Leopards) ──
+    let autoItemsText = '';
+    if (courier === 'Leopards' && !courier_notes) {
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('title, variant_title, sku, quantity')
+        .eq('order_id', order.id);
+      if (orderItems?.length) {
+        autoItemsText = orderItems
+          .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU:${i.sku}` : ''} x${i.quantity}`)
+          .join(', ');
+      }
+    }
+    const finalCourierNotes = courier_notes || autoItemsText || '';
+
     // ── 1. Book with courier API ──
     let tracking = null;
     let bookingError = null;
@@ -162,9 +177,9 @@ export async function POST(request) {
 
     try {
       let result;
-      if (courier === 'PostEx') result = await bookPostEx(order, courier_notes);
-      else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
-      else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces, supabase);
+      if (courier === 'PostEx') result = await bookPostEx(order, finalCourierNotes);
+      else if (courier === 'Kangaroo') result = await bookKangaroo(order, finalCourierNotes);
+      else if (courier === 'Leopards') result = await bookLeopards(order, finalCourierNotes, override_weight, override_pieces, supabase);
       tracking = result?.tracking;
       // slip URL for orders table, tracking URL for Shopify
       const slipUrl = result?.print_url || null;
