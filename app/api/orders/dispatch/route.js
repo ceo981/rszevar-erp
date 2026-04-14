@@ -147,6 +147,7 @@ export async function POST(request) {
     // ── 1. Book with courier API ──
     let tracking = null;
     let bookingError = null;
+    let printUrl = null;
 
     try {
       let result;
@@ -154,22 +155,30 @@ export async function POST(request) {
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
       else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes);
       tracking = result?.tracking;
-      if (result?.print_url) {
-        await supabase.from('orders').update({ courier_tracking_url: result.print_url }).eq('id', order_id);
-      }
+      printUrl = result?.print_url || null;
     } catch (e) {
       bookingError = e.message;
-      // Continue — manual tracking can be added
+      // Kangaroo: STRICT — do not proceed if booking failed
+      if (courier === 'Kangaroo') {
+        return NextResponse.json({
+          success: false,
+          error: `Kangaroo booking failed: ${e.message}`,
+          booking_failed: true,
+        }, { status: 400 });
+      }
+      // PostEx / Leopards: soft fail — continue with manual tracking
     }
 
     // ── 2. Update order status in DB ──
-    await supabase.from('orders').update({
+    const updatePayload = {
       status: 'dispatched',
       dispatched_at: new Date().toISOString(),
       dispatched_courier: courier,
       tracking_number: tracking || null,
       updated_at: new Date().toISOString(),
-    }).eq('id', order_id);
+    };
+    if (printUrl) updatePayload.courier_tracking_url = printUrl;
+    await supabase.from('orders').update(updatePayload).eq('id', order_id);
 
     // ── 3. Insert courier_bookings record (with correct column names) ──
     await supabase.from('courier_bookings').insert({
