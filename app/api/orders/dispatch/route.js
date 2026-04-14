@@ -60,8 +60,6 @@ async function bookKangaroo(order, courier_notes) {
         Amount: String(Math.round(parseFloat(order.total_amount || order.total_price || 0))),
         Invoice: order.order_number || String(order.id),
         City: order.customer_city || 'Karachi',
-        Ordertype: courier_notes?.ordertype || 'COD',
-        Comment: courier_notes?.comment || '',
       }],
     }),
   });
