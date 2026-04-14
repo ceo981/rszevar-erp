@@ -55,45 +55,80 @@ export async function POST(request) {
     const [_y, _m] = month.split('-').map(Number); const _lastDay = new Date(_y, _m, 0).getDate(); const end = `${month}-${String(_lastDay).padStart(2, '0')}`;
     const { data: attRecords } = await supabase
       .from('employee_attendance')
-      .select('status, late_minutes, leave_type, date')
+      .select('status, late_minutes, leave_type, date, time_in')
       .eq('employee_id', employee_id)
       .gte('date', start).lte('date', end)
       .order('date', { ascending: true });
 
     const att = attRecords || [];
 
-    // Categorize
-    const lateRecords    = att.filter(a => a.status === 'late');
-    const halfDayRecords = att.filter(a => a.status === 'half_day');
-    const unpaidAbsents  = att.filter(a => a.status === 'absent' && a.leave_type === 'unpaid');
-    const annualLeaves   = att.filter(a => a.status === 'absent' && a.leave_type === 'annual_leave');
+    // ── Categorize attendance ──────────────────────────────────
+    // Office start = 11:00, grace = 30 min → deadline = 11:30
+    // 11:31–12:00 arrival = normal late  (max 7 free)
+    // 12:01+      arrival = half day late (max 1 free)
+    const officeStartMins = 11 * 60; // 11:00 in minutes from midnight
 
-    const present   = att.filter(a => a.status === 'present' || a.status === 'late').length;
-    const late      = lateRecords.length;
-    const halfDay   = halfDayRecords.length;
-    const absent    = att.filter(a => a.status === 'absent').length;
+    const parseTimeMins = (t) => {
+      if (!t) return null;
+      const parts = t.split(':').map(Number);
+      return parts[0] * 60 + (parts[1] || 0);
+    };
 
-    // 5. Late deduction — free passes apply to lates + half_days combined
-    // Sort late records by late_minutes DESC (worst offenses first for deduction)
-    const allLateOccasions = [
-      ...lateRecords.map(r => ({ type: 'late', minutes: r.late_minutes || 0 })),
-      ...halfDayRecords.map(r => ({ type: 'half_day', minutes: 0 })),
-    ].sort((a, b) => b.minutes - a.minutes);
+    // Split late records into two buckets using time_in
+    const normalLateRecords   = []; // 11:31–12:00
+    const halfDayLateRecords  = []; // 12:01+
+    const manualHalfDayRecords = att.filter(a => a.status === 'half_day');
 
-    const totalOccasions = allLateOccasions.length;
-    const freePasses     = maxLatesAllowed + maxHalfDaysAllowed;
-    const excessCount    = Math.max(0, totalOccasions - freePasses);
-
-    // Deduct the worst `excessCount` occasions
-    const toDeduct = allLateOccasions.slice(0, excessCount);
-    let lateDeduction = 0;
-    for (const occ of toDeduct) {
-      if (occ.type === 'half_day') {
-        lateDeduction += perDay * 0.5;
+    att.filter(a => a.status === 'late').forEach(r => {
+      const timeMins = parseTimeMins(r.time_in);
+      if (timeMins !== null && timeMins > 12 * 60) {
+        halfDayLateRecords.push(r);  // arrived after 12:00
       } else {
-        // Convert late_minutes to hours, deduct per hour
-        const hoursLate = occ.minutes / 60;
+        normalLateRecords.push(r);   // arrived 11:31–12:00
+      }
+    });
+
+    // All half-day occasions = auto-detected (12:01+) + manually marked
+    const allHalfDayOccasions = [...halfDayLateRecords, ...manualHalfDayRecords];
+
+    const unpaidAbsents = att.filter(a => a.status === 'absent' && a.leave_type === 'unpaid');
+    const annualLeaves  = att.filter(a => a.status === 'absent' && a.leave_type === 'annual_leave');
+
+    const present  = att.filter(a => a.status === 'present' || a.status === 'late').length;
+    const late     = normalLateRecords.length;
+    const halfDay  = allHalfDayOccasions.length;
+    const absent   = att.filter(a => a.status === 'absent').length;
+
+    // ── 5. Late deduction (two separate buckets, separate free passes) ─
+    // Normal lates: 7 free, excess → ceil(minutes from 11:00 / 60) × perHour
+    const excessNormalLates = Math.max(0, normalLateRecords.length - maxLatesAllowed);
+    // Pick the worst offenders (most minutes) for deduction
+    const normalLatesToDeduct = [...normalLateRecords]
+      .sort((a, b) => (b.late_minutes || 0) - (a.late_minutes || 0))
+      .slice(0, excessNormalLates);
+
+    let lateDeduction = 0;
+    for (const r of normalLatesToDeduct) {
+      const timeMins    = parseTimeMins(r.time_in);
+      const minsFromOffice = timeMins !== null ? timeMins - officeStartMins : (r.late_minutes || 30);
+      const hoursLate   = Math.ceil(Math.max(1, minsFromOffice) / 60);
+      lateDeduction += hoursLate * perHour;
+    }
+
+    // Half day lates: 1 free, excess → ceil(minutes from 11:00 / 60) × perHour
+    const excessHalfDays = Math.max(0, allHalfDayOccasions.length - maxHalfDaysAllowed);
+    const halfDaysToDeduct = [...allHalfDayOccasions]
+      .sort((a, b) => (b.late_minutes || 0) - (a.late_minutes || 0))
+      .slice(0, excessHalfDays);
+
+    for (const r of halfDaysToDeduct) {
+      const timeMins = parseTimeMins(r.time_in);
+      if (timeMins !== null) {
+        const minsFromOffice = timeMins - officeStartMins;
+        const hoursLate = Math.ceil(Math.max(1, minsFromOffice) / 60);
         lateDeduction += hoursLate * perHour;
+      } else {
+        lateDeduction += perDay * 0.5; // fallback: half day = half perDay
       }
     }
     lateDeduction = Math.round(lateDeduction);
@@ -113,8 +148,9 @@ export async function POST(request) {
       .eq('deduct_month', month).eq('status', 'pending');
     const advanceDeduction = (advances||[]).reduce((s,a)=>s+Number(a.amount),0);
 
-    // 9. Time Bonus — if total late occasions within free passes
-    const earnedTimeBonus = totalOccasions <= freePasses ? timeBonusAmount : 0;
+    // 9. Time Bonus — only if normal lates ≤ 7 AND half day lates ≤ 1
+    const earnedTimeBonus = (normalLateRecords.length <= maxLatesAllowed && allHalfDayOccasions.length <= maxHalfDaysAllowed)
+      ? timeBonusAmount : 0;
 
     // 10. Leaderboard Bonus
     let earnedLeaderboardBonus = 0;
@@ -157,6 +193,10 @@ export async function POST(request) {
       absent_days: absent,
       late_days: late,
       half_days: halfDay,
+      normal_lates: normalLateRecords.length,
+      half_day_lates: allHalfDayOccasions.length,
+      excess_normal_lates: excessNormalLates,
+      excess_half_days: excessHalfDays,
       annual_leaves_used: (yearlyLeavesUsed || 0) + leavesOpeningUsed,
       annual_leaves_erp: yearlyLeavesUsed || 0,
       annual_leaves_opening: leavesOpeningUsed,
