@@ -40,10 +40,10 @@ export async function GET(request) {
 
     // Get current inventory value for auto-fill
     const { data: inventory } = await supabase
-      .from('inventory')
-      .select('quantity, cost_price');
+      .from('products')
+      .select('stock_quantity, selling_price');
     const inventoryValue = (inventory || [])
-      .reduce((s, i) => s + (parseFloat(i.quantity || 0) * parseFloat(i.cost_price || 0)), 0);
+      .reduce((s, i) => s + (parseFloat(i.stock_quantity || 0) * parseFloat(i.selling_price || 0)), 0);
 
     return NextResponse.json({
       success: true,
