@@ -1,40 +1,52 @@
 import { NextResponse } from 'next/server';
+import { getKangarooToken } from '../../../../../lib/kangaroo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const username = process.env.KANGAROO_USERNAME;
-  const password = process.env.KANGAROO_PASSWORD;
+  const result = {};
 
-  const result = {
-    env_check: {
-      username_set: !!username,
-      username_value: username || 'NOT SET',
-      password_set: !!password,
-    },
-  };
-
-  // Test auth
   try {
-    const res = await fetch('https://api.kangaroo.pk/auth/login', {
+    const { token, userId } = await getKangarooToken();
+    result.auth = { ok: true, userId };
+
+    // Test booking with minimal data
+    const testPayload = {
+      orders: [{
+        Customername: 'Test Customer',
+        Customeraddress: 'Test Address Karachi',
+        Customernumber: '03001234567',
+        Amount: '1000',
+        Invoice: 'TEST-001',
+        City: 'Karachi',
+        Pieces: '1',
+        Weight: '500',
+      }]
+    };
+
+    result.payload_sent = testPayload;
+
+    const res = await fetch('https://api.kangaroo.pk/order/create', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Client-Service': 'kangaroo',
         'Auth-Key': 'kangaroo',
-        'Content-Type': 'application/json',
+        'Auth-Token': token,
+        'User-ID': userId,
       },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(testPayload),
     });
 
     const text = await res.text();
-    result.auth_test = {
-      http_status: res.status,
-      response_length: text.length,
-      response_preview: text.slice(0, 300),
-    };
+    result.http_status = res.status;
+    result.response_raw = text.slice(0, 500);
+
+    try { result.response_json = JSON.parse(text); } catch (e) { result.parse_error = e.message; }
+
   } catch (e) {
-    result.auth_test = { error: e.message };
+    result.error = e.message;
   }
 
   return NextResponse.json(result);
