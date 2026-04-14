@@ -16,7 +16,7 @@ export async function GET(request) {
     // ── 1. Orders this month ──────────────────────────────────
     const { data: orders } = await supabase
       .from('orders')
-      .select('total_price, status, payment_status, courier_name, created_at')
+      .select('total_price, status, payment_status, courier_name, created_at, shipping_fee')
       .gte('created_at', monthStart)
       .lte('created_at', monthEnd + 'T23:59:59');
 
@@ -28,6 +28,7 @@ export async function GET(request) {
     const pendingRevenue = dispatchedOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
     const paidOrders = allOrders.filter(o => o.payment_status === 'paid');
     const totalPaid = paidOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const deliveryCharges = allOrders.reduce((s, o) => s + parseFloat(o.shipping_fee || 0), 0);
 
     // ── 2. Courier breakdown ──────────────────────────────────
     const couriers = ['PostEx', 'Leopards', 'Kangaroo'];
@@ -75,7 +76,6 @@ export async function GET(request) {
       .filter(l => l.type === 'advance')
       .reduce((s, l) => s + parseFloat(l.amount || 0), 0);
 
-    // Expenses by category
     const expByCategory = {};
     (opsLogs || []).filter(l => l.type === 'expense').forEach(l => {
       expByCategory[l.category || 'Other'] = (expByCategory[l.category || 'Other'] || 0) + parseFloat(l.amount || 0);
@@ -94,9 +94,9 @@ export async function GET(request) {
     const { data: salaries } = await supabase
       .from('salary_records')
       .select('net_salary, paid_at, status')
+      .eq('status', 'paid')
       .gte('paid_at', monthStart)
-      .lte('paid_at', monthEnd + 'T23:59:59')
-      .eq('status', 'paid');
+      .lte('paid_at', monthEnd + 'T23:59:59');
 
     const salariesPaid = (salaries || []).reduce((s, r) => s + parseFloat(r.net_salary || 0), 0);
 
@@ -115,27 +115,15 @@ export async function GET(request) {
 
     const vendorOutstanding = totalPurchased - totalVendorPaid;
 
-    // ── 8. Inventory value ───────────────────────────────────
-    const { data: inventory } = await supabase
-      .from('inventory')
-      .select('quantity, cost_price');
+    // ── 8. Inventory value (from products table) ─────────────
+    const { data: products } = await supabase
+      .from('products')
+      .select('stock_quantity, selling_price');
 
-    const inventoryValue = (inventory || [])
-      .reduce((s, i) => s + (parseFloat(i.quantity || 0) * parseFloat(i.cost_price || 0)), 0);
+    const inventoryValue = (products || [])
+      .reduce((s, p) => s + (parseFloat(p.stock_quantity || 0) * parseFloat(p.selling_price || 0)), 0);
 
-    // ── 9. Delivery charges (from orders) ───────────────────
-    const { data: orderDetails } = await supabase
-      .from('orders')
-      .select('shipping_lines, courier_charges')
-      .gte('created_at', monthStart)
-      .lte('created_at', monthEnd + 'T23:59:59');
-
-    const deliveryCharges = (orderDetails || []).reduce((s, o) => {
-      const charge = parseFloat(o.courier_charges || 0);
-      return s + charge;
-    }, 0);
-
-    // ── 10. P&L Calculation ──────────────────────────────────
+    // ── 9. P&L ───────────────────────────────────────────────
     const totalExpensesAll = opsExpenses + personalExpenses + salariesPaid;
     const netPL = revenue - totalExpensesAll;
 
@@ -150,6 +138,7 @@ export async function GET(request) {
         pending_revenue: pendingRevenue,
         total_paid: totalPaid,
         by_courier: byCourier,
+        delivery_charges: deliveryCharges,
       },
       settlements: {
         received_this_month: settledThisMonth,
@@ -162,7 +151,6 @@ export async function GET(request) {
         advances: advancesGiven,
         total: totalExpensesAll,
         by_category: expByCategory,
-        delivery_charges: deliveryCharges,
       },
       vendors: {
         outstanding: vendorOutstanding,
@@ -180,6 +168,7 @@ export async function GET(request) {
       },
     });
   } catch (err) {
+    console.error('Dashboard error:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
