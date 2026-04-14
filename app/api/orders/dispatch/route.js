@@ -84,44 +84,29 @@ async function bookKangaroo(order, courier_notes) {
   throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
 
-async function bookLeopards(order, courier_notes) {
-  const apiKey = process.env.LEOPARDS_API_KEY;
-  const apiPwd = process.env.LEOPARDS_API_PASSWORD;
-  const shipperId = process.env.LEOPARDS_SHIPPER_ID;
-  if (!apiKey) throw new Error('Leopards API key missing');
+async function bookLeopards(order, courier_notes, weight, pieces) {
+  const { bookLeopardPacket } = await import('../../../../lib/leopards.js');
 
-  const res = await fetch('https://merchantapi.leopardscourier.com/api/createPacket/format/json/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      api_key: apiKey,
-      api_password: apiPwd,
-      shipment_type_id: 1,
-      consignee_name: order.customer_name || '',
-      consignee_email: '',
-      consignee_address: order.customer_address || '',
-      consignee_phone: order.customer_phone || '',
-      consignee_city: order.customer_city || 'Karachi',
-      shipment_amount: String(order.total_amount || 0),
-      pieces_quantity: 1,
-      order_id: order.order_number || String(order.id),
-      comments: courier_notes || 'Jewelry',
-      shipper_id: shipperId || '',
-    }),
+  const result = await bookLeopardPacket({
+    customerName: order.customer_name || '',
+    customerPhone: order.customer_phone || '',
+    customerAddress: order.customer_address || '',
+    customerCity: order.customer_city || 'Karachi',
+    codAmount: order.total_amount || order.total_price || 0,
+    orderId: order.order_number || String(order.id),
+    specialInstructions: courier_notes || 'Jewelry',
+    weight: parseInt(weight || 500),
+    pieces: parseInt(pieces || 1),
   });
 
-  const data = await res.json();
-  if (data.error === '0' && data.track_number) {
-    return { tracking: data.track_number, raw: data };
-  }
-  throw new Error(data.error_description || 'Leopards booking failed');
+  return { tracking: result.tracking, print_url: result.slip_url, raw: result.raw };
 }
 
 // ─── Main Dispatch Handler ──────────────────────────────────────────────────
 
 export async function POST(request) {
   try {
-    const { order_id, courier, courier_notes, override_name, override_phone, override_address, override_city, override_amount } = await request.json();
+    const { order_id, courier, courier_notes, override_name, override_phone, override_address, override_city, override_amount, override_weight, override_pieces } = await request.json();
     if (!order_id || !courier) {
       return NextResponse.json({ success: false, error: 'order_id and courier required' }, { status: 400 });
     }
@@ -156,7 +141,7 @@ export async function POST(request) {
       let result;
       if (courier === 'PostEx') result = await bookPostEx(order, courier_notes);
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
-      else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes);
+      else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces);
       tracking = result?.tracking;
       printUrl = result?.print_url || null;
     } catch (e) {
@@ -169,7 +154,15 @@ export async function POST(request) {
           booking_failed: true,
         }, { status: 400 });
       }
-      // PostEx / Leopards: soft fail — continue with manual tracking
+      // Leopards: STRICT — do not proceed if booking failed
+      if (courier === 'Leopards') {
+        return NextResponse.json({
+          success: false,
+          error: `Leopards booking failed: ${e.message}`,
+          booking_failed: true,
+        }, { status: 400 });
+      }
+      // PostEx: soft fail — continue with manual tracking
     }
 
     // ── 2. Update order status in DB ──
