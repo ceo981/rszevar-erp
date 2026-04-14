@@ -54,16 +54,12 @@ async function bookKangaroo(order, courier_notes) {
     },
     body: JSON.stringify({
       orders: [{
-        cname: order.customer_name || '',
-        caddress: order.customer_address || '',
-        cnumber: order.customer_phone || '',
-        amount: String(Math.round(parseFloat(order.total_amount || order.total_price || 0))),
-        invoice: order.order_number || String(order.id),
-        city: order.customer_city || 'Karachi',
-        Productname: courier_notes || 'Jewelry',
-        Productcode: '',
-        comments: '',
-        Ordertype: 'COD',
+        Customername: order.customer_name || '',
+        Customeraddress: order.customer_address || '',
+        Customernumber: order.customer_phone || '',
+        Amount: String(Math.round(parseFloat(order.total_amount || order.total_price || 0))),
+        Invoice: order.order_number || String(order.id),
+        City: order.customer_city || 'Karachi',
       }],
     }),
   });
