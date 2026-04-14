@@ -90,16 +90,21 @@ async function bookLeopards(order, courier_notes, weight, pieces, supabaseClient
   // Auto-fetch order items for special instructions
   let specialInstructions = courier_notes || '';
   if (!specialInstructions && supabaseClient) {
-    const { data: items } = await supabaseClient
-      .from('order_items')
-      .select('title, variant_title, sku, quantity')
-      .eq('order_id', order.id);
-    if (items?.length) {
-      specialInstructions = items
-        .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU ${i.sku}` : ''} x${i.quantity}`)
-        .join(', ');
+    try {
+      const { data: items } = await supabaseClient
+        .from('order_items')
+        .select('title, variant_title, sku, quantity')
+        .eq('order_id', order.id);
+      if (items?.length) {
+        specialInstructions = items
+          .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU ${i.sku}` : ''} x${i.quantity}`)
+          .join(', ');
+      }
+    } catch(e) {
+      console.log('Items fetch error:', e.message);
     }
   }
+  if (!specialInstructions) specialInstructions = 'Jewelry';
 
   const result = await bookLeopardPacket({
     customerName: order.customer_name || '',
@@ -157,10 +162,12 @@ export async function POST(request) {
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
       else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes, override_weight, override_pieces, supabase);
       tracking = result?.tracking;
-      printUrl = result?.print_url || result?.tracking_url || null;
-      // For Leopards, also store tracking URL separately
-      if (result?.tracking_url) {
-        await supabase.from('orders').update({ courier_tracking_url: result.tracking_url }).eq('id', order_id);
+      // slip URL for orders table, tracking URL for Shopify
+      const slipUrl = result?.print_url || null;
+      const trackingUrl = result?.tracking_url || (tracking ? `https://lcs.appsbymoose.com/track/${tracking}` : null);
+      printUrl = trackingUrl; // Shopify gets tracking URL, not slip
+      if (slipUrl) {
+        await supabase.from('orders').update({ courier_tracking_url: slipUrl }).eq('id', order_id);
       }
     } catch (e) {
       bookingError = e.message;
