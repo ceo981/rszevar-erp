@@ -4,24 +4,23 @@ import { getKangarooToken } from '../../../../../lib/kangaroo';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const cityVal = searchParams.get('city') || 'Karachi';
   const result = {};
 
   try {
     const { token, userId } = await getKangarooToken();
     result.auth = { ok: true, userId };
 
-    // Use timestamp to ensure unique invoice
-    const uniqueInvoice = 'TEST-' + Date.now();
-
     const payload = {
       orders: [{
         cname: 'Test Customer',
-        caddress: 'Block 5 Gulshan Karachi',
+        caddress: 'Block 5 Gulshan',
         cnumber: '03001234567',
         amount: '1000',
-        invoice: uniqueInvoice,
-        city: 'Karachi',
+        invoice: 'TEST-' + Date.now(),
+        city: cityVal,
         Productname: 'Jewelry',
         Productcode: '',
         comments: '',
@@ -29,8 +28,8 @@ export async function GET() {
       }]
     };
 
+    result.city_tried = cityVal;
     result.payload_sent = payload;
-    result.invoice_used = uniqueInvoice;
 
     const res = await fetch('https://api.kangaroo.pk/order/create', {
       method: 'POST',
@@ -39,15 +38,14 @@ export async function GET() {
         'Client-Service': 'kangaroo',
         'Auth-Key': 'kangaroo',
         'Auth-Token': token,
-        'User-ID': String(userId),
+        'User-ID': userId,
       },
       body: JSON.stringify(payload),
     });
 
     result.http_status = res.status;
     const text = await res.text();
-    result.response_raw = text.slice(0, 800);
-    try { result.response_json = JSON.parse(text); } catch (e) { result.html_error = true; }
+    try { result.response_json = JSON.parse(text); } catch (e) { result.response_raw = text.slice(0, 300); }
 
   } catch (e) {
     result.error = e.message;
