@@ -40,32 +40,45 @@ async function bookPostEx(order, courier_notes) {
 }
 
 async function bookKangaroo(order, courier_notes) {
-  const clientId = process.env.KANGAROO_CLIENT_ID || '549';
-  const pass = process.env.KANGAROO_API_PASSWORD;
-  if (!pass) throw new Error('Kangaroo API password missing');
+  const { getKangarooToken } = await import('../../../../lib/kangaroo.js');
+  const { token, userId } = await getKangarooToken();
 
-  const res = await fetch('https://kangaroo.pk/orderapi.php', {
+  const res = await fetch('https://api.kangaroo.pk/order/create', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Service': 'kangaroo',
+      'Auth-Key': 'kangaroo',
+      'Auth-Token': token,
+      'User-ID': userId,
+    },
     body: JSON.stringify({
-      clientid: clientId,
-      pass: pass,
-      request: 'neworder',
-      consignee: order.customer_name || '',
-      phone: order.customer_phone || '',
-      address: order.customer_address || '',
-      city: order.customer_city || 'Karachi',
-      cod: String(order.total_amount || 0),
-      description: courier_notes || 'Jewelry',
-      ref: order.order_number || String(order.id),
+      orders: [{
+        Customername: order.customer_name || '',
+        Customeraddress: order.customer_address || '',
+        Customernumber: order.customer_phone || '',
+        Amount: String(order.total_amount || order.total_price || 0),
+        Invoice: order.order_number || String(order.id),
+        City: order.customer_city || 'Karachi',
+        specialInstruction: courier_notes || '',
+      }],
     }),
   });
 
-  const data = await res.json();
-  if (data.status === 'success' || data.cn) {
-    return { tracking: data.cn || data.tracking_no, raw: data };
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error(`Kangaroo API invalid response: ${text.slice(0, 100)}`); }
+
+  if (data.status === 201 || data.status === '201') {
+    // Response: { orders: { "KN123456789": { print: url } } }
+    const orderKeys = Object.keys(data.orders || {});
+    if (orderKeys.length > 0) {
+      const trackingNumber = orderKeys[0];
+      const printUrl = data.orders[trackingNumber]?.print || null;
+      return { tracking: trackingNumber, print_url: printUrl, raw: data };
+    }
   }
-  throw new Error(data.message || 'Kangaroo booking failed');
+  throw new Error(data.message || `Kangaroo booking failed: ${JSON.stringify(data)}`);
 }
 
 async function bookLeopards(order, courier_notes) {
@@ -105,21 +118,31 @@ async function bookLeopards(order, courier_notes) {
 
 export async function POST(request) {
   try {
-    const { order_id, courier, courier_notes } = await request.json();
+    const { order_id, courier, courier_notes, override_name, override_phone, override_address, override_city, override_amount } = await request.json();
     if (!order_id || !courier) {
       return NextResponse.json({ success: false, error: 'order_id and courier required' }, { status: 400 });
     }
 
     // Fetch order details
-    const { data: order, error: fetchErr } = await supabase
+    const { data: orderRaw, error: fetchErr } = await supabase
       .from('orders')
       .select('*')
       .eq('id', order_id)
       .single();
 
-    if (fetchErr || !order) {
+    if (fetchErr || !orderRaw) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
+
+    // Apply overrides (Kangaroo modal edits)
+    const order = {
+      ...orderRaw,
+      customer_name: override_name || orderRaw.customer_name,
+      customer_phone: override_phone || orderRaw.customer_phone,
+      customer_address: override_address || orderRaw.customer_address,
+      customer_city: override_city || orderRaw.customer_city,
+      total_amount: override_amount || orderRaw.total_amount || orderRaw.total_price,
+    };
 
     // ── 1. Book with courier API ──
     let tracking = null;
@@ -131,6 +154,9 @@ export async function POST(request) {
       else if (courier === 'Kangaroo') result = await bookKangaroo(order, courier_notes);
       else if (courier === 'Leopards') result = await bookLeopards(order, courier_notes);
       tracking = result?.tracking;
+      if (result?.print_url) {
+        await supabase.from('orders').update({ courier_tracking_url: result.print_url }).eq('id', order_id);
+      }
     } catch (e) {
       bookingError = e.message;
       // Continue — manual tracking can be added
