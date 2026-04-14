@@ -180,7 +180,7 @@ async function syncKangaroo() {
   const results = { courier: 'Kangaroo', synced: 0, delivered: 0, rto: 0, in_transit: 0, cod_collected: 0, updated: 0, errors: [] };
 
   try {
-    const { trackKangarooBatch, mapKangarooStatus, getKangarooToken } = await import('../../../lib/kangaroo.js');
+    const { trackKangarooBatch, mapKangarooStatus, getKangarooToken } = await import('../../../../lib/kangaroo.js');
     // Test token first
     await getKangarooToken();
 
