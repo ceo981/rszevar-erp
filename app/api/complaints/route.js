@@ -60,6 +60,7 @@ export async function POST(request) {
       status: 'open',
       priority: body.priority || 'medium',
       assigned_to: body.assigned_to || '',
+      image_urls: body.image_urls || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).select().single();
