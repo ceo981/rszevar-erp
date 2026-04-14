@@ -60,6 +60,8 @@ async function bookKangaroo(order, courier_notes) {
         Amount: String(Math.round(parseFloat(order.total_amount || order.total_price || 0))),
         Invoice: order.order_number || String(order.id),
         City: order.customer_city || 'Karachi',
+        Ordertype: courier_notes?.ordertype || 'COD',
+        Comment: courier_notes?.comment || '',
       }],
     }),
   });
@@ -127,7 +129,7 @@ async function bookLeopards(order, courier_notes, weight, pieces, supabaseClient
 
 export async function POST(request) {
   try {
-    const { order_id, courier, courier_notes, override_name, override_phone, override_address, override_city, override_amount, override_weight, override_pieces } = await request.json();
+    const { order_id, courier, courier_notes, override_name, override_phone, override_address, override_city, override_amount, override_weight, override_pieces, kangaroo_ordertype, kangaroo_comment } = await request.json();
     if (!order_id || !courier) {
       return NextResponse.json({ success: false, error: 'order_id and courier required' }, { status: 400 });
     }
@@ -176,7 +178,7 @@ export async function POST(request) {
     try {
       let result;
       if (courier === 'PostEx') result = await bookPostEx(order, finalCourierNotes);
-      else if (courier === 'Kangaroo') result = await bookKangaroo(order, finalCourierNotes);
+      else if (courier === 'Kangaroo') result = await bookKangaroo(order, { ordertype: kangaroo_ordertype || 'COD', comment: kangaroo_comment || finalCourierNotes });
       else if (courier === 'Leopards') result = await bookLeopards(order, finalCourierNotes, override_weight, override_pieces, supabase);
       tracking = result?.tracking;
       // slip URL for orders table, tracking URL for Shopify
