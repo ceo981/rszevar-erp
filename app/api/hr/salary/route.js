@@ -138,13 +138,15 @@ export async function POST(request) {
       - lateDeduction - absentDeduction - advanceDeduction
     );
 
-    // Yearly leaves used this year
-    const yearStart = month.slice(0,4) + '-01-01';
-    const yearEnd   = month.slice(0,4) + '-12-31';
+    // Yearly leaves used this office year (Oct–Sep)
+    const [sy, sm] = month.split('-').map(Number);
+    const offYearStart = sm >= 10 ? `${sy}-10-01`     : `${sy - 1}-10-01`;
+    const offYearEnd   = sm >= 10 ? `${sy + 1}-09-30` : `${sy}-09-30`;
     const { count: yearlyLeavesUsed } = await supabase.from('employee_attendance')
       .select('*', { count: 'exact', head: true })
       .eq('employee_id', employee_id).eq('leave_type', 'annual_leave')
-      .gte('date', yearStart).lte('date', yearEnd);
+      .gte('date', offYearStart).lte('date', offYearEnd);
+    const leavesOpeningUsed = emp?.leaves_opening_used || 0;
 
     const calculation = {
       employee_id, month,
@@ -155,7 +157,9 @@ export async function POST(request) {
       absent_days: absent,
       late_days: late,
       half_days: halfDay,
-      annual_leaves_used: yearlyLeavesUsed || 0,
+      annual_leaves_used: (yearlyLeavesUsed || 0) + leavesOpeningUsed,
+      annual_leaves_erp: yearlyLeavesUsed || 0,
+      annual_leaves_opening: leavesOpeningUsed,
       yearly_leaves_allowed: emp.yearly_leaves_allowed || 14,
       unpaid_absents: unpaidAbsents.length,
       total_late_occasions: totalOccasions,
