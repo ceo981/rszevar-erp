@@ -409,6 +409,16 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const [tab, setTab] = useState('actions');
   const [log, setLog] = useState([]);
   const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
+  const [showKangarooModal, setShowKangarooModal] = useState(false);
+  const [kangarooForm, setKangarooForm] = useState({
+    name: order.customer_name || '',
+    phone: order.customer_phone || '',
+    address: order.customer_address || '',
+    city: order.customer_city || 'Karachi',
+    amount: order.total_price || order.total_amount || '',
+    invoice: order.order_number || '',
+    notes: '',
+  });
   const [cancelReason, setCancelReason] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -500,6 +510,38 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     }
   };
   const dispatch = () => doAction('/api/orders/dispatch', { order_id: order.id, ...dispatchForm }, '✅ Dispatched!');
+
+  const bookKangaroo = async () => {
+    setLoading(true);
+    setMsg('');
+    try {
+      const r = await fetch('/api/orders/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          courier: 'Kangaroo',
+          courier_notes: kangarooForm.notes,
+          override_name: kangarooForm.name,
+          override_phone: kangarooForm.phone,
+          override_address: kangarooForm.address,
+          override_city: kangarooForm.city,
+          override_amount: kangarooForm.amount,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Kangaroo booked! Tracking: ${d.tracking || 'Pending'}`);
+        setShowKangarooModal(false);
+        setTimeout(() => { onRefresh?.(); onClose(); }, 1500);
+      } else {
+        setMsg('❌ ' + (d.error || 'Booking failed'));
+      }
+    } catch (e) {
+      setMsg('❌ ' + e.message);
+    }
+    setLoading(false);
+  };
   const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason }, '✅ Order cancelled');
   
   const saveEdit = async () => {
@@ -769,7 +811,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Select Courier</div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {['PostEx', 'Leopards', 'Kangaroo'].map(c => (
+                      {['PostEx', 'Leopards'].map(c => (
                         <button key={c} onClick={() => setDispatchForm(f => ({...f, courier: c}))}
                           style={{ flex: 1, padding: '8px', background: dispatchForm.courier === c ? '#a855f722' : '#1a1a1a', border: `1px solid ${dispatchForm.courier === c ? '#a855f7' : border}`, color: dispatchForm.courier === c ? '#a855f7' : '#888', borderRadius: 7, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                           {c}
@@ -779,8 +821,12 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   </div>
                   <input value={dispatchForm.notes} onChange={e => setDispatchForm(f => ({...f, notes: e.target.value}))}
                     placeholder="Item description (e.g. Mala Set)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  <button onClick={dispatch} disabled={loading} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                  <button onClick={dispatch} disabled={loading} style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8 }}>
                     Book & Dispatch via {dispatchForm.courier}
+                  </button>
+                  <button onClick={() => { setKangarooForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', invoice: order.order_number||'', notes: '' }); setShowKangarooModal(true); }} disabled={loading}
+                    style={{ background: '#f59e0b22', border: '1px solid #f59e0b55', color: '#f59e0b', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
+                    🦘 Book via Kangaroo
                   </button>
                 </div>
               )}
@@ -834,6 +880,64 @@ function OrderDrawer({ order, onClose, onRefresh }) {
           )}
         </div>
       </div>
+
+      {/* ── Kangaroo Booking Modal ── */}
+      {showKangarooModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#111', border: '1px solid #f59e0b44', borderRadius: 14, padding: 28, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>🦘 Book via Kangaroo</div>
+              <button onClick={() => setShowKangarooModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Customer Name', 'name', 'text', 'Customer ka naam'],
+                ['Phone', 'phone', 'text', '03xx-xxxxxxx'],
+                ['City', 'city', 'text', 'Karachi'],
+                ['COD Amount (Rs.)', 'amount', 'number', '0'],
+                ['Invoice / Order #', 'invoice', 'text', order.order_number || ''],
+              ].map(([label, key, type, placeholder]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
+                  <input type={type} value={kangarooForm[key]} onChange={e => setKangarooForm(f => ({...f, [key]: e.target.value}))}
+                    placeholder={placeholder}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
+                <textarea value={kangarooForm.address} onChange={e => setKangarooForm(f => ({...f, address: e.target.value}))}
+                  rows={2} placeholder="Customer ka address"
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (optional)</div>
+                <input value={kangarooForm.notes} onChange={e => setKangarooForm(f => ({...f, notes: e.target.value}))}
+                  placeholder="e.g. Earrings Set, handle with care..."
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+
+              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+                ⚠️ Submit karne se: Kangaroo pe booking hogi → ERP mein dispatched mark hoga → Shopify fulfill hoga tracking ke saath
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={bookKangaroo} disabled={loading}
+                  style={{ flex: 1, background: '#f59e0b', color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {loading ? '⏳ Booking...' : '🦘 Confirm & Book'}
+                </button>
+                <button onClick={() => setShowKangarooModal(false)}
+                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
