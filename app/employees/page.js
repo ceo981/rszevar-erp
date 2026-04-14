@@ -206,6 +206,15 @@ function EmployeeModal({ emp, onClose, onSave }) {
             </div>
           </div>
 
+          <div>
+            <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 5 }}>Leaves Already Used This Year (ERP se pehle)
+              <span style={{ color: '#444', marginLeft: 6 }}>— Oct se ab tak kitni leaves le chuka hai ERP track karne se pehle</span>
+            </div>
+            <input type="number" value={form.leaves_opening_used || '0'} onChange={e => setForm(f => ({...f, leaves_opening_used: e.target.value}))}
+              placeholder="0"
+              style={{ width: '100%', background: '#1a1a1a', border: `1px solid #ef444444`, color: '#ef4444', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+          </div>
+
           {sectionTitle('NOTES')}
           <div>
             <textarea value={form.notes || ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={2} placeholder="Optional..."
