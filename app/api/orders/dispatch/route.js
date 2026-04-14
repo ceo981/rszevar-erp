@@ -91,18 +91,22 @@ async function bookLeopards(order, courier_notes, weight, pieces, supabaseClient
   let specialInstructions = courier_notes || '';
   if (!specialInstructions && supabaseClient) {
     try {
-      const { data: items } = await supabaseClient
-        .from('order_items')
-        .select('title, variant_title, sku, quantity')
-        .eq('order_id', order.id);
+      // Try by id first, then by order_number
+      let items = null;
+      const { data: d1 } = await supabaseClient
+        .from('order_items').select('title, variant_title, sku, quantity').eq('order_id', order.id);
+      items = d1;
+      if (!items?.length) {
+        const { data: d2 } = await supabaseClient
+          .from('order_items').select('title, variant_title, sku, quantity').eq('order_id', order.shopify_order_id);
+        items = d2;
+      }
       if (items?.length) {
         specialInstructions = items
-          .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU ${i.sku}` : ''} x${i.quantity}`)
+          .map(i => `${i.title}${i.variant_title ? ` ${i.variant_title}` : ''}${i.sku ? ` SKU:${i.sku}` : ''} x${i.quantity}`)
           .join(', ');
       }
-    } catch(e) {
-      console.log('Items fetch error:', e.message);
-    }
+    } catch(e) { console.log('Items fetch error:', e.message); }
   }
   if (!specialInstructions) specialInstructions = 'Jewelry';
 
@@ -113,7 +117,7 @@ async function bookLeopards(order, courier_notes, weight, pieces, supabaseClient
     customerCity: order.customer_city || 'Karachi',
     codAmount: order.total_amount || order.total_price || 0,
     orderId: order.order_number || String(order.id),
-    specialInstructions: specialInstructions || 'Jewelry',
+    specialInstructions,
     weight: parseInt(weight || 500),
     pieces: parseInt(pieces || 1),
   });
