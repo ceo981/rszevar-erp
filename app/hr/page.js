@@ -26,6 +26,7 @@ function AttendanceTab({ employees }) {
   const [form, setForm] = useState({ employee_id: '', date: today(), status: 'present', time_in: '11:00', time_out: '21:00', notes: '' });
   const [msg, setMsg] = useState('');
   const [editRecord, setEditRecord] = useState(null);
+  const formRef = useCallback(node => { if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,10 +43,9 @@ function AttendanceTab({ employees }) {
   async function handleAdd(e) {
     e.preventDefault();
     if (!form.employee_id) { setMsg('❌ Employee select karo'); return; }
-    // Duplicate check
     const exists = records.find(r => String(r.employee_id) === String(form.employee_id) && r.date === form.date);
     if (exists) {
-      setMsg(`⚠️ ${empMap[String(form.employee_id)] || 'Is employee'} ki ${form.date} ki entry pehle se hai — edit karo`);
+      setMsg(`⚠️ ${empMap[String(form.employee_id)] || 'Is employee'} ki ${form.date} ki entry pehle se hai — cell pe click kar ke edit karo`);
       setTimeout(() => setMsg(''), 4000);
       return;
     }
@@ -69,16 +69,63 @@ function AttendanceTab({ employees }) {
     load();
   }
 
-  const statusColor = { present: '#22c55e', absent: '#ef4444', leave: '#8b5cf6', late: '#f59e0b', half_day: '#6366f1' };
+  // ── Calendar data ─────────────────────────────────────────
+  const [year, mon] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  const todayStr = today();
+  const todayDay = todayStr.startsWith(month) ? parseInt(todayStr.split('-')[2]) : null;
+
+  // Map: employee_id → day_number → record
+  const empDayMap = {};
+  records.forEach(r => {
+    const day = parseInt(r.date?.split('-')[2]);
+    if (!empDayMap[r.employee_id]) empDayMap[r.employee_id] = {};
+    empDayMap[r.employee_id][day] = r;
+  });
+
+  const STATUS = {
+    present:  { label: 'P',  color: '#22c55e', bg: '#22c55e28' },
+    absent:   { label: 'A',  color: '#ef4444', bg: '#ef444428' },
+    leave:    { label: 'L',  color: '#a78bfa', bg: '#a78bfa28' },
+    late:     { label: 'Lt', color: '#f59e0b', bg: '#f59e0b28' },
+    half_day: { label: 'H',  color: '#6366f1', bg: '#6366f128' },
+  };
+
+  const getSummary = (empId) => {
+    const recs = Object.values(empDayMap[empId] || {});
+    return {
+      p: recs.filter(r => r.status === 'present').length,
+      a: recs.filter(r => r.status === 'absent').length,
+      l: recs.filter(r => r.status === 'leave').length,
+      lt: recs.filter(r => r.status === 'late').length,
+    };
+  };
+
+  const handleCellClick = (emp, day) => {
+    const rec = empDayMap[emp.id]?.[day];
+    if (rec) {
+      setEditRecord({ ...rec });
+    } else {
+      const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+      setForm(f => ({ ...f, employee_id: String(emp.id), date: dateStr }));
+    }
+  };
+
+  // Day of week abbreviations for header
+  const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
   return (
     <div>
+      {/* Header row */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
         <span style={{ color: '#94a3b8', fontSize: 14 }}>{records.length} records</span>
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+      {/* Add form */}
+      <div ref={formRef} style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
         <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Add Attendance</h3>
         <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} style={inputStyle} required>
@@ -90,14 +137,15 @@ function AttendanceTab({ employees }) {
             <option value="present">Present</option>
             <option value="absent">Absent</option>
             <option value="leave">Leave</option>
+            <option value="late">Late</option>
+            <option value="half_day">Half Day</option>
           </select>
           <input type="time" value={form.time_in} onChange={e => setForm(f => ({ ...f, time_in: e.target.value }))} style={inputStyle} placeholder="Time In" />
           <input type="time" value={form.time_out} onChange={e => setForm(f => ({ ...f, time_out: e.target.value }))} style={inputStyle} placeholder="Time Out" />
           <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} placeholder="Notes (optional)" />
           <button type="submit" style={btnStyle}>Save</button>
         </form>
-
-        {msg && <div style={{ marginTop: 10, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
+        {msg && <div style={{ marginTop: 10, color: msg.startsWith('✅') ? '#22c55e' : msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444' }}>{msg}</div>}
       </div>
 
       {/* Edit Modal */}
@@ -123,6 +171,8 @@ function AttendanceTab({ employees }) {
                   <option value="present">Present</option>
                   <option value="absent">Absent</option>
                   <option value="leave">Leave</option>
+                  <option value="late">Late</option>
+                  <option value="half_day">Half Day</option>
                 </select>
               </div>
               <div>
@@ -137,46 +187,124 @@ function AttendanceTab({ employees }) {
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Notes</div>
                 <input value={editRecord.notes || ''} onChange={e => setEditRecord(r => ({...r, notes: e.target.value}))} style={inputStyle} placeholder="Optional" />
               </div>
-              <button type="submit" style={btnStyle}>💾 Save Changes</button>
+              <div style={{ gridColumn: '1/-1', display: 'flex', gap: 8 }}>
+                <button type="submit" style={{ ...btnStyle, flex: 1 }}>💾 Save Changes</button>
+                <button type="button" onClick={() => handleDelete(editRecord.id)} style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>🗑 Delete</button>
+              </div>
             </form>
           </div>
         </div>
       )}
 
-      {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+      {/* Calendar Grid */}
+      {loading ? (
+        <div style={{ color: '#94a3b8', padding: 20 }}>Loading...</div>
+      ) : (
+        <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid #1e293b' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 'max-content', width: '100%' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #334155' }}>
-                {['Employee', 'Date', 'Status', 'Time In', 'Time Out', 'Late Mins', ''].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', color: '#94a3b8' }}>{h}</th>
-                ))}
+              {/* Day-of-week row */}
+              <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: '#0d1117', width: 130, minWidth: 130, padding: '6px 14px', textAlign: 'left', color: '#475569', fontSize: 11, fontWeight: 500 }}>
+                  EMPLOYEE
+                </th>
+                {days.map(d => {
+                  const dow = new Date(year, mon - 1, d).getDay();
+                  const isToday = d === todayDay;
+                  const isSun = dow === 0;
+                  return (
+                    <th key={d} style={{ width: 36, minWidth: 36, padding: '5px 2px', textAlign: 'center', color: isToday ? '#c9a96e' : isSun ? '#475569' : '#334155', fontSize: 10, fontWeight: 500, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                      {DOW[dow]}
+                    </th>
+                  );
+                })}
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#22c55e', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>P</th>
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#ef4444', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>A</th>
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#f59e0b', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>L/Lt</th>
+              </tr>
+              {/* Date number row */}
+              <tr style={{ borderBottom: '2px solid #334155' }}>
+                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: '#0d1117', padding: '6px 14px', textAlign: 'left', color: '#64748b', fontSize: 11 }}>
+                  {month}
+                </th>
+                {days.map(d => {
+                  const isToday = d === todayDay;
+                  const dow = new Date(year, mon - 1, d).getDay();
+                  const isSun = dow === 0;
+                  return (
+                    <th key={d} style={{ width: 36, padding: '4px 2px', textAlign: 'center', fontWeight: isToday ? 700 : 500, color: isToday ? '#c9a96e' : isSun ? '#334155' : '#475569', fontSize: 12, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                      {d}
+                    </th>
+                  );
+                })}
+                <th colSpan={3} style={{ background: '#0d1117', borderLeft: '1px solid #1e293b' }} />
               </tr>
             </thead>
             <tbody>
-              {records.map(r => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                  <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{empMap[r.employee_id] || '—'}</td>
-                  <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.date}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <span style={{ background: statusColor[r.status] + '22', color: statusColor[r.status], padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.time_in || '-'}</td>
-                  <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.time_out || '-'}</td>
-                  <td style={{ padding: '8px 12px', color: r.late_minutes > 0 ? '#f59e0b' : '#94a3b8' }}>{r.late_minutes || 0} min</td>
-                  <td style={{ padding: '8px 12px', display: 'flex', gap: 8 }}>
-                    <button onClick={() => setEditRecord({ ...r })} style={{ background: 'none', border: 'none', color: '#c9a96e', cursor: 'pointer' }} title="Edit">✏️</button>
-                    <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }} title="Delete">🗑️</button>
-                  </td>
-                </tr>
-              ))}
-              {records.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No records for this month</td></tr>}
+              {employees.map((emp, ei) => {
+                const sum = getSummary(emp.id);
+                return (
+                  <tr key={emp.id} style={{ borderBottom: '1px solid #1e293b', background: ei % 2 === 0 ? '#0f172a' : '#0d1117' }}>
+                    {/* Sticky employee name */}
+                    <td style={{ position: 'sticky', left: 0, zIndex: 1, background: ei % 2 === 0 ? '#0f172a' : '#0d1117', padding: '6px 14px', color: '#e2e8f0', fontWeight: 500, fontSize: 13, whiteSpace: 'nowrap', borderRight: '1px solid #1e293b' }}>
+                      {emp.name}
+                    </td>
+                    {/* Day cells */}
+                    {days.map(d => {
+                      const rec = empDayMap[emp.id]?.[d];
+                      const cfg = rec ? STATUS[rec.status] : null;
+                      const dow = new Date(year, mon - 1, d).getDay();
+                      const isToday = d === todayDay;
+                      const isSun = dow === 0;
+                      const tooltip = rec
+                        ? `${empMap[rec.employee_id] || ''} • ${rec.date}\n${rec.time_in || ''} – ${rec.time_out || ''}${rec.late_minutes > 0 ? `\nLate: ${rec.late_minutes} min` : ''}${rec.notes ? `\n${rec.notes}` : ''}`
+                        : `Click to add: ${emp.name} • ${month}-${String(d).padStart(2,'0')}`;
+                      return (
+                        <td key={d}
+                          onClick={() => handleCellClick(emp, d)}
+                          title={tooltip}
+                          style={{
+                            width: 36, padding: '5px 2px', textAlign: 'center', cursor: 'pointer',
+                            background: cfg ? cfg.bg : isToday ? '#c9a96e08' : isSun ? '#ffffff04' : 'transparent',
+                            borderLeft: '1px solid #1a1a2e',
+                            transition: 'filter 0.1s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.5)'}
+                          onMouseLeave={e => e.currentTarget.style.filter = ''}
+                        >
+                          {cfg ? (
+                            <span style={{ color: cfg.color, fontSize: 11, fontWeight: 700, letterSpacing: -0.5 }}>{cfg.label}</span>
+                          ) : (
+                            <span style={{ color: '#1e293b', fontSize: 14, lineHeight: 1 }}>·</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    {/* Summary */}
+                    <td style={{ padding: '5px 4px', textAlign: 'center', color: '#22c55e', fontSize: 12, fontWeight: 600, borderLeft: '1px solid #1e293b' }}>{sum.p || '—'}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'center', color: sum.a > 0 ? '#ef4444' : '#334155', fontSize: 12, fontWeight: sum.a > 0 ? 700 : 400, borderLeft: '1px solid #1e293b' }}>{sum.a || '—'}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'center', color: (sum.l + sum.lt) > 0 ? '#f59e0b' : '#334155', fontSize: 12, fontWeight: (sum.l + sum.lt) > 0 ? 600 : 400, borderLeft: '1px solid #1e293b' }}>{(sum.l + sum.lt) || '—'}</td>
+                  </tr>
+                );
+              })}
+              {employees.length === 0 && (
+                <tr><td colSpan={daysInMonth + 4} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No employees found</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+        {Object.entries(STATUS).map(([k, v]) => (
+          <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#64748b' }}>
+            <span style={{ display: 'inline-block', width: 22, height: 18, borderRadius: 3, background: v.bg, color: v.color, fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: '18px' }}>{v.label}</span>
+            {k.replace('_', ' ')}
+          </span>
+        ))}
+        <span style={{ fontSize: 12, color: '#334155' }}>· = no record (click to add)</span>
+      </div>
     </div>
   );
 }
