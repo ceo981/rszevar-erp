@@ -71,8 +71,11 @@ export async function POST(request) {
     let leave_type = null;
     let yearly_leaves_info = null;
     if (status === 'absent' || status === 'leave') {
-      const yearStart = date.slice(0, 4) + '-01-01';
-      const yearEnd   = date.slice(0, 4) + '-12-31';
+      // Office year: Oct 1 – Sep 30
+      const [dy, dm] = date.slice(0, 7).split('-').map(Number);
+      const yearStart = dm >= 10 ? `${dy}-10-01` : `${dy - 1}-10-01`;
+      const yearEnd   = dm >= 10 ? `${dy + 1}-09-30` : `${dy}-09-30`;
+
       const { count: usedLeaves } = await supabase
         .from('employee_attendance')
         .select('*', { count: 'exact', head: true })
@@ -81,8 +84,9 @@ export async function POST(request) {
         .gte('date', yearStart)
         .lte('date', yearEnd);
 
-      const allowed = emp?.yearly_leaves_allowed || 14;
-      const used    = usedLeaves || 0;
+      const allowed  = emp?.yearly_leaves_allowed || 14;
+      const opening  = emp?.leaves_opening_used || 0;   // leaves taken before ERP
+      const used     = (usedLeaves || 0) + opening;
       const remaining = allowed - used;
 
       if (remaining > 0) {
@@ -90,7 +94,7 @@ export async function POST(request) {
       } else {
         leave_type = 'unpaid';       // salary cut hogi
       }
-      yearly_leaves_info = { allowed, used, remaining: Math.max(0, remaining - 1) };
+      yearly_leaves_info = { allowed, opening_used: opening, erp_used: usedLeaves || 0, total_used: used, remaining: Math.max(0, remaining - 1) };
     }
 
     const { data, error } = await supabase.from('employee_attendance').upsert({
