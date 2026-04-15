@@ -63,17 +63,18 @@ export async function POST(request) {
     if (error) return NextResponse.json({ success: false, error: error.message });
 
     // Auto-deduct from Operations Cash Wallet
-    await supabase.from('operations_cash_log').insert({
-      type: 'expense',
+    const { error: cashErr } = await supabase.from('operations_cash_log').insert({
+      type: 'advance',
       amount: parseFloat(amount),
       description: `${emp?.name || 'Employee'} Advance`,
-      category: 'Advance',
+      employee_id: parseInt(employee_id),
       notes: notes || '',
       requested_by: given_by || 'HR',
       status: 'approved',
       date: body.given_date || new Date().toISOString().split('T')[0],
-      reference_id: data.id,
     });
+
+    if (cashErr) console.error('[advance cash log]', cashErr.message);
 
     return NextResponse.json({ success: true, advance: data });
   }
@@ -112,9 +113,8 @@ export async function POST(request) {
       await supabase.from('operations_cash_log').insert({
         type: 'cash_in',
         amount: parseFloat(adv.amount),
-        description: `${adv.employees?.name || 'Employee'} Advance Wapas (Cancel)`,
-        category: 'Advance Reversal',
-        notes: 'Advance cancel/delete kiya gaya',
+        description: `${adv.employees?.name || 'Employee'} Advance Cancel`,
+        notes: 'Advance delete kiya gaya',
         requested_by: 'HR',
         status: 'approved',
         date: new Date().toISOString().split('T')[0],
