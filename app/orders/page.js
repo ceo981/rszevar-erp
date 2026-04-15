@@ -21,6 +21,7 @@ const timeAgo = iso => {
 const STATUS_CONFIG = {
   pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
   confirmed:  { label: 'Confirmed',  color: '#3b82f6', bg: '#3b82f622' },
+  on_packing: { label: 'On Packing', color: '#f59e0b', bg: '#f59e0b22' },
   processing: { label: 'Processing', color: gold,      bg: gold + '22' },
   packed:     { label: 'Packed',     color: '#06b6d4', bg: '#06b6d422' },
   dispatched: { label: 'Dispatched', color: '#a855f7', bg: '#a855f722' },
@@ -224,8 +225,9 @@ function FilterDropdown({ current, onChange, globalCounts }) {
     {
       label: 'Status',
       items: [
-        { type: 'status', value: 'pending',   label: 'Pending',      color: '#888',    count: gc.pending },
+        { type: 'status', value: 'pending',    label: 'Pending',      color: '#888',    count: gc.pending },
         { type: 'status', value: 'confirmed',  label: 'Confirmed',    color: '#3b82f6', count: gc.confirmed },
+        { type: 'status', value: 'on_packing', label: 'On Packing',   color: '#f59e0b', count: gc.on_packing },
         { type: 'status', value: 'packed',     label: 'Packed',       color: '#06b6d4', count: gc.packed },
         { type: 'status', value: 'dispatched', label: 'Dispatched',   color: '#a855f7', count: gc.dispatched },
         { type: 'status', value: 'delivered',  label: 'Delivered',    color: '#22c55e', count: gc.delivered },
@@ -886,12 +888,16 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                 </div>
               )}
 
-              {(s === 'pending' || s === 'processing') && (
+              {/* ══════════════════════════════════════════════ */}
+              {/* SHARJEEL (manager) + CEO — Confirm, Assign, Hold, Attempted */}
+              {/* ══════════════════════════════════════════════ */}
+
+              {/* Confirm Order — pending/processing orders */}
+              {canConfirm && (s === 'pending' || s === 'processing') && (
                 <div style={{ background: card, border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
                   <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
                     placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  {/* Assign to packer — REQUIRED */}
                   <div style={{ fontSize: 11, color: assignedTo ? '#f59e0b' : '#ef4444', marginBottom: 5, fontWeight: 600 }}>
                     👤 Packer Assign Karo (required)
                   </div>
@@ -907,102 +913,95 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                   )}
                   <button onClick={confirm} disabled={loading || !assignedTo}
                     style={{ background: assignedTo ? '#3b82f6' : '#1a1a1a', color: assignedTo ? '#fff' : '#555', border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'not-allowed', width: '100%' }}>
-                    {assignedTo ? '✅ Confirm Order' : '🔒 Pehle Packer Select Karo'}
+                    {assignedTo ? '✅ Confirm + Assign' : '🔒 Pehle Packer Select Karo'}
                   </button>
                 </div>
               )}
 
-              {/* Assignment section for confirmed orders */}
-              {s === 'confirmed' && (
-                  <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
-                      👤 Packing Assignment
-                      {currentAssignment?.employee && (
-                        <span style={{ fontSize: 11, color: '#22c55e', marginLeft: 8, fontWeight: 400 }}>
-                          ✓ {currentAssignment.employee.name}
-                        </span>
-                      )}
-                    </div>
-                    <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                      style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
-                      <option value="">— Select Packer —</option>
-                      {packingStaff.map(e => (
-                        <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                      ))}
-                    </select>
-                    <button onClick={assignOrder} disabled={loading || !assignedTo}
-                      style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
-                      {currentAssignment ? '🔄 Reassign Packer' : '✅ Assign Packer'}
-                    </button>
-                  </div>
-                )}
-
-                {/* Mark as Packed — confirmed ke baad + dispatched ke baad bhi */}
-                {(s === 'confirmed' || s === 'dispatched' || s === 'attempted') && currentAssignment && (
-                  <button onClick={markPacked} disabled={loading}
-                    style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    📦 Mark as Packed (Slip Nikli, Pack Kiya)
-                  </button>
-                )}
-
-                {/* Attempted — PENDING/CONFIRMED pe (call kiya, nahi utha) */}
-                {(s === 'pending' || s === 'confirmed' || s === 'hold') && (
-                  <button onClick={() => setStatus('attempted')} disabled={loading}
-                    style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    📞 Attempted (Call Nahi Utha)
-                  </button>
-                )}
-
-                {/* Hold — koi bhi active status pe */}
-                {(s === 'pending' || s === 'confirmed' || s === 'attempted') && (
-                  <button onClick={() => setStatus('hold')} disabled={loading}
-                    style={{ background: '#64748b22', border: '1px solid #64748b44', color: '#64748b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    ⏸ Put on Hold
-                  </button>
-                )}
-
-                {/* Resume from Hold or Attempted — wapas confirm pe */}
-                {(s === 'hold' || s === 'attempted') && (
-                  <button onClick={() => setStatus('confirmed')} disabled={loading}
-                    style={{ background: '#3b82f622', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    ▶️ Resume Order (Wapas Confirmed)
-                  </button>
-                )}
-
-              {(s === 'confirmed' || s === 'processing' || s === 'pending' || s === 'hold') && (
+              {/* Reassign Packer — confirmed/on_packing orders */}
+              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>📦 Dispatch Order</div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Via PostEx (auto-book)</div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
+                    👤 Packer Assignment
+                    {currentAssignment?.employee && (
+                      <span style={{ fontSize: 11, color: '#22c55e', marginLeft: 8, fontWeight: 400 }}>
+                        ✓ {currentAssignment.employee.name}
+                      </span>
+                    )}
                   </div>
-                  <input value={dispatchForm.notes} onChange={e => setDispatchForm(f => ({...f, notes: e.target.value}))}
-                    placeholder="Item description (e.g. Mala Set)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  <button onClick={() => { setDispatchForm(f => ({...f, courier: 'PostEx'})); dispatch(); }} disabled={loading}
-                    style={{ background: '#4caf7922', border: '1px solid #4caf7944', color: '#4caf79', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8, fontFamily: 'inherit' }}>
-                    🚚 Book via PostEx
-                  </button>
-                  <button onClick={() => { setLeopardsForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', notes: '', weight: 500, pieces: 1 }); setShowLeopardsModal(true); }} disabled={loading}
-                    style={{ background: '#e87d4422', border: '1px solid #e87d4444', color: '#e87d44', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', marginBottom: 8, fontFamily: 'inherit' }}>
-                    🐆 Book via Leopards
-                  </button>
-                  <button onClick={() => { setKangarooForm({ name: order.customer_name||'', phone: order.customer_phone||'', address: order.customer_address||'', city: order.customer_city||'Karachi', amount: order.total_price||order.total_amount||'', invoice: order.order_number||'', notes: '' }); setShowKangarooModal(true); }} disabled={loading}
-                    style={{ background: '#f59e0b22', border: '1px solid #f59e0b55', color: '#f59e0b', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
-                    🦘 Book via Kangaroo
+                  <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                    <option value="">— Select Packer —</option>
+                    {packingStaff.map(e => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                    ))}
+                  </select>
+                  <button onClick={assignOrder} disabled={loading || !assignedTo}
+                    style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
+                    {currentAssignment ? '🔄 Reassign Packer' : '✅ Assign Packer'}
                   </button>
                 </div>
               )}
 
-              {(s === 'dispatched' || s === 'packed' || s === 'attempted') && (
-                <button onClick={() => setStatus('delivered')} disabled={loading}
-                  style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                  ✅ Mark as Delivered
+              {/* Attempted — Sharjeel/CEO only */}
+              {canConfirm && (s === 'pending' || s === 'confirmed' || s === 'on_packing' || s === 'hold') && (
+                <button onClick={() => setStatus('attempted')} disabled={loading}
+                  style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  📞 Attempted (Call Nahi Utha)
                 </button>
               )}
 
-              {(s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
+              {/* Hold — Sharjeel/CEO only */}
+              {canConfirm && (s === 'pending' || s === 'confirmed' || s === 'on_packing' || s === 'attempted') && (
+                <button onClick={() => setStatus('hold')} disabled={loading}
+                  style={{ background: '#64748b22', border: '1px solid #64748b44', color: '#64748b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ⏸ Put on Hold
+                </button>
+              )}
+
+              {/* Resume — Sharjeel/CEO only */}
+              {canConfirm && (s === 'hold' || s === 'attempted') && (
+                <button onClick={() => setStatus('confirmed')} disabled={loading}
+                  style={{ background: '#3b82f622', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ▶️ Resume Order (Wapas Confirmed)
+                </button>
+              )}
+
+              {/* ══════════════════════════════════════════════ */}
+              {/* ADIL (dispatcher) + CEO — Packed + Dispatched */}
+              {/* ══════════════════════════════════════════════ */}
+
+              {/* Mark as Packed — Adil/CEO, on_packing status pe */}
+              {canPack && (s === 'on_packing' || s === 'confirmed') && (
+                <button onClick={markPacked} disabled={loading}
+                  style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  📦 Packed — Office se pack hogya
+                </button>
+              )}
+
+              {/* Mark as Dispatched — Adil/CEO, packed status pe */}
+              {canPack && s === 'packed' && (
+                <button onClick={() => setStatus('dispatched')} disabled={loading}
+                  style={{ background: '#a855f722', border: '1px solid #a855f744', color: '#a855f7', borderRadius: 10, padding: '14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  🚚 Dispatched — Office se gaya, zimmedari khatam
+                </button>
+              )}
+
+              {/* ══════════════════════════════════════════════ */}
+              {/* CEO ONLY — Delivered / RTO manual override */}
+              {/* ══════════════════════════════════════════════ */}
+
+              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'attempted') && (
+                <button onClick={() => setStatus('delivered')} disabled={loading}
+                  style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ✅ Mark as Delivered (manual)
+                </button>
+              )}
+
+              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
                 <button onClick={() => setStatus('rto')} disabled={loading}
                   style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                  ↩️ Mark as RTO (Returned)
+                  ↩️ Mark as RTO (manual)
                 </button>
               )}
 
@@ -1338,6 +1337,12 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
 export default function OrdersPage() {
   const { profile } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
+  const userRole = profile?.role || '';
+  const isCEO       = userRole === 'super_admin' || userRole === 'admin';
+  const isOpsManager = userRole === 'manager';
+  const isDispatcher = userRole === 'dispatcher';
+  const canConfirm  = isCEO || isOpsManager;
+  const canPack     = isCEO || isDispatcher;
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
