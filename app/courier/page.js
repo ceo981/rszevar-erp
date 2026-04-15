@@ -509,7 +509,7 @@ function SettlementsTab() {
   const [error, setError] = useState('');
 
   const COURIERS = [
-    { id: 'Leopards', label: '🐆 Leopards', format: 'PDF', accept: '.pdf' },
+    { id: 'Leopards', label: '🐆 Leopards', format: 'PDF / XLS', accept: '.pdf,.xls,.xlsx' },
     { id: 'Kangaroo', label: '🦘 Kangaroo', format: 'XLSX', accept: '.xlsx,.xls' },
     { id: 'PostEx',   label: '📦 PostEx',   format: 'CSV', accept: '.csv' },
   ];
