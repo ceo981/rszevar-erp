@@ -53,54 +53,44 @@ function parseLeopardsPDF(text) {
   const orders = [];
   const lines = text.split('\n');
 
-  // Payable Details section: each line with ZEVAR-XXXXXX
-  // Format: Date ZEVAR-XXXXX KI... City COD WHT.IT WHT.ST GrossCollected
   for (const line of lines) {
-    const zevarMatch = line.match(/ZEVAR[-\s]?(\d{6})/i);
+    // Match ZEVAR-XXXXX (5 or 6 digit order numbers)
+    const zevarMatch = line.match(/ZEVAR[-\s]?(\d{4,7})/i);
     if (!zevarMatch) continue;
 
     const orderNumber = 'ZEVAR-' + zevarMatch[1];
-    // Extract all numbers from line
     const nums = [...line.matchAll(/([\d,]+\.?\d*)/g)]
       .map(m => parseFloat(m[1].replace(/,/g, '')))
-      .filter(n => n > 0);
+      .filter(n => n > 0 && n < 10000000);
 
-    if (nums.length >= 4) {
+    if (nums.length >= 2) {
       const cod = nums[0];
-      const whtIt = nums[1];
-      const whtSt = nums[2];
       const grossCollected = nums[nums.length - 1];
+      const whtIt = nums.length >= 4 ? nums[1] : 0;
+      const whtSt = nums.length >= 4 ? nums[2] : 0;
       orders.push({
         order_number: orderNumber,
         cod_amount: cod,
         wht_it: whtIt,
         wht_st: whtSt,
         net_amount: grossCollected,
-        status: 'delivered', // Section 1 = all delivered/paid
+        status: 'delivered',
       });
-    } else if (nums.length > 0) {
+    } else if (nums.length === 1) {
       orders.push({
         order_number: orderNumber,
         cod_amount: nums[0],
         wht_it: 0, wht_st: 0,
-        net_amount: nums[nums.length - 1] || nums[0],
+        net_amount: nums[0],
         status: 'delivered',
       });
     }
   }
 
-  // Extract summary totals
-  const deliveryChargesMatch = text.match(/Grand Total[\s\S]{0,200}?([\d,]+\.?\d*)\s*\n/m);
-  const totalDeliveryCharges = deliveryChargesMatch
-    ? parseFloat(deliveryChargesMatch[1].replace(/,/g, ''))
-    : 0;
-
-  // Grand total from Section 1 last line
   const grandTotalMatch = text.match(/Grand Total\s+([\d,]+\.?\d*)\s+([\d.]+)\s+([\d.]+)\s+([\d,]+\.?\d*)/);
   const grandTotalCOD = grandTotalMatch ? parseFloat(grandTotalMatch[1].replace(/,/g, '')) : 0;
-  const totalWHT = grandTotalMatch ? parseFloat(grandTotalMatch[2]) + parseFloat(grandTotalMatch[3]) : 0;
 
-  return { orders, meta: { totalDeliveryCharges, grandTotalCOD, totalWHT } };
+  return { orders, meta: { grandTotalCOD, totalWHT: 0, totalDeliveryCharges: 0 } };
 }
 
 // ─── KANGAROO XLSX PARSER ────────────────────────────────────────────────────
@@ -252,6 +242,7 @@ export async function POST(request) {
 
       if (courier === 'Leopards') {
         parsed = parseLeopardsPDF(pdfText);
+        parsed._rawText = pdfText;
       } else {
         return NextResponse.json({ success: false, error: `PDF sirf Leopards ke liye. PostEx = CSV, Kangaroo = XLSX.` }, { status: 400 });
       }
@@ -293,7 +284,13 @@ export async function POST(request) {
     }
 
     if (parsed.orders.length === 0) {
-      return NextResponse.json({ success: false, error: 'File mein koi order nahi mila. Sahi courier select karo.' }, { status: 400 });
+      const rawSample = parsed._rawText ? parsed._rawText.substring(0, 300) : '';
+      const zevarCount = (parsed._rawText || '').match(/ZEVAR/gi)?.length || 0;
+      return NextResponse.json({
+        success: false,
+        error: `File mein koi order nahi mila.${zevarCount > 0 ? ` PDF mein ${zevarCount} ZEVAR refs mili hain — parsing issue hai.` : ' Sahi courier select karo.'}`,
+        debug_sample: rawSample || undefined,
+      }, { status: 400 });
     }
 
     // ── MATCH ORDERS IN DB ──
