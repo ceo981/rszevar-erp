@@ -493,6 +493,239 @@ function RTOTab() {
   );
 }
 
+// ── SETTLEMENTS TAB ───────────────────────────────────────────
+function SettlementsTab() {
+  const gold = '#c9a96e';
+  const border = '#222';
+  const card = '#111';
+
+  const [courier, setCourier] = useState('Leopards');
+  const [file, setFile] = useState(null);
+  const [referenceNo, setReferenceNo] = useState('');
+  const [settledAt, setSettledAt] = useState(new Date().toISOString().split('T')[0]);
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  const COURIERS = [
+    { id: 'Leopards', label: '🐆 Leopards', format: 'PDF', accept: '.pdf' },
+    { id: 'Kangaroo', label: '🦘 Kangaroo', format: 'XLSX', accept: '.xlsx,.xls' },
+    { id: 'PostEx',   label: '📦 PostEx',   format: 'CSV', accept: '.csv' },
+  ];
+
+  const selectedCourier = COURIERS.find(c => c.id === courier);
+
+  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(''); };
+
+  const handlePreview = async () => {
+    if (!file) { setError('File select karo pehle'); return; }
+    setLoading(true); setError(''); setPreview(null); setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('courier', courier);
+      fd.append('reference_no', referenceNo);
+      fd.append('settled_at', settledAt);
+      fd.append('apply', 'false');
+      const r = await fetch('/api/courier/settlements/upload', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.success) setPreview(d);
+      else setError(d.error || 'Parse error');
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  const handleApply = async () => {
+    if (!file || !preview) return;
+    setLoading(true); setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('courier', courier);
+      fd.append('reference_no', referenceNo);
+      fd.append('settled_at', settledAt);
+      fd.append('apply', 'true');
+      const r = await fetch('/api/courier/settlements/upload', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (d.success) {
+        setResult(d);
+        setPreview(null);
+        // Orders page ko signal do ke refresh kare
+        window.dispatchEvent(new CustomEvent('settlementApplied', { detail: d }));
+      } else setError(d.error || 'Apply error');
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+
+  const inpStyle = { background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ maxWidth: 700 }}>
+      <div style={{ fontSize: 14, color: '#555', marginBottom: 24 }}>
+        Settlement file upload karo — system automatically orders paid mark karega aur returns ko RTO mark karega.
+      </div>
+
+      {/* Success Result */}
+      {result && (
+        <div style={{ background: '#001a0a', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', marginBottom: 12 }}>✅ Settlement Applied!</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            {[
+              ['💰 Paid Marked', result.orders_paid, '#22c55e'],
+              ['↩️ RTO Marked', result.orders_rto, '#ef4444'],
+              ['⏭ Already Paid', result.already_paid, '#888'],
+              ['🔍 Not Found', result.not_found, '#f59e0b'],
+              ['⏩ Skipped (0-amt)', result.skipped, '#555'],
+              ['📋 Total Parsed', result.total_parsed, gold],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          {result.meta?.totalDeliveryCharges > 0 && (
+            <div style={{ fontSize: 12, color: '#555', borderTop: `1px solid ${border}`, paddingTop: 10 }}>
+              📦 Total Delivery Charges: <span style={{ color: '#f59e0b' }}>Rs {Number(result.meta.totalDeliveryCharges).toLocaleString()}</span>
+              {result.meta.totalWHT > 0 && <> &nbsp;·&nbsp; Taxes (WHT+GST): <span style={{ color: '#ef4444' }}>Rs {Number(result.meta.totalWHT + (result.meta.totalGST || 0)).toLocaleString()}</span></>}
+            </div>
+          )}
+          <button onClick={reset} style={{ marginTop: 14, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            🔄 Nai File Upload Karo
+          </button>
+        </div>
+      )}
+
+      {/* Upload Form */}
+      {!result && (
+        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: gold, marginBottom: 16 }}>📁 Settlement File Upload</div>
+
+          {/* Courier selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Courier</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {COURIERS.map(c => (
+                <button key={c.id} onClick={() => { setCourier(c.id); reset(); }} style={{
+                  flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+                  background: courier === c.id ? gold + '22' : '#0a0a0a',
+                  border: `1px solid ${courier === c.id ? gold : border}`,
+                  color: courier === c.id ? gold : '#555',
+                }}>
+                  {c.label}
+                  <div style={{ fontSize: 10, fontWeight: 400, color: courier === c.id ? gold + 'aa' : '#333', marginTop: 2 }}>{c.format}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* File input */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              File ({selectedCourier?.format})
+            </div>
+            <input
+              type="file"
+              accept={selectedCourier?.accept}
+              onChange={e => { setFile(e.target.files[0] || null); setPreview(null); setResult(null); setError(''); }}
+              style={{ ...inpStyle, width: '100%', cursor: 'pointer' }}
+            />
+            {file && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6 }}>✓ {file.name}</div>}
+          </div>
+
+          {/* Reference + Date */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reference No (optional)</div>
+              <input value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
+                placeholder="e.g. CPR-LDHDY348060"
+                style={{ ...inpStyle, width: '100%' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Settlement Date</div>
+              <input type="date" value={settledAt} onChange={e => setSettledAt(e.target.value)}
+                style={{ ...inpStyle, width: '100%' }} />
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
+              ❌ {error}
+            </div>
+          )}
+
+          {/* Preview */}
+          {preview && (
+            <div style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: gold, marginBottom: 12 }}>📋 Preview — Apply se pehle check karo</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
+                {[
+                  ['💰 Paid Markenge', preview.to_mark_paid, '#22c55e'],
+                  ['↩️ RTO Markenge', preview.to_mark_rto, '#ef4444'],
+                  ['⏭ Already Paid', preview.already_paid, '#888'],
+                  ['🔍 Not Found', preview.not_found, '#f59e0b'],
+                  ['⏩ Skip (0-amt)', preview.skipped, '#555'],
+                  ['📋 Total', preview.total_parsed, gold],
+                ].map(([label, val, color]) => (
+                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: '#111', borderRadius: 7, border: `1px solid ${border}` }}>
+                    <div style={{ fontSize: 9, color: '#555', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+              {preview.sample_paid?.length > 0 && (
+                <div style={{ fontSize: 11, color: '#22c55e99', marginBottom: 4 }}>
+                  Paid sample: {preview.sample_paid.join(', ')}
+                </div>
+              )}
+              {preview.sample_rto?.length > 0 && (
+                <div style={{ fontSize: 11, color: '#ef444499', marginBottom: 4 }}>
+                  RTO sample: {preview.sample_rto.join(', ')}
+                </div>
+              )}
+              {preview.sample_not_found?.length > 0 && (
+                <div style={{ fontSize: 11, color: '#f59e0b99' }}>
+                  Not found: {preview.sample_not_found.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            {!preview ? (
+              <button onClick={handlePreview} disabled={!file || loading} style={{
+                flex: 1, background: file ? gold + '22' : '#0a0a0a', border: `1px solid ${file ? gold : border}`,
+                color: file ? gold : '#555', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 700,
+                cursor: file && !loading ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+              }}>
+                {loading ? '⟳ Parsing...' : '🔍 Preview'}
+              </button>
+            ) : (
+              <>
+                <button onClick={() => setPreview(null)} disabled={loading} style={{
+                  flex: 1, background: '#0a0a0a', border: `1px solid ${border}`, color: '#888',
+                  borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  ✕ Wapas
+                </button>
+                <button onClick={handleApply} disabled={loading} style={{
+                  flex: 2, background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e',
+                  borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                }}>
+                  {loading ? '⟳ Applying...' : `✅ Apply — ${preview.to_mark_paid} Paid + ${preview.to_mark_rto} RTO`}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── MAIN PAGE ─────────────────────────────────────────────────
 export default function CourierPage() {
   const [tab, setTab] = useState('overview');
@@ -515,6 +748,7 @@ export default function CourierPage() {
     { id: 'book', label: '📦 Book Shipment' },
     { id: 'bookings', label: '📋 All Bookings' },
     { id: 'rto', label: '↩️ RTO' },
+    { id: 'settlements', label: '💰 Settlements' },
   ];
 
   return (
@@ -538,10 +772,11 @@ export default function CourierPage() {
         ))}
       </div>
 
-      {tab === 'overview'  && <OverviewTab summary={summary} byCourier={byCourier} loading={loading} />}
-      {tab === 'book'      && <BookTab onBooked={() => setRefreshKey(k => k + 1)} />}
-      {tab === 'bookings'  && <BookingsTab refreshKey={refreshKey} />}
-      {tab === 'rto'       && <RTOTab />}
+      {tab === 'overview'    && <OverviewTab summary={summary} byCourier={byCourier} loading={loading} />}
+      {tab === 'book'        && <BookTab onBooked={() => setRefreshKey(k => k + 1)} />}
+      {tab === 'bookings'    && <BookingsTab refreshKey={refreshKey} />}
+      {tab === 'rto'         && <RTOTab />}
+      {tab === 'settlements' && <SettlementsTab />}
     </div>
   );
 }
