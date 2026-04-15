@@ -50,46 +50,41 @@ function extractRawPDFText(buffer) {
 
 // ─── LEOPARDS PDF PARSER ─────────────────────────────────────────────────────
 function parseLeopardsPDF(text) {
-  const orders = [];
-  const lines = text.split('\n');
+  // Legacy text-based parser (fallback)
+  return parseLeopardsPDFRows(text.split('\n'));
+}
 
-  for (const line of lines) {
-    // Skip RSZEVAR.COM header line
-    if (line.includes('RSZEVAR.COM') || line.includes('RS ZEVAR')) continue;
+function parseLeopardsPDFRows(rows) {
+  const orders = [];
+
+  for (const line of rows) {
+    if (!line || line.includes('RSZEVAR.COM') || line.includes('RS ZEVAR')) continue;
 
     const zevarMatch = line.match(/ZEVAR[-\s]?(\d{4,7})/i);
     if (!zevarMatch) continue;
 
     const orderNumber = 'ZEVAR-' + zevarMatch[1];
-
-    // Lines are tab-separated: Date \t ZEVAR-XXXXX \t KI... \t City \t COD \t WHT.IT \t WHT.ST \t Gross
     const parts = line.split('\t').map(p => p.trim()).filter(p => p);
-    
-    // Find numeric values (skip date parts and tracking/city strings)
     const numParts = parts.filter(p => /^[\d,]+\.?\d*$/.test(p.replace(/,/g, '')));
     const nums = numParts.map(p => parseFloat(p.replace(/,/g, ''))).filter(n => n > 0);
 
-    if (nums.length >= 2) {
-      const cod = nums[0];                     // COD Amount
-      const grossCollected = nums[nums.length - 1]; // Last = Gross Collected
+    if (nums.length >= 2 && nums[0] > 200) {
+      const cod = nums[0];
+      const grossCollected = nums[nums.length - 1];
       const whtIt = nums.length >= 3 ? nums[1] : 0;
       const whtSt = nums.length >= 4 ? nums[2] : 0;
-
-      // Skip Section 2 delivery charge lines (very small amounts like 143, 154)
-      if (cod > 0 && cod > 200) {
-        orders.push({
-          order_number: orderNumber,
-          cod_amount: cod,
-          wht_it: whtIt,
-          wht_st: whtSt,
-          net_amount: grossCollected,
-          status: 'delivered',
-        });
-      }
+      orders.push({
+        order_number: orderNumber,
+        cod_amount: cod,
+        wht_it: whtIt,
+        wht_st: whtSt,
+        net_amount: grossCollected,
+        status: 'delivered',
+      });
     }
   }
 
-  // Deduplicate — keep first occurrence (Section 1 comes before Section 2)
+  // Deduplicate — keep first occurrence
   const seen = new Set();
   const uniqueOrders = orders.filter(o => {
     if (seen.has(o.order_number)) return false;
@@ -97,10 +92,7 @@ function parseLeopardsPDF(text) {
     return true;
   });
 
-  const grandTotalMatch = text.match(/Grand Total\s+([\d,]+\.?\d*)/);
-  const grandTotalCOD = grandTotalMatch ? parseFloat(grandTotalMatch[1].replace(/,/g, '')) : 0;
-
-  return { orders: uniqueOrders, meta: { grandTotalCOD, totalWHT: 0, totalDeliveryCharges: 0 } };
+  return { orders: uniqueOrders, meta: { grandTotalCOD: 0, totalWHT: 0, totalDeliveryCharges: 0 } };
 }
 
 // ─── KANGAROO XLSX PARSER ────────────────────────────────────────────────────
@@ -237,34 +229,35 @@ export async function POST(request) {
       if (courier !== 'Leopards') {
         return NextResponse.json({ success: false, error: 'PDF sirf Leopards ke liye. PostEx = CSV, Kangaroo = XLSX.' }, { status: 400 });
       }
-      // Browser API polyfills required by pdf-parse v2 in Node.js
-      if (typeof globalThis.DOMMatrix === 'undefined') {
-        globalThis.DOMMatrix = class DOMMatrix {
-          constructor() { this.a=1;this.b=0;this.c=0;this.d=1;this.e=0;this.f=0; }
-          multiply() { return new DOMMatrix(); }
-          translate() { return new DOMMatrix(); }
-          scale() { return new DOMMatrix(); }
-          rotate() { return new DOMMatrix(); }
-          inverse() { return new DOMMatrix(); }
-        };
-      }
-      if (typeof globalThis.Path2D === 'undefined') {
-        globalThis.Path2D = class Path2D { addPath(){} closePath(){} };
-      }
-      let pdfText = '';
+      // pdfjs-dist legacy — Node.js compatible, no browser APIs needed
+      // Group items by Y coordinate to reconstruct rows accurately
+      let pdfRows = [];
       try {
-        // pdf-parse v2 uses PDFParse class with load() + getText() API
-        const { PDFParse } = await import('pdf-parse');
-        const pdfParser = new PDFParse({ url: '', data: new Uint8Array(buffer) });
-        await pdfParser.load();
-        const result = await pdfParser.getText();
-        pdfText = result?.text || '';
+        const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+        const pdfDoc = await loadingTask.promise;
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const tc = await page.getTextContent();
+          // Group items by Y position (same row = same line)
+          const rowMap = {};
+          for (const item of tc.items) {
+            if (!item.str.trim()) continue;
+            const y = Math.round(item.transform[5] / 2) * 2;
+            if (!rowMap[y]) rowMap[y] = [];
+            rowMap[y].push({ x: item.transform[4], str: item.str });
+          }
+          // Sort rows top-to-bottom, items left-to-right, join with tab
+          const sortedRows = Object.entries(rowMap)
+            .sort(([ya], [yb]) => Number(yb) - Number(ya))
+            .map(([, items]) => items.sort((a, b) => a.x - b.x).map(i => i.str).join('\t'));
+          pdfRows.push(...sortedRows);
+        }
       } catch (pdfErr) {
-        console.error('[pdf-parse v2]', pdfErr.message);
-        pdfText = extractRawPDFText(buffer);
+        console.error('[pdfjs-dist]', pdfErr.message);
       }
-      parsed = parseLeopardsPDF(pdfText);
-      parsed._rawText = pdfText;
+      parsed = parseLeopardsPDFRows(pdfRows);
+      parsed._rawText = pdfRows.join('\n');
 
     // ── EXCEL PARSING ──
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
