@@ -132,11 +132,17 @@ async function runBackfill(daysBack = 180, maxSeconds = 55) {
       }
 
       // 3. Transform + insert line items with resolved order_id FK
+      // SKU → image fallback
+      let skuImgMap = {};
+      try {
+        const { data: pImgs } = await supabase.from('products').select('sku, image_url').not('sku', 'is', null).not('image_url', 'is', null);
+        for (const p of pImgs || []) { if (p.sku && p.image_url && !skuImgMap[p.sku]) skuImgMap[p.sku] = p.image_url; }
+      } catch(e) {}
       const allLineItems = [];
       for (const shopifyOrder of newOrders) {
         const dbOrderId = idMap.get(String(shopifyOrder.id));
         if (!dbOrderId) continue;
-        const items = transformLineItems(shopifyOrder);
+        const items = transformLineItems(shopifyOrder, skuImgMap);
         for (const item of items) {
           allLineItems.push({ ...item, order_id: dbOrderId });
         }
