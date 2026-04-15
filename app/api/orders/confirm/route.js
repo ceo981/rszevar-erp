@@ -9,12 +9,19 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    const { order_id, notes } = await request.json();
+    const { order_id, notes, assigned_to, performed_by } = await request.json();
     if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
 
-    // Get shopify_order_id
-    const { data: order } = await supabase.from('orders').select('shopify_order_id').eq('id', order_id).single();
+    const performer = performed_by || 'Staff';
 
+    // Get order info
+    const { data: order } = await supabase
+      .from('orders')
+      .select('shopify_order_id')
+      .eq('id', order_id)
+      .single();
+
+    // 1. Update order status
     const { error } = await supabase
       .from('orders')
       .update({
@@ -27,24 +34,58 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    // ── Shopify: add order_confirmed tag ──
+    // 2. Assign packer (agar selected ho) - same call mein
+    let assignedEmpName = null;
+    if (assigned_to) {
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('name')
+        .eq('id', assigned_to)
+        .single();
+
+      assignedEmpName = emp?.name || null;
+
+      await supabase.from('order_assignments').upsert({
+        order_id,
+        assigned_to,
+        stage: 'packing',
+        status: 'pending',
+        notes: '',
+        assigned_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'order_id', ignoreDuplicates: false });
+
+      await supabase.from('order_activity_log').insert({
+        order_id,
+        action: 'assigned',
+        notes: `${assignedEmpName} ko assign kiya gaya`,
+        performed_by: performer,
+        performed_at: new Date().toISOString(),
+      });
+    }
+
+    // 3. Shopify tags
     if (order?.shopify_order_id) {
       try {
-        await updateShopifyOrderTags(order.shopify_order_id, ['order_confirmed'], []);
-        if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed: ${notes}`);
+        const tagsToAdd = ['order_confirmed'];
+        if (assignedEmpName) tagsToAdd.push(`packing:${assignedEmpName}`);
+        await updateShopifyOrderTags(order.shopify_order_id, tagsToAdd, []);
+        if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
       } catch (e) {
         console.error('[confirm] Shopify tag error:', e.message);
       }
     }
 
+    // 4. Activity log
     await supabase.from('order_activity_log').insert({
       order_id,
       action: 'confirmed',
-      notes: notes || '',
+      notes: notes || (assignedEmpName ? `Packer: ${assignedEmpName}` : ''),
+      performed_by: performer,
       performed_at: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, assigned_name: assignedEmpName });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
