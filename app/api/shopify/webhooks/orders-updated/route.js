@@ -29,9 +29,12 @@ export async function POST(request) {
 
   if (erpOrder) {
     const updates = {};
+    const isFulfilled = shopifyOrder.fulfillment_status === 'fulfilled' || shopifyOrder.fulfillment_status === 'partial';
+    const isOnPacking = erpOrder.status === 'on_packing';
 
     // order_confirmed tag hata diya → pending pe wapas + assignment cancel
-    if (erpOrder.status === 'confirmed' && !tags.includes('order_confirmed')) {
+    // Lekin sirf tab jab courier book nahi hua (fulfillment nahi) aur on_packing nahi
+    if (erpOrder.status === 'confirmed' && !tags.includes('order_confirmed') && !isFulfilled) {
       updates.status = 'pending';
       updates.confirmed_at = null;
 
@@ -45,7 +48,8 @@ export async function POST(request) {
     }
 
     // packing:* tag hata diya → assignment cancel (status confirmed rehta hai)
-    if (erpOrder.status === 'confirmed' && !tags.some(t => t.startsWith('packing:'))) {
+    // on_packing pe ye check nahi lagta
+    if (erpOrder.status === 'confirmed' && !isOnPacking && !tags.some(t => t.startsWith('packing:'))) {
       await supabase.from('order_assignments').delete().eq('order_id', erpOrder.id);
       await supabase.from('order_activity_log').insert({
         order_id: erpOrder.id,
