@@ -9,10 +9,11 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    const { order_id, notes, assigned_to, performed_by } = await request.json();
+    const { order_id, notes, assigned_to, performed_by, performed_by_email } = await request.json();
     if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
 
     const performer = performed_by || 'Staff';
+    const performerEmail = performed_by_email || null;
 
     // Get order info
     const { data: order } = await supabase
@@ -60,6 +61,7 @@ export async function POST(request) {
         action: 'assigned',
         notes: `${assignedEmpName} ko assign kiya gaya`,
         performed_by: performer,
+        performed_by_email: performerEmail,
         performed_at: new Date().toISOString(),
       });
     }
@@ -82,6 +84,7 @@ export async function POST(request) {
       action: 'confirmed',
       notes: notes || (assignedEmpName ? `Packer: ${assignedEmpName}` : ''),
       performed_by: performer,
+      performed_by_email: performerEmail,
       performed_at: new Date().toISOString(),
     });
 
