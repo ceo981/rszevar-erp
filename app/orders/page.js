@@ -1415,6 +1415,13 @@ export default function OrdersPage() {
     return () => window.removeEventListener('openOrder', handler);
   }, []);
 
+  // Settlement upload hone ke baad foran orders refresh ho
+  useEffect(() => {
+    const handler = () => { load(); };
+    window.addEventListener('settlementApplied', handler);
+    return () => window.removeEventListener('settlementApplied', handler);
+  }, [load]);
+
   useEffect(() => {
     fetch('/api/shopify/sync')
       .then(r => r.json())
