@@ -62,16 +62,18 @@ export async function POST(request) {
 
     if (error) return NextResponse.json({ success: false, error: error.message });
 
-    // Auto-deduct from Cash Wallet (expenses table)
-    await supabase.from('expenses').insert([{
-      title: `${emp?.name || 'Employee'} Advance`,
+    // Auto-deduct from Operations Cash Wallet
+    await supabase.from('operations_cash_log').insert({
+      type: 'expense',
       amount: parseFloat(amount),
+      description: `${emp?.name || 'Employee'} Advance`,
       category: 'Advance',
-      expense_date: body.given_date || new Date().toISOString().split('T')[0],
-      note: notes || `Advance given by ${given_by || 'HR'}`,
-      paid_by: given_by || 'HR',
-      created_at: new Date().toISOString(),
-    }]);
+      notes: notes || '',
+      requested_by: given_by || 'HR',
+      status: 'approved',
+      date: body.given_date || new Date().toISOString().split('T')[0],
+      reference_id: data.id,
+    });
 
     return NextResponse.json({ success: true, advance: data });
   }
@@ -95,7 +97,30 @@ export async function POST(request) {
   }
 
   if (action === 'delete') {
+    // Pehle advance ki details lo
+    const { data: adv } = await supabase
+      .from('employee_advances')
+      .select('amount, employees(name), given_date')
+      .eq('id', body.id)
+      .single();
+
+    // Advance delete karo
     await supabase.from('employee_advances').delete().eq('id', body.id);
+
+    // Cash wallet mein wapas add karo (reverse entry)
+    if (adv) {
+      await supabase.from('operations_cash_log').insert({
+        type: 'cash_in',
+        amount: parseFloat(adv.amount),
+        description: `${adv.employees?.name || 'Employee'} Advance Wapas (Cancel)`,
+        category: 'Advance Reversal',
+        notes: 'Advance cancel/delete kiya gaya',
+        requested_by: 'HR',
+        status: 'approved',
+        date: new Date().toISOString().split('T')[0],
+      });
+    }
+
     return NextResponse.json({ success: true });
   }
 
