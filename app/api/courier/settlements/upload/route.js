@@ -203,7 +203,7 @@ export async function POST(request) {
 
     // ── PARSE FILE ──
     if (fileName.endsWith('.pdf')) {
-      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
+      const pdfParse = (await import('pdf-parse')).default;
       const pdfData = await pdfParse(buffer);
       if (courier === 'Leopards') {
         parsed = parseLeopardsPDF(pdfData.text);
@@ -214,24 +214,28 @@ export async function POST(request) {
       const XLSX = (await import('xlsx')).default;
       const wb = XLSX.read(buffer, { type: 'buffer' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      // Kangaroo headers are on row 5 (index 4)
       const allRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
-      // Find header row
-      let headerRowIdx = -1;
+
+      // Find header row — look for row containing 'Invoice'
+      let headerRowIdx = 4; // default row 5 (index 4) for Kangaroo
       for (let i = 0; i < Math.min(allRows.length, 10); i++) {
-        if (String(allRows[i]).includes('Invoice') || allRows[i].includes('Invoice #')) {
-          headerRowIdx = i; break;
-        }
+        const rowStr = Array.isArray(allRows[i]) ? allRows[i].join(' ') : '';
+        if (rowStr.includes('Invoice')) { headerRowIdx = i; break; }
       }
-      if (headerRowIdx === -1) headerRowIdx = 4; // default row 5
+
       const headers = allRows[headerRowIdx];
+      if (!headers) {
+        return NextResponse.json({ success: false, error: 'XLSX format galat hai — header row nahi mila' }, { status: 400 });
+      }
+
       const dataRows = allRows.slice(headerRowIdx + 1)
-        .filter(row => row.some(cell => cell !== null && cell !== ''))
+        .filter(row => Array.isArray(row) && row.some(cell => cell !== null && cell !== '' && cell !== undefined))
         .map(row => {
           const obj = {};
-          headers.forEach((h, i) => { obj[String(h)] = row[i]; });
+          headers.forEach((h, i) => { obj[String(h || '')] = row[i] ?? ''; });
           return obj;
         });
+
       parsed = parseKangarooXLSX(dataRows);
     } else if (fileName.endsWith('.csv')) {
       const text = buffer.toString('utf-8');
