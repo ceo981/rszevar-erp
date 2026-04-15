@@ -130,6 +130,13 @@ export async function POST(request) {
 
     if (error) throw error;
 
+    // Order status → on_packing
+    await supabase
+      .from('orders')
+      .update({ status: 'on_packing', updated_at: new Date().toISOString() })
+      .eq('id', order_id)
+      .in('status', ['confirmed', 'pending', 'processing']);
+
     // Log it
     const { data: emp } = await supabase
       .from('employees')
