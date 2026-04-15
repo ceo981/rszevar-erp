@@ -62,18 +62,16 @@ export async function POST(request) {
 
     if (error) return NextResponse.json({ success: false, error: error.message });
 
-    // Auto-deduct from Operations cash wallet
-    await supabase.from('operations_cash_log').insert({
-      type: 'advance',
+    // Auto-deduct from Cash Wallet (expenses table)
+    await supabase.from('expenses').insert([{
+      title: `${emp?.name || 'Employee'} Advance`,
       amount: parseFloat(amount),
-      description: `Advance — ${emp?.name || 'Employee'}`,
-      employee_id: parseInt(employee_id),
-      notes: notes || '',
-      requested_by: given_by || 'HR',
-      status: 'approved',
-      date: body.given_date || new Date().toISOString().split('T')[0],
-      reference_id: data.id,
-    });
+      category: 'Advance',
+      expense_date: body.given_date || new Date().toISOString().split('T')[0],
+      note: notes || `Advance given by ${given_by || 'HR'}`,
+      paid_by: given_by || 'HR',
+      created_at: new Date().toISOString(),
+    }]);
 
     return NextResponse.json({ success: true, advance: data });
   }
