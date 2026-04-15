@@ -30,11 +30,11 @@ export async function POST(request) {
   if (erpOrder) {
     const updates = {};
     const isFulfilled = shopifyOrder.fulfillment_status === 'fulfilled' || shopifyOrder.fulfillment_status === 'partial';
-    const isOnPacking = erpOrder.status === 'on_packing';
+    const isActiveStatus = ['confirmed', 'on_packing'].includes(erpOrder.status);
 
     // order_confirmed tag hata diya → pending pe wapas + assignment cancel
-    // Lekin sirf tab jab courier book nahi hua (fulfillment nahi) aur on_packing nahi
-    if (erpOrder.status === 'confirmed' && !tags.includes('order_confirmed') && !isFulfilled) {
+    // Sirf tab jab courier book nahi hua (fulfillment nahi)
+    if (isActiveStatus && !tags.includes('order_confirmed') && !isFulfilled) {
       updates.status = 'pending';
       updates.confirmed_at = null;
 
@@ -42,14 +42,14 @@ export async function POST(request) {
       await supabase.from('order_activity_log').insert({
         order_id: erpOrder.id,
         action: 'unconfirmed',
-        notes: 'Shopify se order_confirmed tag hata diya — status pending',
+        notes: 'Shopify se order_confirmed tag hata diya — status pending, assignment cancel',
         performed_at: new Date().toISOString(),
       });
     }
 
-    // packing:* tag hata diya → assignment cancel (status confirmed rehta hai)
-    // on_packing pe ye check nahi lagta
-    if (erpOrder.status === 'confirmed' && !isOnPacking && !tags.some(t => t.startsWith('packing:'))) {
+    // packing:* tag hata diya → assignment cancel
+    // Sirf confirmed/on_packing pe aur fulfillment nahi hua
+    if (isActiveStatus && !isFulfilled && !tags.some(t => t.startsWith('packing:'))) {
       await supabase.from('order_assignments').delete().eq('order_id', erpOrder.id);
       await supabase.from('order_activity_log').insert({
         order_id: erpOrder.id,
