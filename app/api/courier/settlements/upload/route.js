@@ -17,6 +17,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ─── RAW PDF TEXT EXTRACTOR (fallback when pdf-parse fails) ─────────────────
+function extractRawPDFText(buffer) {
+  try {
+    const str = buffer.toString('latin1');
+    let text = '';
+    // Extract text from BT...ET blocks (PDF text objects)
+    const btBlocks = str.match(/BT[\s\S]*?ET/g) || [];
+    for (const block of btBlocks) {
+      // Extract strings in parentheses
+      const strings = block.match(/\(([^)\\]*(?:\\.[^)\\]*)*)\)/g) || [];
+      for (const s of strings) {
+        const clean = s.slice(1, -1)
+          .replace(/\\n/g, '\n').replace(/\\r/g, '')
+          .replace(/\\t/g, ' ').replace(/\\\\/g, '\\')
+          .replace(/\\'/g, "'");
+        text += clean + ' ';
+      }
+      text += '\n';
+    }
+    // Also try to find ZEVAR patterns directly in raw buffer
+    const zevarMatches = str.match(/ZEVAR[-\s]?\d{6}/gi) || [];
+    if (zevarMatches.length > 0 && text.length < 100) {
+      // If BT/ET extraction failed, try direct string extraction
+      text = str.replace(/[^\x20-\x7E\n]/g, ' ');
+    }
+    return text;
+  } catch (e) {
+    return '';
+  }
+}
+
 // ─── LEOPARDS PDF PARSER ─────────────────────────────────────────────────────
 function parseLeopardsPDF(text) {
   const orders = [];
@@ -203,15 +234,32 @@ export async function POST(request) {
 
     // ── PARSE FILE ──
     if (fileName.endsWith('.pdf')) {
-      const pdfParse = (await import('pdf-parse')).default;
-      const pdfData = await pdfParse(buffer);
-      if (courier === 'Leopards') {
-        parsed = parseLeopardsPDF(pdfData.text);
-      } else {
-        return NextResponse.json({ success: false, error: `PDF format sirf Leopards ke liye. PostEx ke liye CSV upload karo, Kangaroo ke liye XLSX.` }, { status: 400 });
+      // DOMMatrix polyfill for pdf-parse in Node.js
+      if (typeof globalThis.DOMMatrix === 'undefined') {
+        globalThis.DOMMatrix = class DOMMatrix {
+          constructor() { this.a=1;this.b=0;this.c=0;this.d=1;this.e=0;this.f=0; }
+        };
       }
+      let pdfText = '';
+      try {
+        const pdfParse = (await import('pdf-parse')).default;
+        const pdfData = await pdfParse(buffer);
+        pdfText = pdfData.text;
+      } catch (pdfErr) {
+        // Fallback: raw text extraction from PDF buffer
+        pdfText = extractRawPDFText(buffer);
+      }
+
+      if (courier === 'Leopards') {
+        parsed = parseLeopardsPDF(pdfText);
+      } else {
+        return NextResponse.json({ success: false, error: `PDF sirf Leopards ke liye. PostEx = CSV, Kangaroo = XLSX.` }, { status: 400 });
+      }
+
+    // ── EXCEL PARSING ──
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      const XLSX = (await import('xlsx')).default;
+      const XLSXMod = await import('xlsx');
+      const XLSX = XLSXMod.default || XLSXMod;
       const wb = XLSX.read(buffer, { type: 'buffer' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const allRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
