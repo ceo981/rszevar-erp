@@ -87,6 +87,15 @@ export async function POST(request) {
     return NextResponse.json({ success: true });
   }
 
+  if (action === 'mark_pending') {
+    const { error } = await supabase.from('employee_advances').update({
+      status: 'pending',
+      updated_at: new Date().toISOString(),
+    }).eq('id', body.id);
+    if (error) return NextResponse.json({ success: false, error: error.message });
+    return NextResponse.json({ success: true });
+  }
+
   if (action === 'delete') {
     await supabase.from('employee_advances').delete().eq('id', body.id);
     return NextResponse.json({ success: true });
