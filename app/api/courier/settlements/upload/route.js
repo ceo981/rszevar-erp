@@ -95,6 +95,40 @@ function parseLeopardsPDFRows(rows) {
   return { orders: uniqueOrders, meta: { grandTotalCOD: 0, totalWHT: 0, totalDeliveryCharges: 0 } };
 }
 
+
+// ─── LEOPARDS XLS (HTML) PARSER ──────────────────────────────────────────────
+// Format: Date | ZEVAR-ID | KI... | City | COD | WHT.IT | WHT.ST | GrossCollected
+function parseLeopardsXLS(htmlContent) {
+  const orders = [];
+  const rowMatches = htmlContent.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+  for (const rowHtml of rowMatches) {
+    const cells = (rowHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/gi) || [])
+      .map(td => td.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').replace(/&amp;/g, '&').trim());
+    // Must have exactly 8 columns: Date, ZEVAR-ID, KI#, City, COD, WHT.IT, WHT.ST, Gross
+    if (cells.length !== 8) continue;
+    const zevarMatch = cells[1] && cells[1].match(/ZEVAR[-]?(\d{4,7})/i);
+    if (!zevarMatch) continue;
+    const orderNumber = 'ZEVAR-' + zevarMatch[1];
+    const cod = parseFloat((cells[4] || '').replace(/,/g, '')) || 0;
+    const whtIt = parseFloat((cells[5] || '').replace(/,/g, '')) || 0;
+    const whtSt = parseFloat((cells[6] || '').replace(/,/g, '')) || 0;
+    const grossCollected = parseFloat((cells[7] || '').replace(/,/g, '')) || 0;
+    if (cod > 0) {
+      orders.push({
+        order_number: orderNumber,
+        cod_amount: cod,
+        wht_it: whtIt,
+        wht_st: whtSt,
+        net_amount: grossCollected,
+        status: 'delivered',
+      });
+    }
+  }
+  const seen = new Set();
+  const unique = orders.filter(o => { if (seen.has(o.order_number)) return false; seen.add(o.order_number); return true; });
+  return { orders: unique, meta: { grandTotalCOD: 0, totalWHT: 0, totalDeliveryCharges: 0 } };
+}
+
 // ─── KANGAROO XLSX PARSER ────────────────────────────────────────────────────
 function parseKangarooXLSX(rows) {
   const orders = [];
@@ -260,6 +294,20 @@ export async function POST(request) {
       parsed._rawText = pdfRows.join('\n');
 
     // ── EXCEL PARSING ──
+    } else if ((fileName.endsWith('.xls') || fileName.endsWith('.xlsx')) && courier === 'Leopards') {
+      // Leopards XLS is actually HTML disguised as XLS
+      const htmlContent = buffer.toString('utf-8');
+      if (htmlContent.includes('<!DOCTYPE') || htmlContent.includes('<html')) {
+        parsed = parseLeopardsXLS(htmlContent);
+      } else {
+        // Real XLSX fallback
+        const XLSXMod = await import('xlsx');
+        const XLSX = XLSXMod.default || XLSXMod;
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
+        parsed = parseLeopardsPDFRows(rows.map(r => r.join('\t')));
+      }
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
       const XLSXMod = await import('xlsx');
       const XLSX = XLSXMod.default || XLSXMod;
