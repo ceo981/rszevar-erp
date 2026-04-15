@@ -170,18 +170,28 @@ export async function GET(request) {
       </div>
       <div class="rule-box">
         <div class="rule-label">Half Day Start</div>
-        <div class="rule-value">12:01 AM+</div>
-        <div class="rule-sub">12 baje ke baad aana = half day</div>
+        <div class="rule-value">12:01 PM – 3:00 PM</div>
+        <div class="rule-sub">12 baje se 3 baje tk aana = half day</div>
+      </div>
+      <div class="rule-box">
+        <div class="rule-label">After 3:00 PM</div>
+        <div class="rule-value">Full Absent</div>
+        <div class="rule-sub">Annual leave ya unpaid deduction</div>
       </div>
       <div class="rule-box">
         <div class="rule-label">Free Lates / Month</div>
         <div class="rule-value">${maxLates}</div>
-        <div class="rule-sub">${officeStart}–12:00 ke beech aana</div>
+        <div class="rule-sub">${officeStart}–12:00 PM wali lates free</div>
       </div>
       <div class="rule-box">
         <div class="rule-label">Free Half Days / Month</div>
         <div class="rule-value">${maxHalfDays}</div>
-        <div class="rule-sub">12:00 ke baad aana (sirf 1 free)</div>
+        <div class="rule-sub">12:01–3:00 PM (sirf 1 free)</div>
+      </div>
+      <div class="rule-box">
+        <div class="rule-label">Late Deduction</div>
+        <div class="rule-value">Rs. ${pol.late_deduction_amount || 100}</div>
+        <div class="rule-sub">7th late se flat Rs.100 per late</div>
       </div>
       <div class="rule-box">
         <div class="rule-label">Overtime Rate</div>
@@ -192,10 +202,10 @@ export async function GET(request) {
 
     <div class="rule-desc">
       <b>Late ka Rule:</b> ${officeStart} se ${graceMinutes} minutes baad (yaani ${deadlineStr} ke baad) aana <b>Late</b> count hoga.
-      Mahine mein <b>${maxLates} Late (${officeStart}–12:00)</b> bilkul free hain — salary nahi kategi.
-      Sirf <b>1 Half Day (12:00 ke baad)</b> free hai.
-      In se zyada hone par <b>ghanton ke hisab se salary kategi:</b>
-      11:00–12:00 aaya = 1 ghanta, 12:00–1:00 aaya = 2 ghante, 1:00–2:00 aaya = 3 ghante, wagera.
+      Mahine mein <b>${maxLates} Late (${deadlineStr}–12:00 PM)</b> bilkul free hain — salary nahi kategi.
+      Sirf <b>1 Half Day (12:01 PM – 3:00 PM)</b> free hai. 3:00 PM ke baad aana = <b>Full Absent</b>.
+      <br><br>
+      <b>Excess Late Deduction:</b> 7th late se har ek late = flat <b>Rs. ${pol.late_deduction_amount || 100}</b>. Excess half day = actual late ghante × per hour salary.
       <br><br>
       <b>Time Bonus:</b> Milega SIRF tab jab: Normal lates <b>${maxLates} ya kam</b> hon AUR Half day lates <b>${maxHalfDays} ya kam</b> hon. Koi bhi rule tuta = Time Bonus nahi milega.
     </div>
