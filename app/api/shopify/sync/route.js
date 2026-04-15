@@ -6,7 +6,7 @@ import { getSettings } from '../../../../lib/settings';
 // LOCKED_STATUSES also read from settings now, with sensible fallback
 // confirmed, processing, packed, dispatched, in_transit etc — sab manually set hote hain
 // Shopify sync ko inhe KABHI overwrite nahi karna chahiye
-const DEFAULT_LOCKED = ['confirmed', 'processing', 'packed', 'dispatched', 'in_transit', 'attempted', 'hold', 'delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+const DEFAULT_LOCKED = ['confirmed', 'on_packing', 'processing', 'packed', 'dispatched', 'in_transit', 'attempted', 'hold', 'delivered', 'returned', 'rto', 'cancelled', 'refunded'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
