@@ -341,6 +341,11 @@ function AdvancesTab({ employees }) {
     load();
   }
 
+  async function markPending(id) {
+    await fetch('/api/hr/advances', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'mark_pending', id }) });
+    load();
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -391,6 +396,9 @@ function AdvancesTab({ employees }) {
                 <td style={{ padding: '8px 12px' }}>
                   {a.status === 'pending' && (
                     <button onClick={() => markDeducted(a.id)} style={{ ...btnStyle, fontSize: 11, padding: '4px 8px' }}>Mark Deducted</button>
+                  )}
+                  {a.status === 'deducted' && (
+                    <button onClick={() => markPending(a.id)} style={{ fontSize: 11, padding: '4px 8px', background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>↩ Revert</button>
                   )}
                 </td>
               </tr>
