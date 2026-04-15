@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const VALID_STATUSES = ['pending', 'confirmed', 'processing', 'dispatched', 'delivered', 'cancelled', 'rto'];
+const VALID_STATUSES = ['pending', 'confirmed', 'processing', 'packed', 'dispatched', 'delivered', 'cancelled', 'rto', 'attempted', 'hold'];
 
 export async function POST(request) {
   try {
