@@ -1,36 +1,63 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garabmond:wght@400;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap');
 
+/* ═══════════════════════════════════════════════════════
+   RS ZEVAR ERP — Dual-Tone Theme
+   Color 1: Deep Navy  (#080c16 → #0d1626)
+   Color 2: Sapphire   (#4a82d8)
+   Accent:  Jewelry Gold (#c9a96e)
+═══════════════════════════════════════════════════════ */
 :root {
-  --gold: #c9a96e;
-  --gold-light: #e8d5a8;
-  --gold-dim: rgba(201,169,110,0.12);
-  --gold-glow: rgba(201,169,110,0.25);
-  --bg: #080808;
-  --bg2: #0f0f0f;
-  --bg-card: #111111;
-  --bg-hover: #181818;
-  --border: #1e1e1e;
-  --border2: #2a2a2a;
-  --text: #f0ebe0;
-  --text2: #8a8580;
-  --text3: #5a5550;
-  --green: #4ade80;
-  --green-dim: rgba(74,222,128,0.12);
-  --red: #f87171;
-  --red-dim: rgba(248,113,113,0.12);
-  --blue: #60a5fa;
-  --blue-dim: rgba(96,165,250,0.12);
-  --orange: #fb923c;
+  /* ── Gold Accent ── */
+  --gold:        #c9a96e;
+  --gold-light:  #e8d5a8;
+  --gold-dim:    rgba(201,169,110,0.12);
+  --gold-glow:   rgba(201,169,110,0.28);
+
+  /* ── Sapphire Second Color ── */
+  --sapphire:       #4a82d8;
+  --sapphire-dark:  #2a5298;
+  --sapphire-dim:   rgba(74,130,216,0.13);
+  --sapphire-glow:  rgba(74,130,216,0.28);
+
+  /* ── Dual-Tone Backgrounds ── */
+  --bg:         #080c16;
+  --bg2:        #0d1626;
+  --bg-card:    #101c32;
+  --bg-hover:   #162540;
+  --bg-section: #0b1420;
+
+  /* ── Borders ── */
+  --border:  #1a2e4e;
+  --border2: #243d66;
+
+  /* ── Text ── */
+  --text:  #dde8f5;
+  --text2: #7a9ab8;
+  --text3: #3d5a78;
+
+  /* ── Status Colors ── */
+  --green:      #4ade80;
+  --green-dim:  rgba(74,222,128,0.12);
+  --red:        #f87171;
+  --red-dim:    rgba(248,113,113,0.12);
+  --blue:       #60a5fa;
+  --blue-dim:   rgba(96,165,250,0.12);
+  --orange:     #fb923c;
   --orange-dim: rgba(251,146,60,0.12);
-  --purple: #a78bfa;
+  --purple:     #a78bfa;
   --purple-dim: rgba(167,139,250,0.12);
-  --cyan: #22d3ee;
-  --radius: 8px;
+  --cyan:       #22d3ee;
+  --cyan-dim:   rgba(34,211,238,0.12);
+
+  /* ── Shape ── */
+  --radius:    8px;
   --radius-lg: 12px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow:    0 2px 8px rgba(0,0,0,0.5);
+  --shadow-lg: 0 4px 24px rgba(0,0,0,0.6);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Montserrat', -apple-system, sans-serif;
@@ -38,13 +65,22 @@ body {
   color: var(--text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(ellipse 70% 35% at 60% 0%, rgba(74,130,216,0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 35% 50% at 0% 60%, rgba(201,169,110,0.04) 0%, transparent 55%);
+  background-attachment: fixed;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+::-webkit-scrollbar-thumb:hover { background: var(--sapphire-dark); }
 
 /* Selection */
-::selection { background: var(--gold-dim); color: var(--gold-light); }
+::selection { background: var(--sapphire-dim); color: var(--gold-light); }
+
+/* Mobile table scroll */
+@media (max-width: 768px) {
+  table { font-size: 12px !important; }
+}
