@@ -84,6 +84,19 @@ export default function ERPApp() {
   }, []);
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileNameInput, setProfileNameInput] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  async function saveProfileName() {
+    if (!profileNameInput.trim()) return;
+    setProfileSaving(true);
+    const supabase = createClient();
+    await supabase.from('profiles').update({ full_name: profileNameInput.trim() }).eq('id', user.id);
+    setProfile(p => ({ ...p, full_name: profileNameInput.trim() }));
+    setShowProfileModal(false);
+    setProfileSaving(false);
+  }
 
   useEffect(() => {
     const check = () => {
@@ -139,7 +152,7 @@ export default function ERPApp() {
   }
 
   return (
-    <UserContext.Provider value={{ profile, isSuperAdmin, canViewFinancial, userRole: profile?.role }}>
+    <UserContext.Provider value={{ profile, isSuperAdmin, canViewFinancial, userRole: profile?.role, userEmail: user?.email }}>
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
 
       {/* ── Mobile Top Bar ── */}
@@ -247,20 +260,52 @@ export default function ERPApp() {
 
         {/* User Footer */}
         {(sidebarOpen || isMobile) && profile && (
+          <>
+          {/* Profile Edit Modal */}
+          {showProfileModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: 320 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e', marginBottom: 16 }}>✏️ Profile Update</div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Email (change nahi hoga)</div>
+                <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Display Name</div>
+                <input
+                  value={profileNameInput}
+                  onChange={e => setProfileNameInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveProfileName()}
+                  placeholder="Apna naam likhein..."
+                  autoFocus
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: '#fff', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={saveProfileName} disabled={profileSaving || !profileNameInput.trim()}
+                    style={{ flex: 1, background: '#c9a96e', color: '#000', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    {profileSaving ? 'Saving...' : '💾 Save'}
+                  </button>
+                  <button onClick={() => setShowProfileModal(false)}
+                    style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{
             padding: '12px 14px', borderTop: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', gap: 10,
             background: 'rgba(74,130,216,0.04)',
           }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--gold-dim), var(--sapphire-dim))',
-              border: '1px solid var(--gold)', color: 'var(--gold)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 700, flexShrink: 0,
-            }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.full_name || 'User'}</div>
+            <div onClick={() => { setProfileNameInput(profile.full_name || ''); setShowProfileModal(true); }}
+              title="Profile edit karo"
+              style={{
+                width: 34, height: 34, borderRadius: '50%',
+                background: 'linear-gradient(135deg, var(--gold-dim), var(--sapphire-dim))',
+                border: '1px solid var(--gold)', color: 'var(--gold)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 700, flexShrink: 0, cursor: 'pointer',
+              }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0 }} onClick={() => { setProfileNameInput(profile.full_name || ''); setShowProfileModal(true); }} title="Profile edit karo" >
+              <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{profile.full_name || <span style={{ color: '#555', fontStyle: 'italic' }}>Name set karo</span>}</div>
               <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>{(profile.role || '').replace(/_/g, ' ')}</div>
             </div>
             <button onClick={handleLogout} title="Sign out" style={{
@@ -271,6 +316,7 @@ export default function ERPApp() {
               flexShrink: 0, transition: 'all 0.15s',
             }}>⏻</button>
           </div>
+          </>
         )}
 
         {/* Collapse Toggle (desktop only) */}
