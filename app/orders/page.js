@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -405,7 +406,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
 }
 
 // ─── Order Action Drawer ───────────────────────────────────────
-function OrderDrawer({ order, onClose, onRefresh }) {
+function OrderDrawer({ order, onClose, onRefresh, performer }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
@@ -536,7 +537,11 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   const doAction = async (url, body, successMsg) => {
     setLoading(true); setMsg('');
     try {
-      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, performed_by: performer }),
+      });
       const d = await r.json();
       if (d.success) {
         setMsg(successMsg + (d.warning ? ` ⚠ ${d.warning}` : '') + (d.tracking ? ` | Tracking: ${d.tracking}` : ''));
@@ -549,17 +554,30 @@ function OrderDrawer({ order, onClose, onRefresh }) {
   };
 
   const confirm = async () => {
-    await doAction('/api/orders/confirm', { order_id: order.id, notes: confirmNotes }, '✅ Order confirmed!');
-    // Auto-assign if packer selected
-    if (assignedTo) {
-      await fetch('/api/orders/assign', {
+    setLoading(true); setMsg('');
+    try {
+      // Ek hi API call mein confirm + assign dono
+      const r = await fetch('/api/orders/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.id, assigned_to: parseInt(assignedTo) }),
+        body: JSON.stringify({
+          order_id: order.id,
+          notes: confirmNotes,
+          assigned_to: assignedTo ? parseInt(assignedTo) : null,
+          performed_by: performer,
+        }),
       });
-      const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
-      setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
-    }
+      const d = await r.json();
+      if (d.success) {
+        const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
+        if (assignedTo && emp) setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+        setMsg(`✅ Order confirmed!${d.assigned_name ? ` Assigned to ${d.assigned_name}` : ''}`);
+        onRefresh(); // Ek baar refresh, sab kuch update ho jaye ga
+      } else {
+        setMsg('❌ ' + d.error);
+      }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
   };
   const dispatch = () => doAction('/api/orders/dispatch', { order_id: order.id, ...dispatchForm }, '✅ Dispatched!');
 
@@ -916,7 +934,7 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   </div>
                 )}
 
-                {/* Mark as Packed — confirmed ke baad + dispatched ke baad bhi (courier booked ho gaya, ab physically pack karo) */}
+                {/* Mark as Packed — confirmed ke baad + dispatched ke baad bhi */}
                 {(s === 'confirmed' || s === 'dispatched' || s === 'attempted') && currentAssignment && (
                   <button onClick={markPacked} disabled={loading}
                     style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
@@ -924,7 +942,15 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   </button>
                 )}
 
-                {/* Hold Button — customer ne roka ya koi reason ho */}
+                {/* Attempted — PENDING/CONFIRMED pe (call kiya, nahi utha) */}
+                {(s === 'pending' || s === 'confirmed' || s === 'hold') && (
+                  <button onClick={() => setStatus('attempted')} disabled={loading}
+                    style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    📞 Attempted (Call Nahi Utha)
+                  </button>
+                )}
+
+                {/* Hold — koi bhi active status pe */}
                 {(s === 'pending' || s === 'confirmed' || s === 'attempted') && (
                   <button onClick={() => setStatus('hold')} disabled={loading}
                     style={{ background: '#64748b22', border: '1px solid #64748b44', color: '#64748b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
@@ -932,19 +958,11 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   </button>
                 )}
 
-                {/* Attempted — call nahi uthaya */}
-                {(s === 'dispatched' || s === 'packed' || s === 'hold') && (
-                  <button onClick={() => setStatus('attempted')} disabled={loading}
-                    style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    📞 Attempted (Call Nahi Utha)
-                  </button>
-                )}
-
-                {/* Resume from Hold */}
-                {s === 'hold' && (
+                {/* Resume from Hold or Attempted — wapas confirm pe */}
+                {(s === 'hold' || s === 'attempted') && (
                   <button onClick={() => setStatus('confirmed')} disabled={loading}
                     style={{ background: '#3b82f622', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    ▶️ Resume Order (Hold Hatao)
+                    ▶️ Resume Order (Wapas Confirmed)
                   </button>
                 )}
 
@@ -1006,67 +1024,105 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
           {tab === 'timeline' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {/* Comment Input — Shopify style */}
+              {/* Comment Input */}
               <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Comment Leave Karo</div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Staff Note / Comment</div>
                 <textarea
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
-                  placeholder="Staff note yahan likhein... (Ctrl+Enter to post)"
+                  placeholder="Koi note likhein... (Ctrl+Enter to post)"
                   rows={3}
                   style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
                 />
-                <button
-                  onClick={submitComment}
-                  disabled={!commentText.trim() || submittingComment}
-                  style={{ marginTop: 8, background: commentText.trim() ? gold : '#1a1a1a', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
-                >
-                  {submittingComment ? 'Posting...' : '📨 Post'}
-                </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#444' }}>Post karne wale: <span style={{ color: gold }}>{performer || 'Staff'}</span></span>
+                  <button
+                    onClick={submitComment}
+                    disabled={!commentText.trim() || submittingComment}
+                    style={{ background: commentText.trim() ? gold : '#1a1a1a', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
+                  >
+                    {submittingComment ? 'Posting...' : '📨 Post'}
+                  </button>
+                </div>
               </div>
 
               {/* Timeline Entries */}
-              {log.length === 0 && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 30 }}>Koi activity nahi abhi tak</div>}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {log.length === 0 && (
+                <div style={{ color: '#333', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+                  Koi activity nahi abhi tak
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {log.map((l, i) => {
                   const isComment = l.action === 'staff_comment';
-                  const dateStr = l.performed_at ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                  const dateStr = l.performed_at
+                    ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+                    : '';
+                  const by = l.performed_by && l.performed_by !== 'Staff' ? l.performed_by : null;
+
                   if (isComment) {
                     return (
-                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1f2937', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, marginTop: 2 }}>👤</div>
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginTop: 2 }}>💬</div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ background: '#1a2233', border: '1px solid #2a3a55', borderRadius: '0 10px 10px 10px', padding: '10px 14px' }}>
-                            <div style={{ fontSize: 13, color: '#e5e5e5', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
+                          <div style={{ background: '#0f1f35', border: '1px solid #1e3a5f', borderRadius: '0 10px 10px 10px', padding: '10px 14px' }}>
+                            <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
                           </div>
-                          <div style={{ fontSize: 10, color: '#444', marginTop: 4, paddingLeft: 4 }}>{l.performed_by || 'Staff'} · {dateStr}</div>
+                          <div style={{ fontSize: 10, color: '#3a4a5a', marginTop: 4, paddingLeft: 2 }}>
+                            {by && <span style={{ color: gold, fontWeight: 600 }}>{by}</span>}
+                            {by && ' · '}{dateStr}
+                          </div>
                         </div>
                       </div>
                     );
                   }
-                  // Activity entry
-                  const actionLabel = l.action?.replace(/_/g, ' ') || '';
+
+                  // Activity entry styling
+                  const actionLabel = (l.action || '').replace(/_/g, ' ');
                   const actionColors = {
+                    'confirmed': '#3b82f6',
+                    'assigned': '#f59e0b',
+                    'packed': '#06b6d4',
                     'status changed to delivered': '#22c55e',
                     'status changed to cancelled': '#ef4444',
                     'status changed to dispatched': '#a855f7',
                     'status changed to confirmed': '#3b82f6',
                     'status changed to returned': '#f59e0b',
                     'status changed to rto': '#ef4444',
-                    'order confirmed': '#3b82f6',
+                    'status changed to attempted': '#f97316',
+                    'status changed to hold': '#64748b',
+                    'status changed to packed': '#06b6d4',
                   };
                   const actionColor = actionColors[actionLabel] || gold;
+                  const actionEmojis = {
+                    'confirmed': '✅',
+                    'assigned': '👤',
+                    'packed': '📦',
+                    'status changed to delivered': '🎉',
+                    'status changed to cancelled': '❌',
+                    'status changed to dispatched': '🚚',
+                    'status changed to attempted': '📞',
+                    'status changed to hold': '⏸',
+                    'status changed to rto': '↩️',
+                    'status changed to packed': '📦',
+                  };
+                  const emoji = actionEmojis[actionLabel] || '🔹';
+
                   return (
-                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '4px 0' }}>
-                      <div style={{ width: 28, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 6 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: actionColor, flexShrink: 0 }} />
-                        {i < log.length - 1 && <div style={{ width: 1, flex: 1, background: '#222', minHeight: 20, marginTop: 4 }} />}
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
+                      <div style={{ width: 32, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', border: `1px solid ${actionColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{emoji}</div>
+                        {i < log.length - 1 && <div style={{ width: 1, height: 18, background: '#1f1f1f', marginTop: 3 }} />}
                       </div>
-                      <div style={{ flex: 1, paddingBottom: 8 }}>
-                        <div style={{ fontSize: 12, color: actionColor, fontWeight: 600, textTransform: 'capitalize' }}>{actionLabel}</div>
-                        {l.notes && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{l.notes}</div>}
-                        <div style={{ fontSize: 10, color: '#3a3a3a', marginTop: 2 }}>{dateStr}</div>
+                      <div style={{ flex: 1, paddingBottom: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ fontSize: 12, color: actionColor, fontWeight: 600, textTransform: 'capitalize' }}>{actionLabel}</div>
+                          <div style={{ fontSize: 10, color: '#333', flexShrink: 0, marginLeft: 8 }}>{dateStr}</div>
+                        </div>
+                        {l.notes && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{l.notes}</div>}
+                        {by && <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>by <span style={{ color: gold }}>{by}</span></div>}
                       </div>
                     </div>
                   );
@@ -1277,6 +1333,8 @@ function OrderDrawer({ order, onClose, onRefresh }) {
 
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
+  const { profile } = useUser();
+  const performer = profile?.full_name || profile?.email || 'Staff';
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
@@ -1479,7 +1537,7 @@ export default function OrdersPage() {
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
       {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
-      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} />}
+      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} performer={performer} />}
 
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
