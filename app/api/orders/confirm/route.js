@@ -25,7 +25,7 @@ export async function POST(request) {
     const { error } = await supabase
       .from('orders')
       .update({
-        status: 'confirmed',
+        status: assigned_to ? 'on_packing' : 'confirmed',
         confirmed_at: new Date().toISOString(),
         confirmation_notes: notes || '',
         updated_at: new Date().toISOString(),
