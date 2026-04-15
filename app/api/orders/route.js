@@ -115,6 +115,8 @@ export async function GET(request) {
       applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('payment_status', 'paid'),
       applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('payment_status', 'unpaid'),
       applyFilters(supabase.from('orders').select('total_amount').eq('payment_method', 'COD').in('status', ['pending', 'confirmed', 'dispatched'])),
+      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'attempted'),
+      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'hold'),
     ]);
 
     const codOrders = filteredStatQueries[10].data || [];
@@ -132,9 +134,11 @@ export async function GET(request) {
       paid: filteredStatQueries[8].count || 0,
       unpaid: filteredStatQueries[9].count || 0,
       total_cod: totalCOD,
+      attempted: filteredStatQueries[11].count || 0,
+      hold: filteredStatQueries[12].count || 0,
     };
 
-    // ── GLOBAL type/courier counts for dropdown (ignore current filters) ──
+    // ── GLOBAL type/courier/status counts for dropdown (ignore current filters) ──
     const [
       { count: wholesaleCount },
       { count: internationalCount },
@@ -142,6 +146,17 @@ export async function GET(request) {
       { count: leopardsCount },
       { count: postexCount },
       { count: kangarooCount },
+      { count: gPending },
+      { count: gConfirmed },
+      { count: gDispatched },
+      { count: gDelivered },
+      { count: gRto },
+      { count: gCancelled },
+      { count: gAttempted },
+      { count: gHold },
+      { count: gPacked },
+      { count: gPaid },
+      { count: gUnpaid },
     ] = await Promise.all([
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
@@ -149,6 +164,17 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Leopards'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'PostEx'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Kangaroo'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'dispatched'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'rto'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'attempted'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'hold'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'packed'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
     ]);
 
     const globalCounts = {
@@ -158,6 +184,17 @@ export async function GET(request) {
       leopards: leopardsCount || 0,
       postex: postexCount || 0,
       kangaroo: kangarooCount || 0,
+      pending: gPending || 0,
+      confirmed: gConfirmed || 0,
+      dispatched: gDispatched || 0,
+      delivered: gDelivered || 0,
+      rto: gRto || 0,
+      cancelled: gCancelled || 0,
+      attempted: gAttempted || 0,
+      hold: gHold || 0,
+      packed: gPacked || 0,
+      paid: gPaid || 0,
+      unpaid: gUnpaid || 0,
     };
 
     // ── Batch-fetch assignments for these orders ──
