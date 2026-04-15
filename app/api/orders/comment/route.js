@@ -14,7 +14,7 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    const { order_id, comment, staff_name } = await request.json();
+    const { order_id, comment, staff_name, staff_email } = await request.json();
     if (!order_id || !comment?.trim()) {
       return NextResponse.json({ success: false, error: 'order_id aur comment zaroori hai' }, { status: 400 });
     }
@@ -23,6 +23,8 @@ export async function POST(request) {
       order_id,
       action: 'staff_comment',
       notes: comment.trim(),
+      performed_by: staff_name || staff_email || 'Staff',
+      performed_by_email: staff_email || null,
       performed_at: new Date().toISOString(),
     });
 
