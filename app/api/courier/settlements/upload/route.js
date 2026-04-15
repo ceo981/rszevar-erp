@@ -428,7 +428,6 @@ export async function POST(request) {
         .from('orders')
         .update({
           payment_status: 'paid',
-          paid_at: now,
           updated_at: now,
         })
         .in('id', ids);
@@ -507,7 +506,7 @@ export async function POST(request) {
       total_parsed: parsed.orders.length,
       meta: parsed.meta,
       errors: errors.length > 0 ? errors : undefined,
-      message: `✅ ${paidCount} orders paid marked, ${rtoCount} RTO marked — ${courier} settlement complete!`,
+      message: `✅ ${paidCount} orders paid marked, ${rtoCount} RTO marked — ${courier} settlement complete!${errors.length > 0 ? ` ⚠️ ${errors[0]}` : ''}`,
     });
 
   } catch (err) {
