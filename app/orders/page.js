@@ -460,14 +460,52 @@ function OrderDrawer({ order, onClose, onRefresh }) {
     }));
   };
   const [orderItems, setOrderItems] = useState(() => buildItems(order));
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+
+  const loadLog = useCallback(() => {
+    fetch(`/api/orders/comment?order_id=${order.id}`)
+      .then(r => r.json())
+      .then(d => setLog(d.log || []));
+  }, [order.id]);
 
   useEffect(() => {
-    if (tab === 'log') {
-      fetch(`/api/orders/status?order_id=${order.id}`)
+    if (tab === 'timeline') loadLog();
+  }, [tab, loadLog]);
+
+  // Customer ki previous orders load karo (phone se)
+  useEffect(() => {
+    if (tab === 'customer' && order.customer_phone) {
+      setCustomerOrdersLoading(true);
+      fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=20`)
         .then(r => r.json())
-        .then(d => setLog(d.log || []));
+        .then(d => {
+          setCustomerOrders((d.orders || []).filter(o => o.id !== order.id));
+          setCustomerOrdersLoading(false);
+        })
+        .catch(() => setCustomerOrdersLoading(false));
     }
-  }, [tab, order.id]);
+  }, [tab, order.customer_phone, order.id]);
+
+  const submitComment = async () => {
+    if (!commentText.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const r = await fetch('/api/orders/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, comment: commentText }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setCommentText('');
+        loadLog();
+      }
+    } catch(e) { console.error(e); }
+    setSubmittingComment(false);
+  };
 
   useEffect(() => {
     // DB se fresh items fetch (images updated ho sakti hain)
@@ -681,6 +719,9 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   {b.label}
                 </span>
               ))}
+              {Array.isArray(order.tags) && order.tags.filter(t => !['wholesale','international','walkin','kangaroo'].includes(t?.toLowerCase())).map((tag, ti) => (
+                <span key={ti} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag}</span>
+              ))}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -745,13 +786,13 @@ function OrderDrawer({ order, onClose, onRefresh }) {
         )}
 
         <div style={{ display: 'flex', borderBottom: `1px solid ${border}` }}>
-          {['actions', 'log'].map(t => (
+          {['actions', 'timeline', 'customer'].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: '12px', background: 'none', border: 'none',
               color: tab === t ? gold : '#555', fontWeight: tab === t ? 600 : 400,
-              fontSize: 13, cursor: 'pointer', borderBottom: tab === t ? `2px solid ${gold}` : '2px solid transparent',
-              fontFamily: 'inherit', textTransform: 'capitalize',
-            }}>{t === 'actions' ? '⚡ Actions' : '📋 Activity Log'}</button>
+              fontSize: 12, cursor: 'pointer', borderBottom: tab === t ? `2px solid ${gold}` : '2px solid transparent',
+              fontFamily: 'inherit',
+            }}>{t === 'actions' ? '⚡ Actions' : t === 'timeline' ? '📋 Timeline' : '👤 Customer'}</button>
           ))}
         </div>
 
@@ -919,18 +960,138 @@ function OrderDrawer({ order, onClose, onRefresh }) {
             </div>
           )}
 
-          {tab === 'log' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {log.length === 0 && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 30 }}>No activity yet</div>}
-              {log.map((l, i) => (
-                <div key={i} style={{ background: card, border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: gold, fontWeight: 600, textTransform: 'capitalize' }}>{l.action?.replace(/_/g, ' ')}</span>
-                    <span style={{ fontSize: 11, color: '#444' }}>{timeAgo(l.performed_at)}</span>
-                  </div>
-                  {l.notes && <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>{l.notes}</div>}
+          {tab === 'timeline' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* Comment Input — Shopify style */}
+              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Comment Leave Karo</div>
+                <textarea
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
+                  placeholder="Staff note yahan likhein... (Ctrl+Enter to post)"
+                  rows={3}
+                  style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+                />
+                <button
+                  onClick={submitComment}
+                  disabled={!commentText.trim() || submittingComment}
+                  style={{ marginTop: 8, background: commentText.trim() ? gold : '#1a1a1a', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
+                >
+                  {submittingComment ? 'Posting...' : '📨 Post'}
+                </button>
+              </div>
+
+              {/* Timeline Entries */}
+              {log.length === 0 && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 30 }}>Koi activity nahi abhi tak</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {log.map((l, i) => {
+                  const isComment = l.action === 'staff_comment';
+                  const dateStr = l.performed_at ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                  if (isComment) {
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1f2937', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, marginTop: 2 }}>👤</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ background: '#1a2233', border: '1px solid #2a3a55', borderRadius: '0 10px 10px 10px', padding: '10px 14px' }}>
+                            <div style={{ fontSize: 13, color: '#e5e5e5', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#444', marginTop: 4, paddingLeft: 4 }}>{l.performed_by || 'Staff'} · {dateStr}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Activity entry
+                  const actionLabel = l.action?.replace(/_/g, ' ') || '';
+                  const actionColors = {
+                    'status changed to delivered': '#22c55e',
+                    'status changed to cancelled': '#ef4444',
+                    'status changed to dispatched': '#a855f7',
+                    'status changed to confirmed': '#3b82f6',
+                    'status changed to returned': '#f59e0b',
+                    'status changed to rto': '#ef4444',
+                    'order confirmed': '#3b82f6',
+                  };
+                  const actionColor = actionColors[actionLabel] || gold;
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '4px 0' }}>
+                      <div style={{ width: 28, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: actionColor, flexShrink: 0 }} />
+                        {i < log.length - 1 && <div style={{ width: 1, flex: 1, background: '#222', minHeight: 20, marginTop: 4 }} />}
+                      </div>
+                      <div style={{ flex: 1, paddingBottom: 8 }}>
+                        <div style={{ fontSize: 12, color: actionColor, fontWeight: 600, textTransform: 'capitalize' }}>{actionLabel}</div>
+                        {l.notes && <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{l.notes}</div>}
+                        <div style={{ fontSize: 10, color: '#3a3a3a', marginTop: 2 }}>{dateStr}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {tab === 'customer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Customer Info Card */}
+              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>👤 Customer Info</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {[
+                    ['Name', order.customer_name || '—'],
+                    ['Phone', order.customer_phone || '—'],
+                    ['City', order.customer_city || '—'],
+                    ['Address', order.customer_address || '—'],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ gridColumn: k === 'Address' ? 'span 2' : 'auto' }}>
+                      <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>{k}</div>
+                      <div style={{ fontSize: 13, color: '#ccc', marginTop: 3 }}>{v}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                {/* Tags */}
+                {order.tags && Array.isArray(order.tags) && order.tags.length > 0 && (
+                  <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {order.tags.map((tag, ti) => (
+                      <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Previous Orders */}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                  🛒 Purane Orders {!customerOrdersLoading && customerOrders.length > 0 && `(${customerOrders.length})`}
+                </div>
+                {customerOrdersLoading && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 20 }}>Loading...</div>}
+                {!customerOrdersLoading && customerOrders.length === 0 && (
+                  <div style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: 20 }}>Koi purana order nahi mila</div>
+                )}
+                {!customerOrdersLoading && customerOrders.map(co => {
+                  const coStatus = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
+                  const coDate = co.created_at ? new Date(co.created_at).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: '2-digit' }) : '';
+                  return (
+                    <div
+                      key={co.id}
+                      onClick={() => { onClose(); setTimeout(() => window.dispatchEvent(new CustomEvent('openOrder', { detail: co })), 200); }}
+                      style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 9, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = gold + '66'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = border}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: gold }}>{co.order_number || '#' + co.id}</div>
+                        <span style={{ color: coStatus.color, background: coStatus.bg, padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{coStatus.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                        <div style={{ fontSize: 12, color: '#666' }}>{coDate}</div>
+                        <div style={{ fontSize: 12, color: '#c9a96e99', fontWeight: 600 }}>Rs {Number(co.total_amount || 0).toLocaleString()}</div>
+                      </div>
+                      {co.tracking_number && <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>🚚 {co.dispatched_courier || ''} · {co.tracking_number}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -1111,6 +1272,16 @@ export default function OrdersPage() {
   }, [page, search, filter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Customer tab se order open karne ke liye event listener
+  useEffect(() => {
+    const handler = (e) => {
+      const orderData = e.detail;
+      if (orderData) setSelected(orderData);
+    };
+    window.addEventListener('openOrder', handler);
+    return () => window.removeEventListener('openOrder', handler);
+  }, []);
 
   useEffect(() => {
     fetch('/api/shopify/sync')
@@ -1444,23 +1615,24 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Assigned', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Tags', 'Assigned', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+                <tr><td colSpan={11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
               )}
               {orders.map((order, i) => {
                 let typeIcon = '';
                 if (order.is_wholesale) typeIcon = '🏢';
                 else if (order.is_international) typeIcon = '🌍';
                 else if (order.is_walkin) typeIcon = '🚶';
+                const orderTags = Array.isArray(order.tags) ? order.tags : [];
                 return (
                   <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
                     onClick={() => setSelected(order)} className="order-row">
@@ -1473,6 +1645,16 @@ export default function OrdersPage() {
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
+                    <td style={{ padding: '12px 16px', maxWidth: 180 }}>
+                      {orderTags.length > 0 ? (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {orderTags.slice(0, 3).map((tag, ti) => (
+                            <span key={ti} style={{ background: '#1f1f2e', border: '1px solid #2a2a44', color: '#9ca3af', padding: '1px 7px', borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap' }}>{tag}</span>
+                          ))}
+                          {orderTags.length > 3 && <span style={{ color: '#555', fontSize: 10 }}>+{orderTags.length - 3}</span>}
+                        </div>
+                      ) : <span style={{ color: '#333' }}>—</span>}
+                    </td>
                     <td style={{ padding: '12px 16px', fontSize: 12 }}>
                       {order.assigned_to_name
                         ? <span style={{ color: '#f59e0b', fontWeight: 600 }}>{order.assigned_to_name}</span>
