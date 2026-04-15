@@ -179,6 +179,18 @@ export async function GET(request) {
         });
         ordersWithAssignment = ordersWithAssignment.map(o => ({ ...o, assigned_to_name: aMap[o.id] || null }));
       }
+      // ── Fallback: Shopify packing:NAME tags se assigned naam lo ──
+      ordersWithAssignment = ordersWithAssignment.map(o => {
+        if (o.assigned_to_name) return o; // already found from DB
+        const tags = Array.isArray(o.tags) ? o.tags : [];
+        const packingTag = tags.find(t => String(t).toLowerCase().startsWith('packing:'));
+        if (packingTag) {
+          const rawName = packingTag.split(':')[1] || '';
+          const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          return { ...o, assigned_to_name: name, assigned_from_tag: true };
+        }
+        return o;
+      });
     }
 
     return NextResponse.json({
