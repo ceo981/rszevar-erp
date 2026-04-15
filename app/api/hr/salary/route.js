@@ -38,9 +38,9 @@ export async function POST(request) {
     // 2. Get HR policy settings
     const { data: settings } = await supabase.from('hr_settings').select('*');
     const getSetting = (key, def) => { const s = (settings||[]).find(s=>s.key===key); return s ? parseFloat(s.value) : def; };
-    const graceMinutes         = getSetting('grace_minutes', 30);
+    const graceMinutes         = getSetting('grace_minutes', 32);
     const maxLatesAllowed      = getSetting('max_lates_allowed', 6);
-    const maxHalfDaysAllowed   = getSetting('max_half_days_allowed', 3);
+    const maxHalfDaysAllowed   = getSetting('max_half_days_allowed', 1); // changed: 3→1
     const leaderboardBonus     = getSetting('leaderboard_bonus', 3000);
     // time_bonus_amount is now PER EMPLOYEE (from employees table)
     const timeBonusAmount      = emp.time_bonus_amount || 0;
@@ -63,10 +63,15 @@ export async function POST(request) {
     const att = attRecords || [];
 
     // ── Categorize attendance ──────────────────────────────────
-    // Office start = 11:00, grace = 30 min → deadline = 11:30
-    // 11:31–12:00 arrival = normal late  (max 7 free)
-    // 12:01+      arrival = half day late (max 1 free)
-    const officeStartMins = 11 * 60; // 11:00 in minutes from midnight
+    // 11:00 AM        = Office start
+    // 11:00–11:32 AM  = On time (32 min grace)
+    // 11:33–12:00 PM  = Normal Late (6 free, then flat Rs.100 each)
+    // 12:01–3:00 PM   = Half Day (1 free, then hourly deduction)
+    // After 3:00 PM   = Full Absent (annual leave or unpaid)
+    const officeStartMins    = 11 * 60;  // 11:00 AM
+    const lateDeadlineMins   = 12 * 60;  // 12:00 PM
+    const halfDayDeadlineMins = 15 * 60; // 3:00 PM
+    const lateDeductionFlat  = getSetting('late_deduction_amount', 100); // Rs.100 flat per excess late
 
     const parseTimeMins = (t) => {
       if (!t) return null;
@@ -74,21 +79,21 @@ export async function POST(request) {
       return parts[0] * 60 + (parts[1] || 0);
     };
 
-    // Split late records into two buckets using time_in
-    const normalLateRecords   = []; // 11:31–12:00
-    const halfDayLateRecords  = []; // 12:01+
+    const normalLateRecords   = []; // 11:33 AM – 12:00 PM
+    const halfDayLateRecords  = []; // 12:01 PM – 3:00 PM
     const manualHalfDayRecords = att.filter(a => a.status === 'half_day');
 
     att.filter(a => a.status === 'late').forEach(r => {
       const timeMins = parseTimeMins(r.time_in);
-      if (timeMins !== null && timeMins > 12 * 60) {
-        halfDayLateRecords.push(r);  // arrived after 12:00
+      if (timeMins !== null && timeMins > lateDeadlineMins && timeMins <= halfDayDeadlineMins) {
+        halfDayLateRecords.push(r);  // 12:01 PM – 3:00 PM = half day
+      } else if (timeMins !== null && timeMins > halfDayDeadlineMins) {
+        // After 3:00 PM = full absent — handled in attendance, skip here
       } else {
-        normalLateRecords.push(r);   // arrived 11:31–12:00
+        normalLateRecords.push(r);   // 11:33 AM – 12:00 PM = normal late
       }
     });
 
-    // All half-day occasions = auto-detected (12:01+) + manually marked
     const allHalfDayOccasions = [...halfDayLateRecords, ...manualHalfDayRecords];
 
     const unpaidAbsents = att.filter(a => a.status === 'absent' && a.leave_type === 'unpaid');
@@ -99,23 +104,12 @@ export async function POST(request) {
     const halfDay  = allHalfDayOccasions.length;
     const absent   = att.filter(a => a.status === 'absent').length;
 
-    // ── 5. Late deduction (two separate buckets, separate free passes) ─
-    // Normal lates: 7 free, excess → ceil(minutes from 11:00 / 60) × perHour
+    // ── 5. Deductions ─────────────────────────────────────────
+    // Normal lates: 6 free, each excess = flat Rs.100
     const excessNormalLates = Math.max(0, normalLateRecords.length - maxLatesAllowed);
-    // Pick the worst offenders (most minutes) for deduction
-    const normalLatesToDeduct = [...normalLateRecords]
-      .sort((a, b) => (b.late_minutes || 0) - (a.late_minutes || 0))
-      .slice(0, excessNormalLates);
+    let lateDeduction = excessNormalLates * lateDeductionFlat;
 
-    let lateDeduction = 0;
-    for (const r of normalLatesToDeduct) {
-      const timeMins    = parseTimeMins(r.time_in);
-      const minsFromOffice = timeMins !== null ? timeMins - officeStartMins : (r.late_minutes || 30);
-      const hoursLate   = Math.ceil(Math.max(1, minsFromOffice) / 60);
-      lateDeduction += hoursLate * perHour;
-    }
-
-    // Half day lates: 1 free, excess → ceil(minutes from 11:00 / 60) × perHour
+    // Half days: 1 free, each excess = actual late hours × perHour
     const excessHalfDays = Math.max(0, allHalfDayOccasions.length - maxHalfDaysAllowed);
     const halfDaysToDeduct = [...allHalfDayOccasions]
       .sort((a, b) => (b.late_minutes || 0) - (a.late_minutes || 0))
@@ -128,7 +122,7 @@ export async function POST(request) {
         const hoursLate = Math.ceil(Math.max(1, minsFromOffice) / 60);
         lateDeduction += hoursLate * perHour;
       } else {
-        lateDeduction += perDay * 0.5; // fallback: half day = half perDay
+        lateDeduction += perDay * 0.5;
       }
     }
     lateDeduction = Math.round(lateDeduction);
@@ -149,6 +143,8 @@ export async function POST(request) {
     const advanceDeduction = (advances||[]).reduce((s,a)=>s+Number(a.amount),0);
 
     // 9. Time Bonus — only if normal lates ≤ 7 AND half day lates ≤ 1
+    // Time Bonus: milega SIRF jab normal lates ≤ 6 AND half days ≤ 1
+    // (6 normal + 1 half day = max allowed, bonus milega)
     const earnedTimeBonus = (normalLateRecords.length <= maxLatesAllowed && allHalfDayOccasions.length <= maxHalfDaysAllowed)
       ? timeBonusAmount : 0;
 
