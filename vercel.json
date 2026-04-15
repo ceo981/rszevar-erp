@@ -1,20 +1,8 @@
 {
   "crons": [
-    {
-      "path": "/api/courier/leopards/sync-status",
-      "schedule": "0 4,9,13,17 * * *"
-    },
-    {
-      "path": "/api/courier/leopards/sync-payments",
-      "schedule": "0 5,10,14,18 * * *"
-    },
-    {
-      "path": "/api/analytics/compute-abc",
-      "schedule": "0 6 * * *"
-    },
-    {
-      "path": "/api/courier/kangaroo/sync-status",
-      "schedule": "0 4,9,13,17 * * *"
-    }
+    { "path": "/api/courier/leopards/sync-status",   "schedule": "0 4,9,13,17 * * *" },
+    { "path": "/api/courier/leopards/sync-payments", "schedule": "0 5,10,14,18 * * *" },
+    { "path": "/api/analytics/compute-abc",          "schedule": "0 6 * * *" },
+    { "path": "/api/courier/kangaroo/sync-status",   "schedule": "0 4,9,13,17 * * *" }
   ]
 }
