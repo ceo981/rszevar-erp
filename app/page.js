@@ -82,7 +82,19 @@ export default function ERPApp() {
     window.addEventListener('openInventorySku', handler);
     return () => window.removeEventListener('openInventorySku', handler);
   }, []);
+  const [isMobile, setIsMobile] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [permissions, setPermissions] = useState(new Set());
@@ -129,37 +141,156 @@ export default function ERPApp() {
   return (
     <UserContext.Provider value={{ profile, isSuperAdmin, canViewFinancial, userRole: profile?.role }}>
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
-      <aside style={{ width: sidebarOpen ? 220 : 60, background: 'var(--bg2)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', transition: 'width 0.2s ease', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100 }}>
-        <div style={{ padding: sidebarOpen ? '20px 16px' : '20px 8px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
-          {sidebarOpen ? (
-            <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 48, maxWidth: '100%', objectFit: 'contain' }} />
-          ) : (
-            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 14, fontWeight: 700, color: 'var(--gold)', letterSpacing: 2 }}>RS</div>
-          )}
+
+      {/* ── Mobile Top Bar ── */}
+      {isMobile && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, height: 52,
+          background: 'rgba(13,22,38,0.97)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', padding: '0 14px', gap: 12,
+          zIndex: 200, backdropFilter: 'blur(10px)',
+        }}>
+          <button onClick={() => setSidebarOpen(true)} style={{
+            background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer',
+            fontSize: 20, display: 'flex', alignItems: 'center', padding: '4px',
+          }}>☰</button>
+          <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 30, objectFit: 'contain' }} />
+          <div style={{ flex: 1 }} />
+          <div style={{
+            fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1,
+            background: 'var(--sapphire-dim)', border: '1px solid rgba(74,130,216,0.2)',
+            padding: '3px 10px', borderRadius: 20,
+          }}>
+            {visibleModules.find(m => m.id === activeModule)?.label || 'ERP'}
+          </div>
         </div>
-        <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
-          {visibleModules.map(mod => (
-            <button key={mod.id} onClick={() => !mod.coming && setActiveModule(mod.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: sidebarOpen ? '10px 12px' : '10px 0', justifyContent: sidebarOpen ? 'flex-start' : 'center', background: activeModule === mod.id ? 'var(--gold-dim)' : 'transparent', border: 'none', borderRadius: 'var(--radius)', color: mod.coming ? 'var(--text3)' : activeModule === mod.id ? 'var(--gold)' : 'var(--text2)', fontSize: 13, fontFamily: 'inherit', cursor: mod.coming ? 'default' : 'pointer', transition: 'all 0.15s', marginBottom: 2, opacity: mod.coming ? 0.5 : 1 }}>
-              <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{mod.icon}</span>
-              {sidebarOpen && <span>{mod.label}</span>}
-              {sidebarOpen && mod.coming && <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text3)', padding: '1px 6px', borderRadius: 4, marginLeft: 'auto' }}>Soon</span>}
-            </button>
-          ))}
-        </nav>
-        {sidebarOpen && profile && (
-          <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--gold-dim)', border: '1px solid var(--gold)', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
-            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-              <div style={{ fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.full_name || 'User'}</div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1 }}>{(profile.role || '').replace(/_/g, ' ')}</div>
+      )}
+
+      {/* ── Sidebar Backdrop (mobile) ── */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+          zIndex: 149, backdropFilter: 'blur(2px)',
+        }} />
+      )}
+
+      {/* ── Sidebar ── */}
+      <aside style={{
+        width: isMobile ? 260 : (sidebarOpen ? 224 : 60),
+        background: 'linear-gradient(180deg, #0d1626 0%, #091220 100%)',
+        borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column',
+        transition: isMobile ? 'transform 0.25s ease' : 'width 0.2s ease',
+        position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 150,
+        transform: isMobile && !sidebarOpen ? 'translateX(-270px)' : 'translateX(0)',
+        boxShadow: sidebarOpen && isMobile ? '4px 0 32px rgba(0,0,0,0.7)' : 'none',
+      }}>
+        {/* Logo */}
+        <div style={{
+          padding: (sidebarOpen || isMobile) ? '18px 16px' : '18px 8px',
+          borderBottom: '1px solid var(--border)',
+          textAlign: 'center',
+          background: 'rgba(74,130,216,0.04)',
+          position: 'relative',
+        }}>
+          {(sidebarOpen || isMobile) ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" style={{ height: 42, objectFit: 'contain', flex: 1 }} />
+              {isMobile && (
+                <button onClick={() => setSidebarOpen(false)} style={{
+                  background: 'none', border: 'none', color: 'var(--text3)',
+                  cursor: 'pointer', fontSize: 18, padding: 4,
+                }}>✕</button>
+              )}
             </div>
-            <button onClick={handleLogout} title="Sign out" style={{ background: 'transparent', border: '1px solid var(--border2)', color: 'var(--text3)', width: 28, height: 28, borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⏻</button>
+          ) : (
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15, fontWeight: 700, color: 'var(--gold)', letterSpacing: 2 }}>RS</div>
+          )}
+          {/* Gold accent line */}
+          <div style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 1, background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
+        </div>
+
+        {/* Nav Items */}
+        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto' }}>
+          {visibleModules.map(mod => {
+            const isActive = activeModule === mod.id;
+            return (
+              <button key={mod.id}
+                onClick={() => { if (!mod.coming) { setActiveModule(mod.id); if (isMobile) setSidebarOpen(false); } }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  padding: (sidebarOpen || isMobile) ? '10px 12px' : '10px 0',
+                  justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
+                  background: isActive
+                    ? 'linear-gradient(90deg, rgba(201,169,110,0.14), rgba(74,130,216,0.08))'
+                    : 'transparent',
+                  border: 'none',
+                  borderLeft: isActive ? '2px solid var(--gold)' : '2px solid transparent',
+                  borderRadius: isActive ? '0 var(--radius) var(--radius) 0' : 'var(--radius)',
+                  color: mod.coming ? 'var(--text3)' : isActive ? 'var(--gold)' : 'var(--text2)',
+                  fontSize: 13, fontFamily: 'inherit',
+                  cursor: mod.coming ? 'default' : 'pointer',
+                  transition: 'all 0.15s',
+                  marginBottom: 2,
+                  opacity: mod.coming ? 0.45 : 1,
+                }}>
+                <span style={{ fontSize: 15, width: 22, textAlign: 'center', flexShrink: 0 }}>{mod.icon}</span>
+                {(sidebarOpen || isMobile) && <span style={{ fontWeight: isActive ? 600 : 400 }}>{mod.label}</span>}
+                {(sidebarOpen || isMobile) && mod.coming && (
+                  <span style={{ fontSize: 9, background: 'var(--sapphire-dim)', color: 'var(--sapphire)', padding: '1px 6px', borderRadius: 4, marginLeft: 'auto', border: '1px solid rgba(74,130,216,0.2)' }}>Soon</span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* User Footer */}
+        {(sidebarOpen || isMobile) && profile && (
+          <div style={{
+            padding: '12px 14px', borderTop: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: 'rgba(74,130,216,0.04)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--gold-dim), var(--sapphire-dim))',
+              border: '1px solid var(--gold)', color: 'var(--gold)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 700, flexShrink: 0,
+            }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.full_name || 'User'}</div>
+              <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>{(profile.role || '').replace(/_/g, ' ')}</div>
+            </div>
+            <button onClick={handleLogout} title="Sign out" style={{
+              background: 'transparent', border: '1px solid var(--border2)',
+              color: 'var(--text3)', width: 28, height: 28,
+              borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12,
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, transition: 'all 0.15s',
+            }}>⏻</button>
           </div>
         )}
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{ padding: 12, background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text3)', cursor: 'pointer', fontSize: 14 }}>{sidebarOpen ? '◀' : '▶'}</button>
+
+        {/* Collapse Toggle (desktop only) */}
+        {!isMobile && (
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
+            padding: 12, background: 'none', border: 'none',
+            borderTop: '1px solid var(--border)', color: 'var(--text3)',
+            cursor: 'pointer', fontSize: 12, transition: 'color 0.15s',
+          }}>{sidebarOpen ? '◀' : '▶'}</button>
+        )}
       </aside>
-      <main style={{ flex: 1, marginLeft: sidebarOpen ? 220 : 60, transition: 'margin-left 0.2s ease' }}>
+
+      {/* ── Main Content ── */}
+      <main style={{
+        flex: 1,
+        marginLeft: isMobile ? 0 : (sidebarOpen ? 224 : 60),
+        paddingTop: isMobile ? 52 : 0,
+        transition: 'margin-left 0.2s ease',
+        minWidth: 0,
+      }}>
         {activeModule === 'dashboard' && <DashboardPage onNavigate={setActiveModule} />}
         {activeModule === 'orders' && <OrdersPage />}
         {activeModule === 'inventory' && <InventoryPage initialSearch={inventorySearchSku} onSearchUsed={() => setInventorySearchSku('')} />}
@@ -221,7 +352,7 @@ function DashboardPage({ onNavigate }) {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: '24px 20px' }}>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1 }}>Dashboard</h1>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
@@ -233,15 +364,21 @@ function DashboardPage({ onNavigate }) {
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}><div style={{ fontSize: 24, marginBottom: 8 }}>⟳</div>Loading dashboard...</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 28 }}>
             {cards.map(card => (
-              <div key={card.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+              <div key={card.label} style={{
+                background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-lg)', padding: '16px 18px',
+                position: 'relative', overflow: 'hidden',
+              }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${card.color}44, ${card.color}22)` }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{card.label}</div>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: card.color }}>{card.value}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{card.label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: card.color }}>{card.value}</div>
                   </div>
-                  <span style={{ fontSize: 22 }}>{card.icon}</span>
+                  <span style={{ fontSize: 20, opacity: 0.7 }}>{card.icon}</span>
                 </div>
               </div>
             ))}
@@ -251,7 +388,7 @@ function DashboardPage({ onNavigate }) {
             <ActionButton icon="📋" label="View All Orders" desc={`${s.total || 0} total orders`} onClick={() => onNavigate('orders')} color="var(--blue)" />
             <ActionButton icon="⏳" label="Pending Orders" desc={`${s.pending || 0} need confirmation`} onClick={() => onNavigate('orders')} color="var(--orange)" />
           </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
+          <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Recent Orders</h3>
               <button onClick={() => onNavigate('orders')} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>View All →</button>
@@ -259,9 +396,9 @@ function DashboardPage({ onNavigate }) {
             {(stats?.orders || []).length === 0 ? (
               <p style={{ color: 'var(--text3)', fontSize: 13, textAlign: 'center', padding: 20 }}>No orders yet. Sync from Shopify to get started!</p>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Order', 'Customer', 'City', 'Amount', 'Status', 'Date'].map(h => (<th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>))}</tr></thead>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
+                  <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Order', 'Customer', 'City', 'Amount', 'Status', 'Date'].map(h => (<th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: 'var(--sapphire)', fontWeight: 500, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>))}</tr></thead>
                   <tbody>
                     {stats.orders.map(order => (
                       <tr key={order.id} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -428,7 +565,7 @@ function InventoryPage({ initialSearch = '', onSearchUsed }) {
   return (
     <div style={{ padding: 24 }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1 }}>Inventory</h1>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{total} products · Synced from Shopify</p>
@@ -476,11 +613,12 @@ function InventoryPage({ initialSearch = '', onSearchUsed }) {
           { label: 'Out of Stock', value: stats.out_of_stock || 0, icon: '🚫', color: 'var(--red)' },
           { label: 'Active', value: stats.active || 0, icon: '✅', color: 'var(--cyan)' },
         ].map(card => (
-          <div key={card.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>{card.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: card.color }}>{card.value}</div>
+          <div key={card.label} style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${card.color}55, transparent)` }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 5 }}>{card.label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: card.color }}>{card.value}</div>
               </div>
               <span style={{ fontSize: 20 }}>{card.icon}</span>
             </div>
@@ -587,7 +725,7 @@ function InventoryPage({ initialSearch = '', onSearchUsed }) {
             <div style={{ fontSize: 13 }}>{filters.search || filters.stock !== 'all' || filters.collection !== 'all' || abcFilter !== 'all' ? 'Try different filters' : 'Click "Sync from Shopify" to pull your products'}</div>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
