@@ -315,7 +315,7 @@ function AttendanceTab({ employees }) {
 function AdvancesTab({ employees }) {
   const [advances, setAdvances] = useState([]);
   const [pendingTotal, setPendingTotal] = useState(0);
-  const [form, setForm] = useState({ employee_id: '', amount: '', given_by: '', deduct_month: thisMonth(), notes: '' });
+  const [form, setForm] = useState({ employee_id: '', amount: '', given_by: '', given_date: today(), deduct_month: thisMonth(), notes: '' });
   const [msg, setMsg] = useState('');
 
   const load = useCallback(async () => {
@@ -346,6 +346,12 @@ function AdvancesTab({ employees }) {
     load();
   }
 
+  async function deleteAdvance(id) {
+    if (!window.confirm('Yeh advance delete karna chahte ho?')) return;
+    await fetch('/api/hr/advances', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) });
+    load();
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -364,6 +370,7 @@ function AdvancesTab({ employees }) {
           </select>
           <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} style={inputStyle} placeholder="Amount (Rs.)" required />
           <input value={form.given_by} onChange={e => setForm(f => ({ ...f, given_by: e.target.value }))} style={inputStyle} placeholder="Given by" />
+          <input type="date" value={form.given_date} onChange={e => setForm(f => ({ ...f, given_date: e.target.value }))} style={inputStyle} />
           <input type="month" value={form.deduct_month} onChange={e => setForm(f => ({ ...f, deduct_month: e.target.value }))} style={inputStyle} />
           <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} placeholder="Notes" />
           <button type="submit" style={btnStyle}>Add Advance</button>
@@ -393,13 +400,14 @@ function AdvancesTab({ employees }) {
                   </span>
                 </td>
                 <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.notes || '-'}</td>
-                <td style={{ padding: '8px 12px' }}>
+                <td style={{ padding: '8px 12px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {a.status === 'pending' && (
                     <button onClick={() => markDeducted(a.id)} style={{ ...btnStyle, fontSize: 11, padding: '4px 8px' }}>Mark Deducted</button>
                   )}
                   {a.status === 'deducted' && (
                     <button onClick={() => markPending(a.id)} style={{ fontSize: 11, padding: '4px 8px', background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>↩ Revert</button>
                   )}
+                  <button onClick={() => deleteAdvance(a.id)} style={{ fontSize: 11, padding: '4px 8px', background: '#ef444422', color: '#ef4444', border: '1px solid #ef444444', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>🗑</button>
                 </td>
               </tr>
             ))}
