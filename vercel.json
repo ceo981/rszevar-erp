@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/courier/leopards/sync-status",
-      "schedule": "0 7 * * *"
+      "schedule": "0 4,9,13,17 * * *"
     },
     {
       "path": "/api/courier/leopards/sync-payments",
-      "schedule": "0 8 * * *"
+      "schedule": "0 5,10,14,18 * * *"
     },
     {
       "path": "/api/analytics/compute-abc",
@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/courier/kangaroo/sync-status",
-      "schedule": "0 9 * * *"
+      "schedule": "0 4,9,13,17 * * *"
     }
   ]
 }
