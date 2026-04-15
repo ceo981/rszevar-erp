@@ -412,6 +412,14 @@ function FilterDropdown({ current, onChange, globalCounts }) {
 
 // ─── Order Action Drawer ───────────────────────────────────────
 function OrderDrawer({ order, onClose, onRefresh, performer }) {
+  const { profile } = useUser();
+  const userRole    = profile?.role || '';
+  const isCEO       = userRole === 'super_admin' || userRole === 'admin';
+  const isOpsManager = userRole === 'manager';
+  const isDispatcher = userRole === 'dispatcher';
+  const canConfirm  = isCEO || isOpsManager;
+  const canPack     = isCEO || isDispatcher;
+
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
@@ -1337,12 +1345,6 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
 export default function OrdersPage() {
   const { profile } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
-  const userRole = profile?.role || '';
-  const isCEO       = userRole === 'super_admin' || userRole === 'admin';
-  const isOpsManager = userRole === 'manager';
-  const isDispatcher = userRole === 'dispatcher';
-  const canConfirm  = isCEO || isOpsManager;
-  const canPack     = isCEO || isDispatcher;
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
