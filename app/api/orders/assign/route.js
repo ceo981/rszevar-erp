@@ -43,8 +43,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { order_id, assigned_to, assigned_by, notes, action, performed_by } = await request.json();
+    const { order_id, assigned_to, assigned_by, notes, action, performed_by, performed_by_email } = await request.json();
     const performer = performed_by || 'Staff';
+    const performerEmail = performed_by_email || null;
 
     // ── Mark as Packed ──
     if (action === 'packed') {
@@ -103,6 +104,7 @@ export async function POST(request) {
         action: 'packed',
         notes: `Packed — ${itemCount} item(s)`,
         performed_by: performer,
+        performed_by_email: performerEmail,
         performed_at: new Date().toISOString(),
       });
 
@@ -149,6 +151,7 @@ export async function POST(request) {
       action: 'assigned',
       notes: `Assigned to ${emp?.name || 'Unknown'}`,
       performed_by: performer,
+      performed_by_email: performerEmail,
       performed_at: new Date().toISOString(),
     });
 
