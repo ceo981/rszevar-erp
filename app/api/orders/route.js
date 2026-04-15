@@ -167,10 +167,16 @@ export async function GET(request) {
       const { data: assignments } = await supabase
         .from('order_assignments')
         .select('order_id, employee:assigned_to(name)')
-        .in('order_id', orderIds);
+        .in('order_id', orderIds)
+        .order('created_at', { ascending: false }); // latest first
       if (assignments && assignments.length > 0) {
         const aMap = {};
-        assignments.forEach(a => { if (a.order_id && a.employee?.name) aMap[a.order_id] = a.employee.name; });
+        // latest assignment jeet-ta hai (created_at DESC se already sorted)
+        assignments.forEach(a => {
+          if (a.order_id && a.employee?.name && !aMap[a.order_id]) {
+            aMap[a.order_id] = a.employee.name;
+          }
+        });
         ordersWithAssignment = ordersWithAssignment.map(o => ({ ...o, assigned_to_name: aMap[o.id] || null }));
       }
     }
