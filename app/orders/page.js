@@ -414,6 +414,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
 function OrderDrawer({ order, onClose, onRefresh, performer }) {
   const { profile } = useUser();
   const userRole    = profile?.role || '';
+  const { userEmail } = useUser();
   const isCEO       = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
@@ -513,7 +514,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       const r = await fetch('/api/orders/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.id, comment: commentText }),
+        body: JSON.stringify({ order_id: order.id, comment: commentText, staff_name: performer, staff_email: userEmail }),
       });
       const d = await r.json();
       if (d.success) {
@@ -554,7 +555,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, performed_by: performer }),
+        body: JSON.stringify({ ...body, performed_by: performer, performed_by_email: userEmail }),
       });
       const d = await r.json();
       if (d.success) {
@@ -1077,6 +1078,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                     ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
                     : '';
                   const by = l.performed_by && l.performed_by !== 'Staff' ? l.performed_by : null;
+                  const byEmail = l.performed_by_email || null;
 
                   if (isComment) {
                     return (
@@ -1088,6 +1090,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                           </div>
                           <div style={{ fontSize: 10, color: '#3a4a5a', marginTop: 4, paddingLeft: 2 }}>
                             {by && <span style={{ color: gold, fontWeight: 600 }}>{by}</span>}
+                            {byEmail && <span style={{ color: '#555', fontSize: 10 }}> ({byEmail})</span>}
                             {by && ' · '}{dateStr}
                           </div>
                         </div>
@@ -1138,7 +1141,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                           <div style={{ fontSize: 10, color: '#333', flexShrink: 0, marginLeft: 8 }}>{dateStr}</div>
                         </div>
                         {l.notes && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{l.notes}</div>}
-                        {by && <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>by <span style={{ color: gold }}>{by}</span></div>}
+                        {(by || byEmail) && <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>by <span style={{ color: gold }}>{by || byEmail}</span>{by && byEmail && <span style={{ color: '#444' }}> · {byEmail}</span>}</div>}
                       </div>
                     </div>
                   );
@@ -1351,6 +1354,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
 export default function OrdersPage() {
   const { profile } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
+  const { userEmail } = useUser();
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
