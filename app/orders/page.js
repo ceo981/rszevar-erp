@@ -1398,7 +1398,8 @@ export default function OrdersPage() {
             body: JSON.stringify({ triggered_by: 'auto_page_load' }),
           }),
         ]);
-        load();
+        // load() removed — background sync ke baad list reload nahi karni
+        // Warna search karte waqt scroll/results reset ho jate the
       } catch (e) {
         console.log('[auto-sync] background sync error:', e.message);
       }
