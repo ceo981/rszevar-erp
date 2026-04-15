@@ -224,12 +224,15 @@ function FilterDropdown({ current, onChange, globalCounts }) {
     {
       label: 'Status',
       items: [
-        { type: 'status', value: 'pending', label: 'Pending', color: '#888' },
-        { type: 'status', value: 'confirmed', label: 'Confirmed', color: '#3b82f6' },
-        { type: 'status', value: 'dispatched', label: 'Dispatched', color: '#a855f7' },
-        { type: 'status', value: 'delivered', label: 'Delivered', color: '#22c55e' },
-        { type: 'status', value: 'rto', label: 'RTO', color: '#ef4444' },
-        { type: 'status', value: 'cancelled', label: 'Cancelled', color: '#ef4444' },
+        { type: 'status', value: 'pending',   label: 'Pending',      color: '#888',    count: gc.pending },
+        { type: 'status', value: 'confirmed',  label: 'Confirmed',    color: '#3b82f6', count: gc.confirmed },
+        { type: 'status', value: 'packed',     label: 'Packed',       color: '#06b6d4', count: gc.packed },
+        { type: 'status', value: 'dispatched', label: 'Dispatched',   color: '#a855f7', count: gc.dispatched },
+        { type: 'status', value: 'delivered',  label: 'Delivered',    color: '#22c55e', count: gc.delivered },
+        { type: 'status', value: 'attempted',  label: '📞 Attempted', color: '#f97316', count: gc.attempted },
+        { type: 'status', value: 'hold',       label: '⏸ Hold',      color: '#64748b', count: gc.hold },
+        { type: 'status', value: 'rto',        label: 'RTO',          color: '#ef4444', count: gc.rto },
+        { type: 'status', value: 'cancelled',  label: 'Cancelled',    color: '#ef4444', count: gc.cancelled },
       ],
     },
     {
@@ -252,8 +255,8 @@ function FilterDropdown({ current, onChange, globalCounts }) {
     {
       label: 'Payment',
       items: [
-        { type: 'payment', value: 'paid', label: '💰 Paid', color: '#22c55e' },
-        { type: 'payment', value: 'unpaid', label: '⏳ Unpaid', color: '#f87171' },
+        { type: 'payment', value: 'paid',     label: '💰 Paid',     color: '#22c55e', count: gc.paid },
+        { type: 'payment', value: 'unpaid',   label: '⏳ Unpaid',   color: '#f87171', count: gc.unpaid },
         { type: 'payment', value: 'refunded', label: '↩️ Refunded', color: '#fbbf24' },
       ],
     },
@@ -1535,6 +1538,8 @@ export default function OrdersPage() {
           { label: 'Confirmed', value: c.confirmed || 0, color: '#3b82f6' },
           { label: 'Dispatched', value: c.dispatched || 0, color: '#a855f7' },
           { label: 'Delivered', value: c.delivered || 0, color: '#22c55e' },
+          { label: 'Attempted', value: c.attempted || 0, color: '#f97316' },
+          { label: 'Hold', value: c.hold || 0, color: '#64748b' },
           { label: 'RTO', value: c.rto || 0, color: '#ef4444' },
           { label: 'Paid', value: c.paid || 0, color: '#22c55e' },
           { label: 'Unpaid', value: c.unpaid || 0, color: '#f87171' },
