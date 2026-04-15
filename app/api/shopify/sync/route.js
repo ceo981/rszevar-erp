@@ -4,7 +4,9 @@ import { fetchAllOrdersSince, transformOrder, transformLineItems } from '../../.
 import { getSettings } from '../../../../lib/settings';
 
 // LOCKED_STATUSES also read from settings now, with sensible fallback
-const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+// confirmed, processing, packed, dispatched, in_transit etc — sab manually set hote hain
+// Shopify sync ko inhe KABHI overwrite nahi karna chahiye
+const DEFAULT_LOCKED = ['confirmed', 'processing', 'packed', 'dispatched', 'in_transit', 'attempted', 'hold', 'delivered', 'returned', 'rto', 'cancelled', 'refunded'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -169,6 +171,22 @@ export async function POST(request) {
       }
     });
 
+    // Pre-fetch SKU → image_url map from products table
+    // Taake Shopify null image wale items bhi sahi image payein
+    let skuImageMap = {};
+    try {
+      const { data: productImages } = await supabase
+        .from('products')
+        .select('sku, image_url')
+        .not('sku', 'is', null)
+        .not('image_url', 'is', null);
+      for (const p of productImages || []) {
+        if (p.sku && p.image_url && !skuImageMap[p.sku]) {
+          skuImageMap[p.sku] = p.image_url;
+        }
+      }
+    } catch (e) { /* silent fallback */ }
+
     let itemsError = null;
     let itemsInserted = 0;
 
@@ -178,7 +196,7 @@ export async function POST(request) {
       for (const shopifyOrder of shopifyOrders) {
         const dbId = newOrdersMap.get(String(shopifyOrder.id));
         if (!dbId) continue;
-        const items = transformLineItems(shopifyOrder).map(i => ({ ...i, order_id: dbId }));
+        const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: dbId }));
         allItems.push(...items);
       }
       if (allItems.length > 0) {
@@ -196,7 +214,7 @@ export async function POST(request) {
         const { count } = await supabase
           .from('order_items').select('*', { count: 'exact', head: true }).eq('order_id', dbId);
         if ((count || 0) === 0) {
-          const items = transformLineItems(shopifyOrder).map(i => ({ ...i, order_id: dbId }));
+          const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: dbId }));
           if (items.length > 0) {
             await supabase.from('order_items').insert(items);
             itemsInserted += items.length;
