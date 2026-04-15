@@ -28,6 +28,8 @@ const STATUS_CONFIG = {
   returned:   { label: 'Returned',   color: '#f59e0b', bg: '#f59e0b22' },
   rto:        { label: 'RTO',        color: '#ef4444', bg: '#ef444422' },
   cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
+  attempted:  { label: 'Attempted',  color: '#f97316', bg: '#f9731622' },
+  hold:       { label: 'Hold',       color: '#64748b', bg: '#64748b22' },
 };
 
 const PAYMENT_CONFIG = {
@@ -735,22 +737,40 @@ function OrderDrawer({ order, onClose, onRefresh }) {
           </div>
         </div>
 
-        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}`, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {[
-            ['COD Amount', fmt(order.total_amount)],
-            ['Phone', order.customer_phone || '—'],
-            ['Address', order.customer_address || '—'],
-            ['Placed', timeAgo(order.created_at)],
-            ['Courier', order.dispatched_courier || '—'],
-            ['Tracking', order.tracking_number || '—'],
-            ['Courier Status', order.courier_status_raw || '—'],
-            ['Payment', order.payment_status || 'unpaid'],
-          ].map(([k, v]) => (
-            <div key={k}>
-              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
-              <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{v}</div>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}` }}>
+          {/* Dual Status Row */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, background: '#111', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
+              <StatusBadge status={order.status} />
             </div>
-          ))}
+            <div style={{ flex: 1, background: '#111', border: `1px solid #2a1a4a`, borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🚚 Courier Status</div>
+              {order.courier_status_raw
+                ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{order.courier_status_raw}</span>
+                : <span style={{ color: '#333', fontSize: 12 }}>Not dispatched yet</span>}
+            </div>
+          </div>
+          {/* Info Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[
+              ['COD Amount', fmt(order.total_amount)],
+              ['Phone', order.customer_phone || '—'],
+              ['Placed', timeAgo(order.created_at)],
+              ['Payment', order.payment_status || 'unpaid'],
+              ['Courier', order.dispatched_courier || '—'],
+              ['Tracking', order.tracking_number || '—'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
+                <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+            <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>Address</div>
+              <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{order.customer_address || '—'}</div>
+            </div>
+          </div>
         </div>
 
         {/* Order Items */}
@@ -896,15 +916,39 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                   </div>
                 )}
 
-                {/* Mark as Packed */}
-                {(s === 'confirmed') && currentAssignment && (
+                {/* Mark as Packed — confirmed ke baad + dispatched ke baad bhi (courier booked ho gaya, ab physically pack karo) */}
+                {(s === 'confirmed' || s === 'dispatched' || s === 'attempted') && currentAssignment && (
                   <button onClick={markPacked} disabled={loading}
                     style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                    📦 Mark as Packed
+                    📦 Mark as Packed (Slip Nikli, Pack Kiya)
                   </button>
                 )}
 
-              {(s === 'confirmed' || s === 'processing' || s === 'pending') && (
+                {/* Hold Button — customer ne roka ya koi reason ho */}
+                {(s === 'pending' || s === 'confirmed' || s === 'attempted') && (
+                  <button onClick={() => setStatus('hold')} disabled={loading}
+                    style={{ background: '#64748b22', border: '1px solid #64748b44', color: '#64748b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    ⏸ Put on Hold
+                  </button>
+                )}
+
+                {/* Attempted — call nahi uthaya */}
+                {(s === 'dispatched' || s === 'packed' || s === 'hold') && (
+                  <button onClick={() => setStatus('attempted')} disabled={loading}
+                    style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    📞 Attempted (Call Nahi Utha)
+                  </button>
+                )}
+
+                {/* Resume from Hold */}
+                {s === 'hold' && (
+                  <button onClick={() => setStatus('confirmed')} disabled={loading}
+                    style={{ background: '#3b82f622', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    ▶️ Resume Order (Hold Hatao)
+                  </button>
+                )}
+
+              {(s === 'confirmed' || s === 'processing' || s === 'pending' || s === 'hold') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>📦 Dispatch Order</div>
                   <div style={{ marginBottom: 8 }}>
@@ -927,16 +971,16 @@ function OrderDrawer({ order, onClose, onRefresh }) {
                 </div>
               )}
 
-              {s === 'dispatched' && (
+              {(s === 'dispatched' || s === 'packed' || s === 'attempted') && (
                 <button onClick={() => setStatus('delivered')} disabled={loading}
-                  style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   ✅ Mark as Delivered
                 </button>
               )}
 
-              {(s === 'dispatched' || s === 'delivered') && (
+              {(s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
                 <button onClick={() => setStatus('rto')} disabled={loading}
-                  style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   ↩️ Mark as RTO (Returned)
                 </button>
               )}
@@ -1615,7 +1659,7 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
-                {['Order', 'Customer', 'City', 'COD', 'Status', 'Payment', 'Courier', 'Tags', 'Assigned', 'Date', 'Actions'].map(h => (
+                {['Order', 'Customer', 'City', 'COD', 'Office Status', 'Payment', 'Courier', 'Courier Status', 'Assigned', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
@@ -1632,7 +1676,7 @@ export default function OrdersPage() {
                 if (order.is_wholesale) typeIcon = '🏢';
                 else if (order.is_international) typeIcon = '🌍';
                 else if (order.is_walkin) typeIcon = '🚶';
-                const orderTags = Array.isArray(order.tags) ? order.tags : [];
+                const courierStatusRaw = order.courier_status_raw;
                 return (
                   <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
                     onClick={() => setSelected(order)} className="order-row">
@@ -1645,15 +1689,10 @@ export default function OrdersPage() {
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
-                    <td style={{ padding: '12px 16px', maxWidth: 180 }}>
-                      {orderTags.length > 0 ? (
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                          {orderTags.slice(0, 3).map((tag, ti) => (
-                            <span key={ti} style={{ background: '#1f1f2e', border: '1px solid #2a2a44', color: '#9ca3af', padding: '1px 7px', borderRadius: 4, fontSize: 10, whiteSpace: 'nowrap' }}>{tag}</span>
-                          ))}
-                          {orderTags.length > 3 && <span style={{ color: '#555', fontSize: 10 }}>+{orderTags.length - 3}</span>}
-                        </div>
-                      ) : <span style={{ color: '#333' }}>—</span>}
+                    <td style={{ padding: '12px 16px' }}>
+                      {courierStatusRaw
+                        ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '2px 8px', borderRadius: 5, fontSize: 11, whiteSpace: 'nowrap' }}>{courierStatusRaw}</span>
+                        : <span style={{ color: '#333' }}>—</span>}
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: 12 }}>
                       {order.assigned_to_name
