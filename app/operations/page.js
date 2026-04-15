@@ -163,11 +163,28 @@ function CashTab({ isManager, isCEO }) {
   const pendingLogs = logs.filter(l => l.status === 'pending');
   const approvedLogs = logs.filter(l => l.status !== 'pending');
 
+  // Today + This Month stats
+  const todayStr = today();
+  const thisMonthStr = todayStr.substring(0, 7);
+  const todayLogs = approvedLogs.filter(l => l.date === todayStr && l.type !== 'cash_in');
+  const monthLogs = approvedLogs.filter(l => l.date?.startsWith(thisMonthStr) && l.type !== 'cash_in');
+  const todayExpense = todayLogs.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+  const monthExpense = monthLogs.reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+
+  // Group approved logs by date
+  const groupedByDate = {};
+  approvedLogs.forEach(l => {
+    const d = l.date || 'Unknown';
+    if (!groupedByDate[d]) groupedByDate[d] = [];
+    groupedByDate[d].push(l);
+  });
+  const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Balance Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         <div style={{ background: '#111', border: `1px solid ${balanceColor}33`, borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Cash Balance</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: balanceColor, letterSpacing: -0.5 }}>{fmt(data.balance)}</div>
@@ -179,6 +196,16 @@ function CashTab({ isManager, isCEO }) {
         <div style={{ background: '#111', border: '1px solid #2a1a1a', borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Total Out</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#ef4444' }}>{fmt(data.total_out)}</div>
+        </div>
+        <div style={{ background: '#111', border: '1px solid #ef444433', borderRadius: 12, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>🗓 Aaj Ka Kharch</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: todayExpense > 0 ? '#ef4444' : '#333' }}>{fmt(todayExpense)}</div>
+          <div style={{ fontSize: 10, color: '#444', marginTop: 4 }}>{todayLogs.length} transactions</div>
+        </div>
+        <div style={{ background: '#111', border: '1px solid #f59e0b33', borderRadius: 12, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>📅 Is Mahine Ka Kharch</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>{fmt(monthExpense)}</div>
+          <div style={{ fontSize: 10, color: '#444', marginTop: 4 }}>{monthLogs.length} transactions</div>
         </div>
         {data.pending_count > 0 && (
           <div style={{ background: '#111', border: '1px solid #c9a96e33', borderRadius: 12, padding: '20px 24px' }}>
@@ -243,60 +270,81 @@ function CashTab({ isManager, isCEO }) {
         </div>
       )}
 
-      {/* Transaction Log */}
+      {/* Transaction Log — Day-wise */}
       <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>Transaction History</span>
-          <span style={{ marginLeft: 10, fontSize: 12, color: '#444' }}>{approvedLogs.length} entries</span>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>Transaction History</span>
+            <span style={{ marginLeft: 10, fontSize: 12, color: '#444' }}>{approvedLogs.length} entries</span>
+          </div>
         </div>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</div>
         ) : approvedLogs.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#333' }}>Koi transaction nahi</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-                {['Date', 'Type', 'Description', 'Category', 'Amount', 'Bill', ''].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {approvedLogs.map(l => {
-                const isCashIn = l.type === 'cash_in';
-                const isAdvance = l.type === 'advance';
-                const typeColor = isCashIn ? '#22c55e' : isAdvance ? '#8b5cf6' : '#ef4444';
-                const typeLabel = isCashIn ? '💰 Cash In' : isAdvance ? '💸 Advance' : '🧾 Expense';
-                return (
-                  <tr key={l.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
-                    <td style={tdStyle}>{fmtDate(l.date)}</td>
-                    <td style={{ ...tdStyle }}>
-                      <span style={{ background: typeColor + '22', color: typeColor, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>{typeLabel}</span>
-                    </td>
-                    <td style={{ ...tdStyle, color: '#ccc' }}>{l.description || '—'}</td>
-                    <td style={{ ...tdStyle }}>
-                      {l.category ? <span style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{l.category}</span> : '—'}
-                    </td>
-                    <td style={{ ...tdStyle, color: isCashIn ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
-                      {isCashIn ? '+' : '-'}{fmt(l.amount)}
-                    </td>
-                    <td style={tdStyle}>
-                      {l.bill_url
-                        ? <a href={l.bill_url} target="_blank" rel="noopener noreferrer" style={{ color: '#c9a96e', fontSize: 18, textDecoration: 'none' }} title="Bill dekho">📎</a>
-                        : <span style={{ color: '#333', fontSize: 12 }}>—</span>
-                      }
-                    </td>
-                    <td style={tdStyle}>
-                      {isCEO && (
-                        <button onClick={() => deleteEntry(l.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 16 }}>🗑</button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div>
+            {sortedDates.map(date => {
+              const dayLogs = groupedByDate[date];
+              const dayOut = dayLogs.filter(l => l.type !== 'cash_in').reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+              const dayIn = dayLogs.filter(l => l.type === 'cash_in').reduce((s, l) => s + parseFloat(l.amount || 0), 0);
+              const isToday = date === todayStr;
+              return (
+                <div key={date}>
+                  {/* Day Header */}
+                  <div style={{ padding: '10px 20px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#c9a96e' : '#555' }}>
+                        {isToday ? '📅 Aaj — ' : ''}{fmtDate(date)}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#333' }}>{dayLogs.length} transactions</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                      {dayIn > 0 && <span style={{ color: '#22c55e' }}>+{fmt(dayIn)}</span>}
+                      {dayOut > 0 && <span style={{ color: '#ef4444' }}>-{fmt(dayOut)}</span>}
+                    </div>
+                  </div>
+                  {/* Day Transactions */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {dayLogs.map(l => {
+                        const isCashIn = l.type === 'cash_in';
+                        const isAdvance = l.type === 'advance';
+                        const typeColor = isCashIn ? '#22c55e' : isAdvance ? '#8b5cf6' : '#ef4444';
+                        const typeLabel = isCashIn ? '💰 Cash In' : isAdvance ? '💸 Advance' : '🧾 Expense';
+                        return (
+                          <tr key={l.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                            <td style={tdStyle}>{fmtDate(l.date)}</td>
+                            <td style={{ ...tdStyle }}>
+                              <span style={{ background: typeColor + '22', color: typeColor, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>{typeLabel}</span>
+                            </td>
+                            <td style={{ ...tdStyle, color: '#ccc' }}>{l.description || '—'}</td>
+                            <td style={{ ...tdStyle }}>
+                              {l.category ? <span style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{l.category}</span> : '—'}
+                            </td>
+                            <td style={{ ...tdStyle, color: isCashIn ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                              {isCashIn ? '+' : '-'}{fmt(l.amount)}
+                            </td>
+                            <td style={tdStyle}>
+                              {l.bill_url
+                                ? <a href={l.bill_url} target="_blank" rel="noopener noreferrer" style={{ color: '#c9a96e', fontSize: 18, textDecoration: 'none' }} title="Bill dekho">📎</a>
+                                : <span style={{ color: '#333', fontSize: 12 }}>—</span>
+                              }
+                            </td>
+                            <td style={tdStyle}>
+                              {isCEO && (
+                                <button onClick={() => deleteEntry(l.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 16 }}>🗑</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
