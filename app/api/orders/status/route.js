@@ -6,11 +6,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const VALID_STATUSES = ['pending', 'confirmed', 'processing', 'packed', 'dispatched', 'delivered', 'cancelled', 'rto', 'attempted', 'hold'];
+const VALID_STATUSES = ['pending', 'confirmed', 'on_packing', 'processing', 'packed', 'dispatched', 'delivered', 'cancelled', 'rto', 'attempted', 'hold'];
 
 export async function POST(request) {
   try {
-    const { order_id, status, notes, performed_by } = await request.json();
+    const { order_id, status, notes, performed_by, performed_by_email } = await request.json();
     if (!order_id || !status) return NextResponse.json({ success: false, error: 'order_id and status required' }, { status: 400 });
     if (!VALID_STATUSES.includes(status)) return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
 
@@ -24,6 +24,7 @@ export async function POST(request) {
       action: `status_changed_to_${status}`,
       notes: notes || '',
       performed_by: performed_by || 'Staff',
+      performed_by_email: performed_by_email || null,
       performed_at: new Date().toISOString(),
     });
 
@@ -31,18 +32,4 @@ export async function POST(request) {
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
-}
-
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const order_id = searchParams.get('order_id');
-  if (!order_id) return NextResponse.json({ log: [] });
-
-  const { data } = await supabase
-    .from('order_activity_log')
-    .select('*')
-    .eq('order_id', order_id)
-    .order('performed_at', { ascending: true });
-
-  return NextResponse.json({ log: data || [] });
 }
