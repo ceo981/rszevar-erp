@@ -28,15 +28,17 @@ export async function POST(request) {
     .single();
 
   if (erpOrder) {
-    const updates = {};
     const isFulfilled = shopifyOrder.fulfillment_status === 'fulfilled' || shopifyOrder.fulfillment_status === 'partial';
     const isActiveStatus = ['confirmed', 'on_packing'].includes(erpOrder.status);
 
     // order_confirmed tag hata diya → pending pe wapas + assignment cancel
-    // Sirf tab jab courier book nahi hua (fulfillment nahi)
+    // Sirf tab jab fulfillment nahi hua
     if (isActiveStatus && !tags.includes('order_confirmed') && !isFulfilled) {
-      updates.status = 'pending';
-      updates.confirmed_at = null;
+      await supabase.from('orders').update({
+        status: 'pending',
+        confirmed_at: null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', erpOrder.id);
 
       await supabase.from('order_assignments').delete().eq('order_id', erpOrder.id);
       await supabase.from('order_activity_log').insert({
@@ -48,7 +50,6 @@ export async function POST(request) {
     }
 
     // packing:* tag hata diya → assignment cancel
-    // Sirf confirmed/on_packing pe aur fulfillment nahi hua
     if (isActiveStatus && !isFulfilled && !tags.some(t => t.startsWith('packing:'))) {
       await supabase.from('order_assignments').delete().eq('order_id', erpOrder.id);
       await supabase.from('order_activity_log').insert({
@@ -58,15 +59,9 @@ export async function POST(request) {
         performed_at: new Date().toISOString(),
       });
     }
-
-    if (Object.keys(updates).length > 0) {
-      updates.updated_at = new Date().toISOString();
-      await supabase.from('orders').update(updates).eq('id', erpOrder.id);
-      return NextResponse.json({ success: true, action: 'reverted', updates });
-    }
   }
 
-  // Baaki normal webhook processing
+  // HAMESHA handleOrderWebhook call karo taake tags, tracking sab update ho
   const req2 = new Request(request.url, {
     method: 'POST',
     headers: {
