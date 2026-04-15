@@ -424,6 +424,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
   const [log, setLog] = useState([]);
+  const [localStatus, setLocalStatus] = useState(order.status);
   const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
   const [showKangarooModal, setShowKangarooModal] = useState(false);
   const [kangarooForm, setKangarooForm] = useState({
@@ -558,6 +559,8 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       const d = await r.json();
       if (d.success) {
         setMsg(successMsg + (d.warning ? ` ⚠ ${d.warning}` : '') + (d.tracking ? ` | Tracking: ${d.tracking}` : ''));
+        // Agar body mein status hai to instantly update karo
+        if (body.status) setLocalStatus(body.status);
         onRefresh();
       } else {
         setMsg('❌ ' + d.error);
@@ -584,8 +587,9 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       if (d.success) {
         const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
         if (assignedTo && emp) setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+        setLocalStatus(assignedTo ? 'on_packing' : 'confirmed');
         setMsg(`✅ Order confirmed!${d.assigned_name ? ` Assigned to ${d.assigned_name}` : ''}`);
-        onRefresh(); // Ek baar refresh, sab kuch update ho jaye ga
+        onRefresh();
       } else {
         setMsg('❌ ' + d.error);
       }
@@ -705,6 +709,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       if (d.success) {
         const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
         setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+        setLocalStatus('on_packing');
         setMsg(`✅ Assigned to ${emp?.name || 'packer'}!`);
         onRefresh();
       } else { setMsg('❌ ' + d.error); }
@@ -722,6 +727,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       });
       const d = await r.json();
       if (d.success) {
+        setLocalStatus('packed');
         setMsg(`✅ Marked as packed! ${d.items_packed} item(s) logged.`);
         onRefresh();
       } else { setMsg('❌ ' + d.error); }
@@ -729,7 +735,7 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
     setLoading(false);
   };
 
-  const s = order.status;
+  const s = localStatus;
 
   // Order type badges
   const typeBadges = [];
