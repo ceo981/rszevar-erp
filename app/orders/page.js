@@ -1346,8 +1346,7 @@ export default function OrdersPage() {
   const [hasMore, setHasMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
-  const [leopardsStatusSyncing, setLeopardsStatusSyncing] = useState(false);
-  const [leopardsPaymentsSyncing, setLeopardsPaymentsSyncing] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const PER_PAGE = 50;
@@ -1375,7 +1374,35 @@ export default function OrdersPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Customer tab se order open karne ke liye event listener
+  // Background auto-sync — page load pe silently Leopards + Kangaroo dono sync
+  useEffect(() => {
+    const backgroundSync = async () => {
+      try {
+        await Promise.allSettled([
+          fetch('/api/courier/leopards/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/leopards/sync-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/kangaroo/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+        ]);
+        load();
+      } catch (e) {
+        console.log('[auto-sync] background sync error:', e.message);
+      }
+    };
+    backgroundSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Sirf page load pe ek baar
   useEffect(() => {
     const handler = (e) => {
       const orderData = e.detail;
@@ -1439,82 +1466,6 @@ export default function OrdersPage() {
     }
   };
 
-  const syncLeopardsStatus = async () => {
-    setLeopardsStatusSyncing(true);
-    setSyncMsg({ type: 'info', text: '⟳ Fetching Leopards statuses...' });
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
-
-    try {
-      const r = await fetch('/api/courier/leopards/sync-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: 10, triggered_by: 'manual' }),
-        signal: abortController.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!r.ok) throw new Error(`Server error ${r.status}`);
-      const d = await r.json();
-
-      if (d.success) {
-        const parts = [
-          `✓ Leopards: ${d.updated_orders || 0} orders updated`,
-          `${d.matched_orders || 0} matched`,
-          `${d.total_fetched || 0} packets fetched`,
-        ];
-        if (d.skipped_unmapped > 0) parts.push(`${d.skipped_unmapped} unmapped`);
-        showMsg('success', parts.join(' · '));
-        await load();
-      } else {
-        showMsg('error', `✗ ${d.error || 'Leopards status sync failed'}`);
-      }
-    } catch (e) {
-      clearTimeout(timeoutId);
-      showMsg('error', e.name === 'AbortError' ? '✗ Leopards status sync timed out.' : `✗ ${e.message}`);
-    } finally {
-      setLeopardsStatusSyncing(false);
-    }
-  };
-
-  const syncLeopardsPayments = async () => {
-    setLeopardsPaymentsSyncing(true);
-    setSyncMsg({ type: 'info', text: '⟳ Reconciling Leopards payments...' });
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
-
-    try {
-      const r = await fetch('/api/courier/leopards/sync-payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ triggered_by: 'manual' }),
-        signal: abortController.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!r.ok) throw new Error(`Server error ${r.status}`);
-      const d = await r.json();
-
-      if (d.success) {
-        if (d.candidates === 0) {
-          showMsg('info', '✓ No delivered unpaid Leopards orders to check');
-        } else if (d.marked_paid > 0) {
-          showMsg('success', `✓ Leopards: ${d.marked_paid} orders marked paid (${d.candidates} checked, ${d.still_pending} still pending)`);
-          await load();
-        } else {
-          showMsg('info', `✓ Leopards: 0 marked paid — ${d.candidates} still pending invoice generation`);
-        }
-      } else {
-        showMsg('error', `✗ ${d.error || 'Leopards payment sync failed'}`);
-      }
-    } catch (e) {
-      clearTimeout(timeoutId);
-      showMsg('error', e.name === 'AbortError' ? '✗ Leopards payment sync timed out.' : `✗ ${e.message}`);
-    } finally {
-      setLeopardsPaymentsSyncing(false);
-    }
-  };
-
-  const [cleaning, setCleaning] = useState(false);
-
   const cleanUndefinedOrders = async () => {
     if (!window.confirm('Sab #undefined orders delete ho jayein gi. Confirm?')) return;
     setCleaning(true);
@@ -1532,7 +1483,7 @@ export default function OrdersPage() {
   };
 
   const c = stats || {};
-  const anySyncing = syncing || leopardsStatusSyncing || leopardsPaymentsSyncing || cleaning;
+  const anySyncing = syncing || cleaning;
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
@@ -1634,52 +1585,6 @@ export default function OrdersPage() {
           title="Pull latest orders from Shopify"
         >
           {syncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>⟱ Sync from Shopify</>)}
-        </button>
-
-        <button
-          onClick={syncLeopardsStatus}
-          disabled={anySyncing}
-          style={{
-            background: leopardsStatusSyncing ? '#1a1a1a' : 'rgba(168, 85, 247, 0.15)',
-            border: `1px solid ${leopardsStatusSyncing ? border : '#a855f7'}`,
-            color: leopardsStatusSyncing ? '#888' : '#a855f7',
-            borderRadius: 8,
-            padding: '9px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: anySyncing ? 'not-allowed' : 'pointer',
-            opacity: (anySyncing && !leopardsStatusSyncing) ? 0.5 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontFamily: 'inherit',
-          }}
-          title="Pull latest delivery statuses from Leopards API"
-        >
-          {leopardsStatusSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>🐆 Leopards Status</>)}
-        </button>
-
-        <button
-          onClick={syncLeopardsPayments}
-          disabled={anySyncing}
-          style={{
-            background: leopardsPaymentsSyncing ? '#1a1a1a' : 'rgba(34, 197, 94, 0.15)',
-            border: `1px solid ${leopardsPaymentsSyncing ? border : '#22c55e'}`,
-            color: leopardsPaymentsSyncing ? '#888' : '#22c55e',
-            borderRadius: 8,
-            padding: '9px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: anySyncing ? 'not-allowed' : 'pointer',
-            opacity: (anySyncing && !leopardsPaymentsSyncing) ? 0.5 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            fontFamily: 'inherit',
-          }}
-          title="Reconcile Leopards COD payments (auto-mark paid orders)"
-        >
-          {leopardsPaymentsSyncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Checking…</>) : (<>💰 Leopards Payments</>)}
         </button>
 
         <button
