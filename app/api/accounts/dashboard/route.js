@@ -16,7 +16,7 @@ export async function GET(request) {
     // ── 1. Orders this month ──────────────────────────────────
     const { data: orders } = await supabase
       .from('orders')
-      .select('total_price, status, payment_status, courier_name, created_at, shipping_fee')
+      .select('total_amount, status, payment_status, dispatched_courier, created_at, shipping_fee')
       .gte('created_at', monthStart)
       .lte('created_at', monthEnd + 'T23:59:59');
 
@@ -24,21 +24,21 @@ export async function GET(request) {
     const totalOrders = allOrders.length;
     const deliveredOrders = allOrders.filter(o => o.status === 'delivered');
     const dispatchedOrders = allOrders.filter(o => o.status === 'dispatched');
-    const revenue = deliveredOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-    const pendingRevenue = dispatchedOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const revenue = deliveredOrders.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
+    const pendingRevenue = dispatchedOrders.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     const paidOrders = allOrders.filter(o => o.payment_status === 'paid');
-    const totalPaid = paidOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+    const totalPaid = paidOrders.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
     const deliveryCharges = allOrders.reduce((s, o) => s + parseFloat(o.shipping_fee || 0), 0);
 
     // ── 2. Courier breakdown ──────────────────────────────────
     const couriers = ['PostEx', 'Leopards', 'Kangaroo'];
     const byCourier = {};
     for (const c of couriers) {
-      const co = allOrders.filter(o => o.courier_name === c);
+      const co = allOrders.filter(o => o.dispatched_courier === c);
       byCourier[c] = {
         orders: co.length,
         delivered: co.filter(o => o.status === 'delivered').length,
-        revenue: co.filter(o => o.status === 'delivered').reduce((s, o) => s + parseFloat(o.total_price || 0), 0),
+        revenue: co.filter(o => o.status === 'delivered').reduce((s, o) => s + parseFloat(o.total_amount || 0), 0),
       };
     }
 
