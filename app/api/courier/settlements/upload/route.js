@@ -475,22 +475,39 @@ export async function POST(request) {
     const totalDeliveryCharges = parsed.meta.totalDeliveryCharges || 0;
     const totalTaxes = (parsed.meta.totalWHT || 0) + (parsed.meta.totalGST || 0);
     const totalCOD = parsed.orders.reduce((s, o) => s + (o.cod_amount || 0), 0);
+    const netSettlement = totalCOD - totalDeliveryCharges - totalTaxes;
 
-    await supabase.from('courier_settlements').insert({
+    // Map to actual courier_settlements schema columns
+    const { error: settlementErr } = await supabase.from('courier_settlements').insert({
       courier,
-      reference_no: referenceNo,
-      file_name: file.name,
-      settled_at: settledAt,
-      total_cod: totalCOD,
-      total_delivery_charges: totalDeliveryCharges,
-      total_taxes: totalTaxes,
-      net_amount: totalCOD - totalDeliveryCharges - totalTaxes,
-      orders_paid: paidCount,
-      orders_rto: rtoCount,
-      orders_skipped: skipped.length,
-      orders_not_found: notFound.length,
+      invoice_number: referenceNo || null,
+      invoice_date: settledAt || null,
+      settlement_period_start: settledAt || null,
+      settlement_period_end: settledAt || null,
+      total_parcels: parsed.orders.length,
+      total_cod_collected: totalCOD,
+      courier_charges: totalDeliveryCharges,
+      net_amount: netSettlement,
+      payment_status: 'pending',
+      payment_received: 0,
+      is_reconciled: true,
+      reconciled_at: now,
+      discrepancy_amount: 0,
+      discrepancy_notes: [
+        `Orders paid: ${paidCount}`,
+        `Orders RTO: ${rtoCount}`,
+        `Not found: ${notFound.length}`,
+        `Skipped: ${skipped.length}`,
+        `Taxes: Rs ${totalTaxes.toFixed(0)}`,
+        `File: ${file.name}`,
+      ].join(' | '),
       created_at: now,
-    }).select().single();
+      updated_at: now,
+    });
+
+    if (settlementErr) {
+      console.error('[settlement-upload] courier_settlements insert error:', settlementErr.message);
+    }
 
     return NextResponse.json({
       success: true,
