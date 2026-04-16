@@ -47,6 +47,33 @@ export async function POST(request) {
     const performer = performed_by || 'Staff';
     const performerEmail = performed_by_email || null;
 
+    // ── Unassign packer ──
+    if (action === 'unassign') {
+      // Delete assignment
+      await supabase
+        .from('order_assignments')
+        .delete()
+        .eq('order_id', order_id);
+
+      // Revert status to confirmed (was on_packing)
+      await supabase
+        .from('orders')
+        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .eq('id', order_id)
+        .eq('status', 'on_packing');
+
+      await supabase.from('order_activity_log').insert({
+        order_id,
+        action: 'unassigned',
+        notes: 'Packer assignment hata di — status confirmed par wapas',
+        performed_by: performer,
+        performed_by_email: performerEmail,
+        performed_at: new Date().toISOString(),
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
     // ── Mark as Packed ──
     if (action === 'packed') {
       const { data: assignment } = await supabase
