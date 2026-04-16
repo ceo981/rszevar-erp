@@ -44,16 +44,22 @@ export async function POST(request) {
 
     const message = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    // Only handle interactive button replies
-    if (message?.type !== 'interactive') {
-      return NextResponse.json({ received: true });
+    // Template quick reply buttons → type: 'button', payload in message.button.payload
+    // Interactive messages → type: 'interactive', payload in interactive.button_reply.id
+    let payload = null;
+    let fromPhone = message?.from;
+
+    if (message?.type === 'button') {
+      // Template quick reply response
+      payload = message?.button?.payload;
+    } else if (message?.type === 'interactive') {
+      // Interactive button reply
+      payload = message?.interactive?.button_reply?.id;
     }
 
-    const buttonReply = message?.interactive?.button_reply;
-    if (!buttonReply) return NextResponse.json({ received: true });
-
-    const payload   = buttonReply.id;  // "CONFIRM_ZEVAR-123456" or "CANCEL_ZEVAR-123456"
-    const fromPhone = message.from;    // customer's phone
+    if (!payload || !fromPhone) {
+      return NextResponse.json({ received: true });
+    }
 
     console.log(`[whatsapp-webhook] Button: ${payload} from ${fromPhone}`);
 
