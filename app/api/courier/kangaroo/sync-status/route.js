@@ -25,8 +25,8 @@ async function runSync({ triggered_by = 'manual' }) {
   // ── 1. Get all active Kangaroo orders from ERP ──
   const { data: orders, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, order_number, tracking_number, status, courier_name')
-    .eq('courier_name', 'Kangaroo')
+    .select('id, order_number, tracking_number, status, dispatched_courier')
+    .eq('dispatched_courier', 'Kangaroo')
     .not('tracking_number', 'is', null)
     .not('tracking_number', 'eq', '')
     .not('status', 'in', '("delivered","returned","cancelled","refunded","rto")');
@@ -149,18 +149,18 @@ export async function GET() {
     const { count: total } = await supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('courier_name', 'Kangaroo');
+      .eq('dispatched_courier', 'Kangaroo');
 
     const { count: delivered } = await supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('courier_name', 'Kangaroo')
+      .eq('dispatched_courier', 'Kangaroo')
       .eq('status', 'delivered');
 
     const { count: active } = await supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('courier_name', 'Kangaroo')
+      .eq('dispatched_courier', 'Kangaroo')
       .not('status', 'in', '("delivered","returned","cancelled","refunded")');
 
     return NextResponse.json({
