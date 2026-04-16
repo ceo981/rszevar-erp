@@ -11,10 +11,10 @@ export async function GET() {
     // COD orders total
     const { data: codOrders } = await supabase
       .from('orders')
-      .select('total_price, payment_status, courier_name')
+      .select('total_amount, payment_status, dispatched_courier')
       .eq('payment_method', 'COD');
 
-    const totalCOD = codOrders?.reduce((s, o) => s + parseFloat(o.total_price || 0), 0) || 0;
+    const totalCOD = codOrders?.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0) || 0;
 
     // Settlements summary
     const { data: settlements } = await supabase
@@ -31,11 +31,11 @@ export async function GET() {
     const couriers = ['PostEx', 'Kangaroo', 'Leopards'];
     const byCourier = {};
     for (const courier of couriers) {
-      const courierOrders = codOrders?.filter(o => o.courier_name === courier) || [];
+      const courierOrders = codOrders?.filter(o => o.dispatched_courier === courier) || [];
       const courierSettled = settlements
         ?.filter(s => s.courier_name === courier && s.status === 'settled')
         .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0) || 0;
-      const courierTotal = courierOrders.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+      const courierTotal = courierOrders.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
       byCourier[courier] = {
         total: courierTotal,
         settled: courierSettled,
