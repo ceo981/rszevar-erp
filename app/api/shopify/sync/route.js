@@ -80,6 +80,15 @@ export async function POST(request) {
           if (lockedStatuses.includes(existing.status)) delete orderData.status;
           if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') delete orderData.payment_status;
           if (existing.payment_status === 'refunded') delete orderData.payment_status;
+
+          // confirmed → on_packing when Shopify tracking exists
+          if (existing.status === 'confirmed') {
+            const fulfillments = shopifyOrder.fulfillments || [];
+            const hasTracking = fulfillments.some(
+              f => f.tracking_number && f.status !== 'cancelled'
+            );
+            if (hasTracking) orderData.status = 'on_packing';
+          }
         }
 
         ordersToUpsert.push(orderData);
