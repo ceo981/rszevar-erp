@@ -9,24 +9,31 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    const { order_id, notes, assigned_to, performed_by, performed_by_email } = await request.json();
+    const { order_id, notes, performed_by, performed_by_email } = await request.json();
     if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
 
     const performer = performed_by || 'Staff';
-    const performerEmail = performed_by_email || null;
 
     // Get order info
     const { data: order } = await supabase
       .from('orders')
-      .select('shopify_order_id')
+      .select('shopify_order_id, status')
       .eq('id', order_id)
       .single();
 
-    // 1. Update order status
+    if (!order) return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+
+    // Only confirm if pending/processing
+    const confirmable = ['pending', 'processing', 'attempted', 'hold'];
+    if (!confirmable.includes(order.status)) {
+      return NextResponse.json({ success: false, error: `Order status '${order.status}' confirm nahi ho sakta` }, { status: 400 });
+    }
+
+    // Update order status to confirmed — simple, no assignment
     const { error } = await supabase
       .from('orders')
       .update({
-        status: assigned_to ? 'on_packing' : 'confirmed',
+        status: 'confirmed',
         confirmed_at: new Date().toISOString(),
         confirmation_notes: notes || '',
         updated_at: new Date().toISOString(),
@@ -35,60 +42,27 @@ export async function POST(request) {
 
     if (error) throw error;
 
-    // 2. Assign packer (agar selected ho) - same call mein
-    let assignedEmpName = null;
-    if (assigned_to) {
-      const { data: emp } = await supabase
-        .from('employees')
-        .select('name')
-        .eq('id', assigned_to)
-        .single();
-
-      assignedEmpName = emp?.name || null;
-
-      await supabase.from('order_assignments').upsert({
-        order_id,
-        assigned_to,
-        stage: 'packing',
-        status: 'pending',
-        notes: '',
-        assigned_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      }, { onConflict: 'order_id', ignoreDuplicates: false });
-
-      await supabase.from('order_activity_log').insert({
-        order_id,
-        action: 'assigned',
-        notes: `${assignedEmpName} ko assign kiya gaya`,
-        performed_by: performer,
-        performed_by_email: performerEmail,
-        performed_at: new Date().toISOString(),
-      });
-    }
-
-    // 3. Shopify tags
-    if (order?.shopify_order_id) {
+    // Shopify: add order_confirmed tag + note
+    if (order.shopify_order_id) {
       try {
-        const tagsToAdd = ['order_confirmed'];
-        if (assignedEmpName) tagsToAdd.push(`packing:${assignedEmpName}`);
-        await updateShopifyOrderTags(order.shopify_order_id, tagsToAdd, []);
+        await updateShopifyOrderTags(order.shopify_order_id, ['order_confirmed'], []);
         if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
       } catch (e) {
         console.error('[confirm] Shopify tag error:', e.message);
       }
     }
 
-    // 4. Activity log
+    // Activity log
     await supabase.from('order_activity_log').insert({
       order_id,
       action: 'confirmed',
-      notes: notes || (assignedEmpName ? `Packer: ${assignedEmpName}` : ''),
+      notes: notes || '',
       performed_by: performer,
-      performed_by_email: performerEmail,
+      performed_by_email: performed_by_email || null,
       performed_at: new Date().toISOString(),
     });
 
-    return NextResponse.json({ success: true, assigned_name: assignedEmpName });
+    return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
