@@ -531,3 +531,20 @@ export async function POST(request) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
+
+// ── GET: Settlement upload history ───────────────────────────────────────────
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('courier_settlements')
+      .select('id, courier, invoice_number, invoice_date, total_parcels, total_cod_collected, courier_charges, net_amount, is_reconciled, reconciled_at, discrepancy_notes, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, settlements: data || [] });
+  } catch (err) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
