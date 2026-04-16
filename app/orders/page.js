@@ -953,8 +953,61 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                   </select>
                   <button onClick={assignOrder} disabled={loading || !assignedTo}
                     style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
-                    {currentAssignment ? '🔄 Reassign Packer' : '✅ Assign Packer'}
+                    {currentAssignment ? '🔄 Re-Assign Packer' : '✅ Assign Packer'}
                   </button>
+                </div>
+              )}
+
+              {/* Unconfirm + Unassign — confirmed/on_packing pe CEO/Manager ke liye */}
+              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={async () => {
+                      setLoading(true); setMsg('');
+                      try {
+                        // Unassign packer
+                        await fetch('/api/orders/assign', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ order_id: order.id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+                        });
+                        // Wapas pending
+                        const r = await fetch('/api/orders/status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ order_id: order.id, status: 'pending', notes: 'Unconfirmed — wapas pending', performed_by: performer, performed_by_email: userEmail }),
+                        });
+                        const d = await r.json();
+                        if (d.success) { setLocalStatus('pending'); setCurrentAssignment(null); setMsg('✅ Order unconfirmed — wapas pending'); onRefresh(); }
+                        else setMsg('❌ ' + d.error);
+                      } catch(e) { setMsg('❌ ' + e.message); }
+                      setLoading(false);
+                    }}
+                    disabled={loading}
+                    style={{ flex: 1, background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ↩️ Unconfirm
+                  </button>
+                  {s === 'on_packing' && (
+                    <button
+                      onClick={async () => {
+                        setLoading(true); setMsg('');
+                        try {
+                          const r = await fetch('/api/orders/assign', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ order_id: order.id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+                          });
+                          const d = await r.json();
+                          if (d.success) { setLocalStatus('confirmed'); setCurrentAssignment(null); setMsg('✅ Packer hata diya — status confirmed'); onRefresh(); }
+                          else setMsg('❌ ' + d.error);
+                        } catch(e) { setMsg('❌ ' + e.message); }
+                        setLoading(false);
+                      }}
+                      disabled={loading}
+                      style={{ flex: 1, background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      👤 Unassign
+                    </button>
+                  )}
                 </div>
               )}
 
