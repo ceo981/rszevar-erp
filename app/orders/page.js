@@ -1613,33 +1613,78 @@ export default function OrdersPage() {
         )}
       </div>
 
-      {/* Summary cards (filter-aware — show counts within current filter) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 20 }}>
-        {[
-          { label: 'Total', value: c.total || 0, color: '#fff' },
-          { label: 'Pending', value: c.pending || 0, color: '#888' },
-          { label: 'Confirmed', value: c.confirmed || 0, color: '#3b82f6' },
-          { label: 'Dispatched', value: c.dispatched || 0, color: '#a855f7' },
-          { label: 'Delivered', value: c.delivered || 0, color: '#22c55e' },
-          { label: 'Attempted', value: c.attempted || 0, color: '#f97316' },
-          { label: 'Hold', value: c.hold || 0, color: '#64748b' },
-          { label: 'RTO', value: c.rto || 0, color: '#ef4444' },
-          { label: 'Paid', value: c.paid || 0, color: '#22c55e' },
-          { label: 'Unpaid', value: c.unpaid || 0, color: '#f87171' },
-          { label: 'Pending COD', value: fmt(c.total_cod || 0), color: gold },
-        ].map(s => (
-          <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
-          </div>
-        ))}
+      {/* ── Status Tabs ── */}
+      <div style={{ marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
+        <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+          {[
+            { label: 'All Orders', value: null, color: gold, count: globalCounts.pending + globalCounts.confirmed + globalCounts.on_packing + globalCounts.packed + globalCounts.dispatched + globalCounts.delivered + globalCounts.attempted + globalCounts.hold + globalCounts.rto + globalCounts.cancelled },
+            { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending },
+            { label: 'Confirmed',  value: 'confirmed',  color: '#3b82f6', count: globalCounts.confirmed },
+            { label: 'On Packing', value: 'on_packing', color: '#f59e0b', count: globalCounts.on_packing },
+            { label: 'Packed',     value: 'packed',     color: '#06b6d4', count: globalCounts.packed },
+            { label: 'Dispatched', value: 'dispatched', color: '#a855f7', count: globalCounts.dispatched },
+            { label: 'Delivered',  value: 'delivered',  color: '#22c55e', count: globalCounts.delivered },
+            { label: 'Attempted',  value: 'attempted',  color: '#f97316', count: globalCounts.attempted },
+            { label: 'Hold',       value: 'hold',       color: '#64748b', count: globalCounts.hold },
+            { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
+            { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled },
+          ].map(tab => {
+            const isActive = filter.type === 'status'
+              ? filter.value === tab.value
+              : tab.value === null;
+            return (
+              <button
+                key={tab.value ?? 'all'}
+                onClick={() => {
+                  setFilter(tab.value ? { type: 'status', value: tab.value } : { type: null, value: null });
+                  setPage(1);
+                }}
+                style={{
+                  background: isActive ? tab.color + '18' : 'transparent',
+                  border: isActive ? `1px solid ${tab.color}55` : `1px solid transparent`,
+                  borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
+                  color: isActive ? tab.color : '#555',
+                  borderRadius: '8px 8px 0 0',
+                  padding: '9px 14px',
+                  fontSize: 12,
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: isActive ? tab.color + '22' : '#1a1a1a',
+                    color: isActive ? tab.color : '#444',
+                    padding: '1px 7px',
+                    borderRadius: 10,
+                    minWidth: 20,
+                    textAlign: 'center',
+                  }}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ borderBottom: `1px solid ${border}`, marginTop: -1 }} />
       </div>
 
-      {/* Filters + Sync buttons */}
+      {/* ── Search + Secondary filters + Buttons ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
           placeholder="Search order, customer, phone, tracking..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
 
+        {/* Secondary filter — Type / Courier / Payment only (Status handled by tabs) */}
         <FilterDropdown
           current={filter}
           onChange={(f) => { setFilter(f); setPage(1); }}
