@@ -1,41 +1,37 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { updateShopifyOrderTags } from '@/lib/shopify';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// GET — packing staff list + current assignment
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const order_id = searchParams.get('order_id');
 
     if (order_id) {
-      // Get assignment for specific order
       const { data, error } = await supabase
         .from('order_assignments')
         .select('*, employee:assigned_to(id, name, role)')
         .eq('order_id', order_id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
-
+        .maybeSingle();
       return NextResponse.json({ success: true, assignment: data || null });
     }
 
-    // Get all packing staff for dropdown — DB se live, hardcoded nahi
+    // Packing team employees
     const { data: employees } = await supabase
       .from('employees')
       .select('id, name, role, designation')
       .eq('status', 'active')
-      .in('role', ['Packing Team', 'Operations Manager', 'Dispatcher', 'Other'])
-      .order('role')
+      .eq('role', 'Packing Team')
       .order('name');
 
     return NextResponse.json({ success: true, employees: employees || [] });
-
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
@@ -43,19 +39,15 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const { order_id, assigned_to, assigned_by, notes, action, performed_by, performed_by_email } = await request.json();
+    const body = await request.json();
+    const { order_id, action, performed_by, performed_by_email } = body;
     const performer = performed_by || 'Staff';
     const performerEmail = performed_by_email || null;
 
-    // ── Unassign packer ──
+    // ── Unassign ──────────────────────────────────────────────
     if (action === 'unassign') {
-      // Delete assignment from order_assignments
-      await supabase
-        .from('order_assignments')
-        .delete()
-        .eq('order_id', order_id);
+      await supabase.from('order_assignments').delete().eq('order_id', order_id);
 
-      // Remove packing:* tag from orders.tags JSONB
       const { data: ord } = await supabase
         .from('orders')
         .select('id, status, tags, shopify_order_id')
@@ -63,43 +55,30 @@ export async function POST(request) {
         .single();
 
       if (ord) {
-        // Remove packing:* tags from JSONB array
         const cleanedTags = Array.isArray(ord.tags)
           ? ord.tags.filter(t => !String(t).toLowerCase().startsWith('packing:'))
           : [];
-
-        const updatePayload = {
-          tags: cleanedTags,
-          updated_at: new Date().toISOString(),
-        };
-
-        // If status was on_packing, revert to confirmed
-        if (ord.status === 'on_packing') {
-          updatePayload.status = 'confirmed';
-        }
-
+        const updatePayload = { tags: cleanedTags, updated_at: new Date().toISOString() };
+        if (ord.status === 'on_packing') updatePayload.status = 'confirmed';
         await supabase.from('orders').update(updatePayload).eq('id', order_id);
 
-        // Remove packing tag from Shopify too (best effort)
         if (ord.shopify_order_id) {
           try {
             const { updateShopifyOrderTags } = await import('@/lib/shopify');
-            const packingTagsToRemove = Array.isArray(ord.tags)
+            const packingTags = Array.isArray(ord.tags)
               ? ord.tags.filter(t => String(t).toLowerCase().startsWith('packing:'))
               : [];
-            if (packingTagsToRemove.length > 0) {
-              await updateShopifyOrderTags(ord.shopify_order_id, [], packingTagsToRemove);
+            if (packingTags.length > 0) {
+              await updateShopifyOrderTags(ord.shopify_order_id, [], packingTags);
             }
-          } catch (e) {
-            console.error('[unassign] Shopify tag remove error:', e.message);
-          }
+          } catch (e) { console.error('[unassign] Shopify:', e.message); }
         }
       }
 
       await supabase.from('order_activity_log').insert({
         order_id,
         action: 'unassigned',
-        notes: 'Packer assignment hata di — status confirmed par wapas',
+        notes: 'Packer hata diya',
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: new Date().toISOString(),
@@ -108,126 +87,159 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
-    // ── Mark as Packed ──
-    if (action === 'packed') {
-      const { data: assignment } = await supabase
-        .from('order_assignments')
-        .select('id, assigned_to')
-        .eq('order_id', order_id)
-        .order('created_at', { ascending: false })
-        .limit(1)
+    // ── Set Packer (from mobile packing screen) ───────────────
+    // Packing staff khud apna naam dalte hain
+    if (action === 'set_packer') {
+      const { assigned_to } = body; // employee id (number) OR 'packing_team' (string)
+      if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+
+      // Get order
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('id, order_number, status')
+        .eq('id', order_id)
         .single();
 
-      // Get actual item count from order_items table
-      const { data: orderItems } = await supabase
-        .from('order_items')
-        .select('quantity')
-        .eq('order_id', order_id);
-
-      // Fallback: shopify_raw se bhi try karo agar order_items empty ho
-      let itemCount = (orderItems || []).reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
-      if (itemCount === 0) {
-        const { data: orderRaw } = await supabase
-          .from('orders')
-          .select('shopify_raw')
-          .eq('id', order_id)
-          .single();
-        const lineItems = orderRaw?.shopify_raw?.line_items || [];
-        itemCount = lineItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
-      }
-      if (itemCount === 0) itemCount = 1; // minimum 1
-
-      // Update assignment status
-      if (assignment) {
-        await supabase
-          .from('order_assignments')
-          .update({ status: 'packed', completed_at: new Date().toISOString() })
-          .eq('id', assignment.id);
-
-        // Add packing log entry
-        await supabase.from('packing_log').insert({
-          order_id,
-          employee_id: assignment.assigned_to,
-          items_packed: itemCount || 1,
-          completed_at: new Date().toISOString(),
-          notes: notes || '',
-        });
+      if (!ord) return NextResponse.json({ success: false, error: 'Order nahi mila' }, { status: 404 });
+      if (!['on_packing', 'confirmed'].includes(ord.status)) {
+        return NextResponse.json({ success: false, error: `Order status '${ord.status}' pe packer set nahi ho sakta` }, { status: 400 });
       }
 
-      // Update order status to packed
-      await supabase
-        .from('orders')
-        .update({ status: 'packed', updated_at: new Date().toISOString() })
-        .eq('id', order_id);
+      let empName = 'Packing Team';
+      let empId = null;
+
+      if (assigned_to === 'packing_team') {
+        empName = 'Packing Team';
+        empId = null;
+      } else {
+        const numId = parseInt(assigned_to);
+        if (isNaN(numId)) return NextResponse.json({ success: false, error: 'Valid employee select karo' }, { status: 400 });
+        const { data: emp } = await supabase.from('employees').select('name').eq('id', numId).single();
+        if (!emp) return NextResponse.json({ success: false, error: 'Employee nahi mila' }, { status: 404 });
+        empName = emp.name;
+        empId = numId;
+      }
+
+      // Upsert assignment
+      await supabase.from('order_assignments').upsert({
+        order_id,
+        assigned_to: empId,
+        stage: 'packing',
+        status: 'pending',
+        notes: assigned_to === 'packing_team' ? 'packing_team' : '',
+        assigned_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'order_id', ignoreDuplicates: false });
 
       await supabase.from('order_activity_log').insert({
         order_id,
-        action: 'packed',
-        notes: `Packed — ${itemCount} item(s)`,
+        action: 'packer_set',
+        notes: `Packed by: ${empName}`,
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: new Date().toISOString(),
       });
 
-      return NextResponse.json({ success: true, items_packed: itemCount });
+      return NextResponse.json({ success: true, packed_by: empName });
     }
 
-    // ── Assign to packer ──
-    if (!order_id || !assigned_to) {
-      return NextResponse.json({ success: false, error: 'order_id and assigned_to required' }, { status: 400 });
-    }
+    // ── Mark as Packed (dispatcher karta hai) ─────────────────
+    if (action === 'packed') {
+      if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
 
-    // Insert or update assignment
-    const { error } = await supabase
-      .from('order_assignments')
-      .upsert({
-        order_id,
-        assigned_to,
-        assigned_by: assigned_by || null,
-        stage: 'packing',
-        status: 'pending',
-        notes: notes || '',
-        assigned_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      }, { onConflict: 'order_id', ignoreDuplicates: false });
+      // Check packed_by exists
+      const { data: assignment } = await supabase
+        .from('order_assignments')
+        .select('id, assigned_to, notes')
+        .eq('order_id', order_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (error) throw error;
-
-    // Order status → on_packing
-    await supabase
-      .from('orders')
-      .update({ status: 'on_packing', updated_at: new Date().toISOString() })
-      .eq('id', order_id)
-      .in('status', ['confirmed', 'pending', 'processing']);
-
-    // Log it
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('name')
-      .eq('id', assigned_to)
-      .single();
-
-    await supabase.from('order_activity_log').insert({
-      order_id,
-      action: 'assigned',
-      notes: `Assigned to ${emp?.name || 'Unknown'}`,
-      performed_by: performer,
-      performed_by_email: performerEmail,
-      performed_at: new Date().toISOString(),
-    });
-
-    // ── Shopify: packer ka tag lagao ──
-    const { data: ord } = await supabase.from('orders').select('shopify_order_id').eq('id', order_id).single();
-    if (ord?.shopify_order_id && emp?.name) {
-      try {
-        await updateShopifyOrderTags(ord.shopify_order_id, [`packing:${emp.name}`], []);
-      } catch (e) {
-        console.error('[assign] Shopify tag error:', e.message);
+      if (!assignment) {
+        return NextResponse.json({
+          success: false,
+          error: '⚠️ Packed By set nahi hai — pehle mobile screen se packer add karo',
+          packed_by_missing: true,
+        }, { status: 400 });
       }
+
+      const isPackingTeam = assignment.notes === 'packing_team' || !assignment.assigned_to;
+
+      // Get order items count
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('quantity')
+        .eq('order_id', order_id);
+
+      let totalItems = (orderItems || []).reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+      if (totalItems === 0) totalItems = 1;
+
+      // Update order status → packed
+      await supabase
+        .from('orders')
+        .update({ status: 'packed', updated_at: new Date().toISOString() })
+        .eq('id', order_id);
+
+      // Mark assignment as packed
+      await supabase
+        .from('order_assignments')
+        .update({ status: 'packed', completed_at: new Date().toISOString() })
+        .eq('id', assignment.id);
+
+      // ── Leaderboard: packing_log entries ──
+      if (isPackingTeam) {
+        // Get all active packing team members
+        const { data: team } = await supabase
+          .from('employees')
+          .select('id, name')
+          .eq('status', 'active')
+          .eq('role', 'Packing Team');
+
+        const teamCount = (team || []).length || 1;
+        const itemsPerPerson = Math.round(totalItems / teamCount);
+
+        // Create one packing_log entry per team member
+        const logs = (team || []).map(emp => ({
+          order_id,
+          employee_id: emp.id,
+          items_packed: itemsPerPerson,
+          completed_at: new Date().toISOString(),
+          notes: 'Packing Team (shared)',
+        }));
+
+        if (logs.length > 0) {
+          await supabase.from('packing_log').insert(logs);
+        }
+      } else {
+        // Individual packer
+        await supabase.from('packing_log').insert({
+          order_id,
+          employee_id: assignment.assigned_to,
+          items_packed: totalItems,
+          completed_at: new Date().toISOString(),
+          notes: '',
+        });
+      }
+
+      // Activity log
+      const { data: empData } = assignment.assigned_to
+        ? await supabase.from('employees').select('name').eq('id', assignment.assigned_to).single()
+        : { data: null };
+
+      await supabase.from('order_activity_log').insert({
+        order_id,
+        action: 'packed',
+        notes: `Packed — ${totalItems} items by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'}`,
+        performed_by: performer,
+        performed_by_email: performerEmail,
+        performed_at: new Date().toISOString(),
+      });
+
+      return NextResponse.json({ success: true, items_packed: totalItems, is_team: isPackingTeam });
     }
 
-    return NextResponse.json({ success: true });
-
+    return NextResponse.json({ success: false, error: 'Unknown action' });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
