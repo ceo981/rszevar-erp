@@ -748,7 +748,6 @@ export default function CourierPage() {
     { id: 'book', label: '📦 Book Shipment' },
     { id: 'bookings', label: '📋 All Bookings' },
     { id: 'rto', label: '↩️ RTO' },
-    { id: 'settlements', label: '💰 Settlements' },
   ];
 
   return (
@@ -776,7 +775,6 @@ export default function CourierPage() {
       {tab === 'book'        && <BookTab onBooked={() => setRefreshKey(k => k + 1)} />}
       {tab === 'bookings'    && <BookingsTab refreshKey={refreshKey} />}
       {tab === 'rto'         && <RTOTab />}
-      {tab === 'settlements' && <SettlementsTab />}
     </div>
   );
 }
