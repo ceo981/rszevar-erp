@@ -49,18 +49,52 @@ export async function POST(request) {
 
     // ── Unassign packer ──
     if (action === 'unassign') {
-      // Delete assignment
+      // Delete assignment from order_assignments
       await supabase
         .from('order_assignments')
         .delete()
         .eq('order_id', order_id);
 
-      // Revert status to confirmed (was on_packing)
-      await supabase
+      // Remove packing:* tag from orders.tags JSONB
+      const { data: ord } = await supabase
         .from('orders')
-        .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+        .select('id, status, tags, shopify_order_id')
         .eq('id', order_id)
-        .eq('status', 'on_packing');
+        .single();
+
+      if (ord) {
+        // Remove packing:* tags from JSONB array
+        const cleanedTags = Array.isArray(ord.tags)
+          ? ord.tags.filter(t => !String(t).toLowerCase().startsWith('packing:'))
+          : [];
+
+        const updatePayload = {
+          tags: cleanedTags,
+          updated_at: new Date().toISOString(),
+        };
+
+        // If status was on_packing, revert to confirmed
+        if (ord.status === 'on_packing') {
+          updatePayload.status = 'confirmed';
+        }
+
+        await supabase.from('orders').update(updatePayload).eq('id', order_id);
+
+        // Remove packing tag from Shopify too (best effort)
+        if (ord.shopify_order_id) {
+          try {
+            const { updateShopifyOrderTags } = await import('@/lib/shopify');
+            const packingTagsToRemove = Array.isArray(ord.tags)
+              ? ord.tags.filter(t => String(t).toLowerCase().startsWith('packing:'))
+              : [];
+            if (packingTagsToRemove.length > 0) {
+              await updateShopifyOrderTags(ord.shopify_order_id, [], packingTagsToRemove);
+            }
+          } catch (e) {
+            console.error('[unassign] Shopify tag remove error:', e.message);
+          }
+        }
+      }
 
       await supabase.from('order_activity_log').insert({
         order_id,
