@@ -91,13 +91,14 @@ function DashboardTab() {
 
       {/* Orders */}
       <div>
-        <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>📋 Orders</div>
+        <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>📋 Orders (All Time)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-          <StatCard label="Total Orders" value={orders.total} icon="📋" />
+          <StatCard label="This Month" value={orders.total_this_month} icon="📋" />
           <StatCard label="Delivered" value={orders.delivered} color="#22c55e" icon="✅" border="#22c55e22" />
           <StatCard label="In Transit" value={orders.dispatched} color="#60a5fa" icon="🚚" />
           <StatCard label="Pending Revenue" value={fmt(orders.pending_revenue)} color="#f59e0b" icon="⏳" />
-          <StatCard label="Cash Collected" value={fmt(orders.total_paid)} color="#22c55e" icon="💵" border="#22c55e22" />
+          <StatCard label="Cash Collected" value={fmt(orders.cash_collected)} color="#22c55e" icon="💵" border="#22c55e22" />
+          <StatCard label="Awaiting Settlement" value={fmt(orders.awaiting_settlement)} color="#a855f7" icon="⏳" />
         </div>
       </div>
 
@@ -144,9 +145,10 @@ function DashboardTab() {
 
       {/* Settlements */}
       <div>
-        <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>✅ Settlements Received This Month</div>
+        <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>✅ Settlements Received</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
-          <StatCard label="Total Received" value={fmt(settlements.received_this_month)} color="#22c55e" icon="💰" border="#22c55e22" />
+          <StatCard label="This Month" value={fmt(settlements.received_this_month)} color="#22c55e" icon="💰" border="#22c55e22" />
+          <StatCard label="All Time Total" value={fmt(settlements.total_all_time)} color="#22c55e" icon="💰" border="#22c55e22" />
           {couriers.map(c => <StatCard key={c} label={c} value={fmt(settlements.by_courier?.[c] || 0)} color={cColors[c]} />)}
         </div>
       </div>
