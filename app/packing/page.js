@@ -6,7 +6,7 @@ const gold = '#c9a96e';
 
 export default function PackingPage() {
   const { profile } = useUser();
-  const [orderNum, setOrderNum]     = useState('');
+  const [orderNum, setOrderNum]     = useState('ZEVAR-');
   const [order, setOrder]           = useState(null);
   const [items, setItems]           = useState([]);
   const [team, setTeam]             = useState([]);
@@ -71,7 +71,7 @@ export default function PackingPage() {
         setMsg('Order ' + order.order_number + ' — Packed by ' + d.packed_by);
         setTimeout(() => {
           setDone(false); setOrder(null); setItems([]);
-          setOrderNum(''); setPackedBy(''); setMsg('');
+          setOrderNum('ZEVAR-'); setPackedBy(''); setMsg('');
           if (inputRef.current) inputRef.current.focus();
         }, 2500);
       } else { setMsg(d.error); }
@@ -121,7 +121,7 @@ export default function PackingPage() {
                 <div style={{ fontSize:14, color:'#888', marginTop:3 }}>{order.customer_name} · {order.customer_city}</div>
                 <div style={{ fontSize:13, color:'#555', marginTop:2 }}>Rs {Number(order.total_amount).toLocaleString()}</div>
               </div>
-              <button onClick={() => { setOrder(null); setItems([]); setOrderNum(''); setPackedBy(''); setMsg(''); }}
+              <button onClick={() => { setOrder(null); setItems([]); setOrderNum('ZEVAR-'); setPackedBy(''); setMsg(''); }}
                 style={{ background:'#1a1a1a', border:'1px solid #333', color:'#555', borderRadius:7, padding:'6px 12px', fontSize:12, cursor:'pointer' }}>✕</button>
             </div>
           </div>
