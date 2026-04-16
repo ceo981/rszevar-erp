@@ -40,9 +40,27 @@ export async function GET(request) {
         for (const p of prods || []) {
           if (p.sku && p.image_url && !skuMap[p.sku]) skuMap[p.sku] = p.image_url;
         }
+
+        // Apply enrichment + save back to DB (so future loads are instant)
+        const updates = [];
         for (const item of rows) {
           if (!item.image_url && item.sku && skuMap[item.sku]) {
             item.image_url = skuMap[item.sku];
+            updates.push({ sku: item.sku, image_url: skuMap[item.sku] });
+          }
+        }
+
+        // Persist found images to order_items table (best effort, non-blocking)
+        if (updates.length > 0) {
+          for (const u of updates) {
+            supabase
+              .from('order_items')
+              .update({ image_url: u.image_url })
+              .eq('order_id', order_id)
+              .eq('sku', u.sku)
+              .is('image_url', null)
+              .then(() => {}) // fire and forget
+              .catch(() => {});
           }
         }
       }
