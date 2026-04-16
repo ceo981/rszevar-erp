@@ -573,23 +573,20 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
   const confirm = async () => {
     setLoading(true); setMsg('');
     try {
-      // Ek hi API call mein confirm + assign dono
       const r = await fetch('/api/orders/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: order.id,
           notes: confirmNotes,
-          assigned_to: assignedTo ? parseInt(assignedTo) : null,
           performed_by: performer,
+          performed_by_email: userEmail,
         }),
       });
       const d = await r.json();
       if (d.success) {
-        const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
-        if (assignedTo && emp) setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
-        setLocalStatus(assignedTo ? 'on_packing' : 'confirmed');
-        setMsg(`✅ Order confirmed!${d.assigned_name ? ` Assigned to ${d.assigned_name}` : ''}`);
+        setLocalStatus('confirmed');
+        setMsg('✅ Order confirmed!');
         onRefresh();
       } else {
         setMsg('❌ ' + d.error);
@@ -724,14 +721,18 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
       const r = await fetch('/api/orders/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.id, action: 'packed' }),
+        body: JSON.stringify({ order_id: order.id, action: 'packed', performed_by: performer, performed_by_email: userEmail }),
       });
       const d = await r.json();
       if (d.success) {
         setLocalStatus('packed');
         setMsg(`✅ Marked as packed! ${d.items_packed} item(s) logged.`);
         onRefresh();
-      } else { setMsg('❌ ' + d.error); }
+      } else if (d.packed_by_missing) {
+        setMsg('⚠️ Packed By set nahi — pehle mobile packing screen se packer add karo');
+      } else {
+        setMsg('❌ ' + d.error);
+      }
     } catch (e) { setMsg('❌ ' + e.message); }
     setLoading(false);
   };
@@ -909,26 +910,13 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
 
               {/* Confirm Order — pending/processing orders */}
               {canConfirm && (s === 'pending' || s === 'processing') && (
-                <div style={{ background: card, border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 10, padding: '16px' }}>
+                <div style={{ background: card, border: `1px solid #3b82f644`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
                   <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
                     placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
-                  <div style={{ fontSize: 11, color: assignedTo ? '#f59e0b' : '#ef4444', marginBottom: 5, fontWeight: 600 }}>
-                    👤 Packer Assign Karo (required)
-                  </div>
-                  <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : '#ef4444'}`, color: assignedTo ? '#fff' : '#ef4444', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
-                    <option value="">— Packer select karo —</option>
-                    {packingStaff.map(e => (
-                      <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
-                    ))}
-                  </select>
-                  {!assignedTo && (
-                    <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 8 }}>⚠️ Packer assign kiye baghair confirm nahi hoga</div>
-                  )}
-                  <button onClick={confirm} disabled={loading || !assignedTo}
-                    style={{ background: assignedTo ? '#3b82f6' : '#1a1a1a', color: assignedTo ? '#fff' : '#555', border: `1px solid ${assignedTo ? '#3b82f6' : border}`, borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'not-allowed', width: '100%' }}>
-                    {assignedTo ? '✅ Confirm + Assign' : '🔒 Pehle Packer Select Karo'}
+                  <button onClick={confirm} disabled={loading}
+                    style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                    {loading ? '...' : '✅ Confirm Order'}
                   </button>
                 </div>
               )}
@@ -1046,10 +1034,31 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
 
               {/* Mark as Packed — Adil/CEO, on_packing status pe */}
               {canPack && (s === 'on_packing' || s === 'confirmed') && (
-                <button onClick={markPacked} disabled={loading}
-                  style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                  📦 Packed — Office se pack hogya
-                </button>
+                <div style={{ background: card, border: `1px solid #06b6d433`, borderRadius: 10, padding: '16px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#06b6d4', marginBottom: 10 }}>📦 Mark as Packed</div>
+
+                  {/* Show current packed_by if set */}
+                  {currentAssignment?.employee ? (
+                    <div style={{ background: '#0a1a0a', border: '1px solid #22c55e33', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                      <span style={{ color: '#555' }}>Packed by: </span>
+                      <span style={{ color: '#22c55e', fontWeight: 700 }}>{currentAssignment.employee.name}</span>
+                    </div>
+                  ) : currentAssignment?.notes === 'packing_team' ? (
+                    <div style={{ background: '#0a0a1a', border: '1px solid #3b82f633', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                      <span style={{ color: '#555' }}>Packed by: </span>
+                      <span style={{ color: '#3b82f6', fontWeight: 700 }}>👥 Packing Team</span>
+                    </div>
+                  ) : (
+                    <div style={{ background: '#1a0a0a', border: '1px solid #ef444433', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, color: '#ef4444' }}>
+                      ⚠️ Packed By abhi set nahi — packing screen se add karo pehle
+                    </div>
+                  )}
+
+                  <button onClick={markPacked} disabled={loading}
+                    style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    📦 Mark as Packed
+                  </button>
+                </div>
               )}
 
               {/* Mark as Dispatched — Adil/CEO, packed status pe */}
