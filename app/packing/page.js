@@ -44,6 +44,17 @@ export default function PackingPage() {
         setSearching(false); return;
       }
       setOrder(found);
+
+      // Check if packer already set
+      const ar = await fetch('/api/orders/assign?order_id=' + found.id);
+      const ad = await ar.json();
+      if (ad.assignment) {
+        const existingName = ad.assignment.notes === 'packing_team'
+          ? 'Packing Team'
+          : ad.assignment.employee?.name || 'Kisi aur ne';
+        setMsg('⚠️ Already: ' + existingName + ' ne pack mark kiya hai — dobara submit karne se override hoga');
+      }
+
       const ir = await fetch('/api/orders?action=items&order_id=' + found.id);
       const id = await ir.json();
       setItems(id.items || []);
@@ -101,7 +112,7 @@ export default function PackingPage() {
               {searching?'⟳':'🔍'}
             </button>
           </div>
-          {msg && <div style={{ marginTop:12, background:'#1a0000', border:'1px solid #ef4444', borderRadius:8, padding:'12px', fontSize:14, color:'#ef4444' }}>{msg}</div>}
+          {msg && <div style={{ marginTop:12, background: msg.startsWith('⚠️') ? '#1a1000' : '#1a0000', border: '1px solid ' + (msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444'), borderRadius:8, padding:'12px', fontSize:14, color: msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444' }}>{msg}</div>}
         </div>
       )}
 
