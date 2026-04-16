@@ -23,7 +23,8 @@ async function runSync({ triggered_by = 'manual' }) {
   const startTime = Date.now();
 
   // ── 1. Get all active Kangaroo orders from ERP ──
-  const { data: orders, error: fetchErr } = await supabase
+  // Detect by: dispatched_courier = Kangaroo OR tracking starts with KL (Kangaroo format)
+  const { data: byName, error: fetchErr } = await supabase
     .from('orders')
     .select('id, order_number, tracking_number, status, dispatched_courier')
     .eq('dispatched_courier', 'Kangaroo')
@@ -33,7 +34,30 @@ async function runSync({ triggered_by = 'manual' }) {
 
   if (fetchErr) throw new Error('DB fetch error: ' + fetchErr.message);
 
-  const activeOrders = orders || [];
+  // Also find orders with KL... tracking that aren't tagged as Kangaroo yet
+  const { data: byTracking } = await supabase
+    .from('orders')
+    .select('id, order_number, tracking_number, status, dispatched_courier')
+    .like('tracking_number', 'KL%')
+    .not('dispatched_courier', 'eq', 'Kangaroo')
+    .not('tracking_number', 'is', null)
+    .not('status', 'in', '("delivered","returned","cancelled","refunded","rto")');
+
+  // Tag KL-tracking orders as Kangaroo if not already set
+  if (byTracking && byTracking.length > 0) {
+    const klIds = byTracking.map(o => o.id);
+    await supabase
+      .from('orders')
+      .update({ dispatched_courier: 'Kangaroo', updated_at: new Date().toISOString() })
+      .in('id', klIds);
+  }
+
+  // Merge both sets (deduplicate by id)
+  const allOrdersMap = new Map();
+  for (const o of [...(byName || []), ...(byTracking || [])]) {
+    allOrdersMap.set(o.id, o);
+  }
+  const activeOrders = Array.from(allOrdersMap.values());
 
   if (activeOrders.length === 0) {
     return {
