@@ -963,6 +963,11 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={async () => {
+                      // Paid order unconfirm nahi ho sakta
+                      if (order.payment_status === 'paid' || order.payment_status === 'refunded') {
+                        setMsg(`❌ Ye order "${order.payment_status}" hai — unconfirm nahi ho sakta`);
+                        return;
+                      }
                       setLoading(true); setMsg('');
                       try {
                         // Unassign packer
