@@ -205,7 +205,11 @@ export async function POST(request) {
         .upsert(customersToUpsert, { onConflict: 'shopify_customer_id' });
     }
 
-    // 5. Insert line items for all synced orders
+    // 5. Insert line items — all in one batch (fast, no per-order checks)
+    // Build shopify_order_id → db_id map
+    const orderIdMap = new Map();
+    for (const o of upsertedOrders) orderIdMap.set(o.shopify_order_id, o.id);
+
     // SKU → image_url map for fallback
     let skuImageMap = {};
     try {
@@ -215,40 +219,28 @@ export async function POST(request) {
         .not('sku', 'is', null)
         .not('image_url', 'is', null);
       for (const p of productImages || []) {
-        if (p.sku && p.image_url && !skuImageMap[p.sku]) {
-          skuImageMap[p.sku] = p.image_url;
-        }
+        if (p.sku && p.image_url && !skuImageMap[p.sku]) skuImageMap[p.sku] = p.image_url;
       }
     } catch (e) { /* silent */ }
 
-    // Build shopify_order_id → db_id map
-    const orderIdMap = new Map();
-    for (const o of upsertedOrders) orderIdMap.set(o.shopify_order_id, o.id);
-
-    let itemsInserted = 0;
-    const itemErrors = [];
-
+    // Build all items at once
+    const allItems = [];
     for (const shopifyOrder of uniqueOrders) {
       const dbId = orderIdMap.get(String(shopifyOrder.id));
       if (!dbId) continue;
+      const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: dbId }));
+      allItems.push(...items);
+    }
 
-      // Check if items already exist
-      const { count } = await supabase
-        .from('order_items')
-        .select('*', { count: 'exact', head: true })
-        .eq('order_id', dbId);
-
-      if ((count || 0) > 0) continue; // already has items
-
-      const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({
-        ...i,
-        order_id: dbId,
-      }));
-
-      if (items.length > 0) {
-        const { error: itemErr } = await supabase.from('order_items').insert(items);
-        if (itemErr) itemErrors.push({ order: shopifyOrder.name, error: itemErr.message });
-        else itemsInserted += items.length;
+    // Insert in batches of 500 — use upsert on shopify_line_item_id to avoid duplicates
+    let itemsInserted = 0;
+    if (allItems.length > 0) {
+      for (let i = 0; i < allItems.length; i += 500) {
+        const batch = allItems.slice(i, i + 500);
+        const { error } = await supabase
+          .from('order_items')
+          .upsert(batch, { onConflict: 'shopify_line_item_id', ignoreDuplicates: true });
+        if (!error) itemsInserted += batch.length;
       }
     }
 
