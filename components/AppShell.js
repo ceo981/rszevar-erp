@@ -35,6 +35,7 @@ const MODULES = [
   { id: 'hr',           href: '/hr',           label: 'HR & Payroll',  icon: '👥', perm: 'hr.view' },
   { id: 'operations',   href: '/operations',   label: 'Operations',    icon: '🏭', perm: 'operations.view' },
   { id: 'ai-advisor',   href: '/ai-advisor',   label: 'RS ZEVAR AI',   icon: '💎', perm: 'ai.use' },
+  { id: 'packing',      href: '/packing',      label: 'Packing',       icon: '🎁', perm: 'dashboard.view' },
   { id: 'work-submit',  href: '/work-submit',  label: 'Submit Work',   icon: '📋', perm: 'dashboard.view' },
   { id: 'settings',     href: '/settings',     label: 'Settings',      icon: '⚙️', perm: 'settings.view' },
   { id: 'users',        href: '/users',        label: 'Users',         icon: '🧑‍💼', perm: 'settings.edit' },
