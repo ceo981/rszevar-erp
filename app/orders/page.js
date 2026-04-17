@@ -1637,15 +1637,18 @@ export default function OrdersPage() {
             { label: 'Hold',       value: 'hold',       color: '#64748b', count: globalCounts.hold },
             { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
             { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled },
+            { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
           ].map(tab => {
-            const isActive = filter.type === 'status'
-              ? filter.value === tab.value
-              : tab.value === null;
+            const tabFilterType = tab.filterType || 'status';
+            const isActive = tab.value === null
+              ? filter.type === null
+              : (filter.type === tabFilterType && filter.value === tab.value);
             return (
               <button
                 key={tab.value ?? 'all'}
+                title={tab.tooltip || ''}
                 onClick={() => {
-                  setFilter(tab.value ? { type: 'status', value: tab.value } : { type: null, value: null });
+                  setFilter(tab.value ? { type: tabFilterType, value: tab.value } : { type: null, value: null });
                   setPage(1);
                 }}
                 style={{
@@ -1782,11 +1785,24 @@ export default function OrdersPage() {
                 else if (order.is_international) typeIcon = '🌍';
                 else if (order.is_walkin) typeIcon = '🚶';
                 const courierStatusRaw = order.courier_status_raw;
+                const isWaCancelledReview = order.status === 'cancelled'
+                  && Array.isArray(order.tags)
+                  && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
                 return (
-                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}
+                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : '#0a0a0a') }}
                     onClick={() => setSelected(order)} className="order-row">
                     <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
-                      {order.order_number || '#' + order.id}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{order.order_number || '#' + order.id}</span>
+                        {isWaCancelledReview && (
+                          <span
+                            title="Customer ne WhatsApp se cancel kiya — review zaroori"
+                            style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}
+                          >
+                            ⚠️ Review
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
                     <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
