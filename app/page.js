@@ -89,6 +89,24 @@ export default function ERPApp() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileNameInput, setProfileNameInput] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  // Poll unread WhatsApp messages count every 15s for sidebar badge
+  useEffect(() => {
+    let cancelled = false;
+    const fetchUnread = async () => {
+      try {
+        const r = await fetch('/api/whatsapp/inbox/conversations?limit=1');
+        const d = await r.json();
+        if (!cancelled && d.success) {
+          setUnreadTotal(d.unread_total || 0);
+        }
+      } catch {}
+    };
+    fetchUnread();
+    const t = setInterval(fetchUnread, 15000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [activeModule]);
 
   async function saveProfileName() {
     if (!profileNameInput.trim()) return;
@@ -249,9 +267,30 @@ export default function ERPApp() {
                   transition: 'all 0.15s',
                   marginBottom: 2,
                   opacity: mod.coming ? 0.45 : 1,
+                  position: 'relative',
                 }}>
                 <span style={{ fontSize: 15, width: 22, textAlign: 'center', flexShrink: 0 }}>{mod.icon}</span>
                 {(sidebarOpen || isMobile) && <span style={{ fontWeight: isActive ? 600 : 400 }}>{mod.label}</span>}
+                {(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    background: '#22c55e', color: '#000',
+                    padding: '2px 7px', borderRadius: 10,
+                    minWidth: 18, textAlign: 'center',
+                    marginLeft: 'auto',
+                  }}>
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </span>
+                )}
+                {!(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: 6, right: 6,
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: '#22c55e',
+                    boxShadow: '0 0 0 2px var(--bg)',
+                  }} />
+                )}
                 {(sidebarOpen || isMobile) && mod.coming && (
                   <span style={{ fontSize: 9, background: 'var(--sapphire-dim)', color: 'var(--sapphire)', padding: '1px 6px', borderRadius: 4, marginLeft: 'auto', border: '1px solid rgba(74,130,216,0.2)' }}>Soon</span>
                 )}
