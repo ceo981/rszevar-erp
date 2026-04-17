@@ -13,7 +13,10 @@ const DEFAULTS = {
   grace_minutes:            '30',
   max_lates_allowed:        '6',
   max_half_days_allowed:    '3',
-  leaderboard_bonus:        '3000',
+  late_deduction_amount:    '100',
+  leaderboard_bonus_1st:    '2000',  // 1st place bonus
+  leaderboard_bonus_2nd:    '1000',  // 2nd place bonus
+  // leaderboard_bonus (old key) — kept for backward compat in fallback
   overtime_rate_multiplier: '1.5',
 };
 
