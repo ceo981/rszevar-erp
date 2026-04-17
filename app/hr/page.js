@@ -705,7 +705,24 @@ function SalaryTab({ employees }) {
         <b>Earnings</b>
         <div class="row"><span>Base Salary:</span><span>Rs. ${fmt(rec.base_salary)}</span></div>
         <div class="row"><span>Overtime Pay:</span><span>Rs. ${fmt(rec.overtime_pay)}</span></div>
-        <div class="row"><span>Bonus:</span><span>Rs. ${fmt(rec.bonus)}</span></div>
+        ${(() => {
+          const b = rec.bonus_breakdown || {};
+          const rows = [];
+          if (b.leaderboard > 0) {
+            const rank = b.leaderboard_rank === '1st' ? '🏆 1st Place' : b.leaderboard_rank === '2nd' ? '🥈 2nd Place' : '';
+            rows.push(`<div class="row"><span>Leaderboard Bonus (${rank}):</span><span>Rs. ${fmt(b.leaderboard)}</span></div>`);
+          }
+          if (b.time_bonus > 0) {
+            rows.push(`<div class="row"><span>Time Bonus (good attendance):</span><span>Rs. ${fmt(b.time_bonus)}</span></div>`);
+          }
+          if (b.manual > 0) {
+            rows.push(`<div class="row"><span>Manual Bonus:</span><span>Rs. ${fmt(b.manual)}</span></div>`);
+          }
+          if (rows.length === 0) {
+            rows.push(`<div class="row"><span>Bonus:</span><span>Rs. ${fmt(rec.bonus)}</span></div>`);
+          }
+          return rows.join('');
+        })()}
       </div>
       <div class="section">
         <b>Deductions</b>
@@ -749,7 +766,7 @@ function SalaryTab({ employees }) {
               ['Absent Days', preview.calculation.absent_days],
               ['Late Days', preview.calculation.late_days],
               ['Overtime Pay', `Rs. ${fmt(preview.calculation.overtime_pay)}`],
-              ['Bonus', `Rs. ${fmt(preview.calculation.bonus)}`],
+              ['Bonus (total)', `Rs. ${fmt(preview.calculation.bonus)}`],
               ['Late Deduction', `- Rs. ${fmt(preview.calculation.late_deduction)}`],
               ['Absent Deduction', `- Rs. ${fmt(preview.calculation.absent_deduction)}`],
               ['Advance Deduction', `- Rs. ${fmt(preview.calculation.advance_deduction)}`],
@@ -760,6 +777,45 @@ function SalaryTab({ employees }) {
               </div>
             ))}
           </div>
+
+          {/* Bonus breakdown — dikhaye ki bonus kahan se banaa */}
+          {preview.calculation.bonus_breakdown && (
+            (preview.calculation.bonus_breakdown.leaderboard > 0 ||
+             preview.calculation.bonus_breakdown.time_bonus > 0 ||
+             preview.calculation.bonus_breakdown.manual > 0) && (
+              <div style={{ marginTop: 14, padding: 12, background: '#0f172a', border: '1px solid #c9a96e33', borderRadius: 8 }}>
+                <div style={{ color: '#c9a96e', fontSize: 12, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Bonus Breakdown</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+                  {preview.calculation.bonus_breakdown.leaderboard > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                      <span>
+                        {preview.calculation.bonus_breakdown.leaderboard_rank === '1st' ? '🏆' : '🥈'} Leaderboard Bonus ({preview.calculation.bonus_breakdown.leaderboard_rank} Place)
+                      </span>
+                      <strong style={{ color: '#22c55e' }}>Rs. {fmt(preview.calculation.bonus_breakdown.leaderboard)}</strong>
+                    </div>
+                  )}
+                  {preview.calculation.bonus_breakdown.time_bonus > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                      <span>⏰ Time Bonus (good attendance)</span>
+                      <strong style={{ color: '#22c55e' }}>Rs. {fmt(preview.calculation.bonus_breakdown.time_bonus)}</strong>
+                    </div>
+                  )}
+                  {preview.calculation.bonus_breakdown.manual > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                      <span>✋ Manual Bonus</span>
+                      <strong style={{ color: '#22c55e' }}>Rs. {fmt(preview.calculation.bonus_breakdown.manual)}</strong>
+                    </div>
+                  )}
+                  {!preview.calculation.bonus_breakdown.time_bonus_eligible && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#fca5a5' }}>
+                      ⚠️ Time Bonus nahi mila — lates / half days rule tooti hai
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          )}
+
           <div style={{ marginTop: 16, padding: '12px 16px', background: '#0f172a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: '#94a3b8' }}>NET SALARY</span>
             <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 700 }}>Rs. {fmt(preview.calculation.net_salary)}</span>
@@ -812,7 +868,11 @@ function SalaryTab({ employees }) {
 
 
 // ─────────────────────────────────────────────
-// LEADERBOARD TAB
+// LEADERBOARD TAB — Amount-Priority Ranking
+// ─────────────────────────────────────────────
+// Primary metric: total amount (Rs) of items packed
+// Secondary: total items count (shown for context)
+// Top 2 earn bonuses: 1st = leaderboard_bonus_1st, 2nd = leaderboard_bonus_2nd
 // ─────────────────────────────────────────────
 function LeaderboardTab() {
   const [month, setMonth] = useState(thisMonth());
@@ -829,59 +889,101 @@ function LeaderboardTab() {
 
   const medals = ['🥇', '🥈', '🥉'];
 
+  const bonus1st = data?.bonus_amount_1st ?? data?.bonus_amount ?? 2000;
+  const bonus2nd = data?.bonus_amount_2nd ?? 1000;
+
+  const bonusForRank = (i) => i === 0 ? bonus1st : i === 1 ? bonus2nd : 0;
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
-        {data && <span style={{ color: '#94a3b8', fontSize: 14 }}>Leaderboard Bonus: <strong style={{ color: '#c9a96e' }}>Rs. {Number(data.bonus_amount).toLocaleString()}</strong></span>}
+        {data && (
+          <span style={{ color: '#94a3b8', fontSize: 14 }}>
+            Bonuses: <strong style={{ color: '#c9a96e' }}>1st Rs. {Number(bonus1st).toLocaleString()}</strong>
+            <span style={{ color: '#475569', margin: '0 6px' }}>·</span>
+            <strong style={{ color: '#94a3b8' }}>2nd Rs. {Number(bonus2nd).toLocaleString()}</strong>
+          </span>
+        )}
+      </div>
+
+      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 12, color: '#94a3b8' }}>
+        <strong style={{ color: '#c9a96e' }}>Ranking logic:</strong> Top rank amount ke hisaab se milti hai (jitna zyada Rs ka saman pack kiya, utni upar rank)۔ Items count saath track hota hai lekin priority <strong>amount</strong> ko hai — warna 300-400 Rs wale sasty items pack karne wale upar aa jaate the, aur mehenga time-consuming pack karne walon ka haq maara jaata tha۔
       </div>
 
       {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : !data?.leaderboard?.length ? (
         <div style={{ color: '#475569', textAlign: 'center', padding: 40 }}>Is month mein koi packing log nahi hai</div>
       ) : (
         <div>
-          {/* Winner card */}
-          {data.winner && (
-            <div style={{ background: 'linear-gradient(135deg, #c9a96e22, #1e293b)', border: '1px solid #c9a96e44', borderRadius: 12, padding: 20, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ fontSize: 48 }}>🏆</div>
-              <div>
-                <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Is Month Ka Winner</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: '#c9a96e' }}>{data.winner.name}</div>
-                <div style={{ color: '#94a3b8', fontSize: 14 }}>{data.winner.total_items} items packed · {data.winner.total_orders} orders</div>
-                <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600 }}>+ Rs. {Number(data.bonus_amount).toLocaleString()} Bonus (salary mein auto-add)</div>
+          {/* Winner + Runner-up cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: data.runner_up ? '1fr 1fr' : '1fr', gap: 14, marginBottom: 20 }}>
+            {data.winner && (
+              <div style={{ background: 'linear-gradient(135deg, #c9a96e22, #1e293b)', border: '1px solid #c9a96e66', borderRadius: 12, padding: 18, display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ fontSize: 44 }}>🏆</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>1st — Winner</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#c9a96e', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.winner.name}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>
+                    <strong style={{ color: '#22c55e' }}>Rs. {Number(data.winner.total_amount || 0).toLocaleString()}</strong>
+                    <span style={{ color: '#475569' }}> · {data.winner.total_items} items · {data.winner.total_orders} orders</span>
+                  </div>
+                  <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus1st).toLocaleString()} Bonus (salary mein auto-add)</div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {data.runner_up && (
+              <div style={{ background: 'linear-gradient(135deg, #94a3b822, #1e293b)', border: '1px solid #94a3b855', borderRadius: 12, padding: 18, display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ fontSize: 44 }}>🥈</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>2nd — Runner-up</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.runner_up.name}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>
+                    <strong style={{ color: '#22c55e' }}>Rs. {Number(data.runner_up.total_amount || 0).toLocaleString()}</strong>
+                    <span style={{ color: '#475569' }}> · {data.runner_up.total_items} items · {data.runner_up.total_orders} orders</span>
+                  </div>
+                  <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus2nd).toLocaleString()} Bonus (salary mein auto-add)</div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Full leaderboard */}
           <div style={{ background: '#1e293b', borderRadius: 10, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155' }}>
-                  {['Rank', 'Employee', 'Items Packed', 'Orders', 'Bonus'].map(h => (
+                  {['Rank', 'Employee', 'Amount (Rs)', 'Items', 'Orders', 'Bonus'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.leaderboard.map((row, i) => (
-                  <tr key={row.employee_id} style={{ borderBottom: '1px solid #1e293b', background: i === 0 ? '#c9a96e11' : 'transparent' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600, color: i === 0 ? '#c9a96e' : '#e2e8f0' }}>{row.name}</div>
-                      <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>{row.total_items}</td>
-                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
-                    <td style={{ padding: '12px 16px', color: i === 0 ? '#22c55e' : '#475569', fontWeight: i === 0 ? 700 : 400 }}>
-                      {i === 0 ? `Rs. ${Number(data.bonus_amount).toLocaleString()} 🏆` : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {data.leaderboard.map((row, i) => {
+                  const bonus = bonusForRank(i);
+                  const rowBg = i === 0 ? '#c9a96e11' : i === 1 ? '#94a3b80f' : 'transparent';
+                  const nameColor = i === 0 ? '#c9a96e' : i === 1 ? '#cbd5e1' : '#e2e8f0';
+                  return (
+                    <tr key={row.employee_id} style={{ borderBottom: '1px solid #1e293b', background: rowBg }}>
+                      <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: nameColor }}>{row.name}</div>
+                        <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>
+                        Rs. {Number(row.total_amount || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 14 }}>{row.total_items}</td>
+                      <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
+                      <td style={{ padding: '12px 16px', color: bonus > 0 ? '#22c55e' : '#475569', fontWeight: bonus > 0 ? 700 : 400 }}>
+                        {bonus > 0 ? `Rs. ${Number(bonus).toLocaleString()} ${i === 0 ? '🏆' : '🥈'}` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Winner ka bonus salary calculate karte waqt automatically add ho jayega</p>
+          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi)</p>
         </div>
       )}
     </div>
@@ -897,7 +999,9 @@ function PolicyTab() {
     grace_minutes: '30',
     max_lates_allowed: '6',
     max_half_days_allowed: '3',
-    leaderboard_bonus: '3000',
+    late_deduction_amount: '100',
+    leaderboard_bonus_1st: '2000',
+    leaderboard_bonus_2nd: '1000',
     overtime_rate_multiplier: '1.5',
   });
   const [loading, setLoading] = useState(true);
@@ -946,9 +1050,10 @@ function PolicyTab() {
       </div>
 
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Bonuses</h3>
-      <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>* Time Bonus har employee ka alag alag hai — Team section mein employee edit karke set karo.</p>
+      <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>* Time Bonus har employee ka alag alag hai — Team section mein employee edit karke set karo. Leaderboard ranking <strong style={{ color: '#c9a96e' }}>amount ke hisaab se</strong> hoti hai (items ki count tiebreaker hai).</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <Field label="Leaderboard Bonus" k="leaderboard_bonus" suffix="Rs" help="Month ka top packer ko milega" />
+        <Field label="🏆 1st Place Bonus" k="leaderboard_bonus_1st" suffix="Rs" help="Top packer ko (highest amount packed)" />
+        <Field label="🥈 2nd Place Bonus" k="leaderboard_bonus_2nd" suffix="Rs" help="Runner-up packer ko" />
       </div>
 
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Overtime</h3>
