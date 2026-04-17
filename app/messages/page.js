@@ -247,7 +247,7 @@ function OrderChip({ order }) {
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 export default function MessagesPage() {
-  const { user } = useUser();
+  const { profile, userEmail } = useUser();
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState('');
@@ -330,8 +330,8 @@ export default function MessagesPage() {
         body: JSON.stringify({
           conversation_id: selectedId,
           text,
-          user_id: user?.id,
-          user_email: user?.email,
+          user_id: profile?.id,
+          user_email: userEmail,
         }),
       });
       const d = await r.json();
