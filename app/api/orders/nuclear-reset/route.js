@@ -1,13 +1,13 @@
 // ============================================================================
-// RS ZEVAR ERP — Nuclear Reset
+// RS ZEVAR ERP — Nuclear Reset (v2 — includes whatsapp_logs + resilient)
 // POST /api/orders/nuclear-reset
 //
-// Sab orders data clear karta hai:
-//   order_items → order_activity_log → order_assignments →
-//   packing_log → courier_bookings (order-linked) → orders
+// Clears all orders data:
+//   whatsapp_logs → order_items → order_activity_log → order_assignments →
+//   packing_log → courier_bookings (order-linked) → courier_sync_log → orders
 //
-// DANGER: Irreversible. Super_admin only (checked in route).
-// Use karo fresh Shopify sync se pehle.
+// DANGER: Irreversible.
+// Body: { "confirm": "RESET_ALL_ORDERS" }
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -20,12 +20,31 @@ const supabase = createClient(
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
+
+// Helper: safely truncate a table, log result
+async function clearTable(name, filterType = 'gt_zero') {
+  try {
+    let query = supabase.from(name).delete();
+    if (filterType === 'gt_zero') {
+      query = query.gt('id', 0);
+    } else if (filterType === 'not_null_uuid') {
+      query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+    } else if (filterType === 'order_id_not_null') {
+      query = query.not('order_id', 'is', null);
+    }
+    const { error } = await query;
+    if (error) return { name, status: 'error', message: error.message };
+    return { name, status: 'cleared' };
+  } catch (e) {
+    return { name, status: 'error', message: e.message };
+  }
+}
 
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    // Safety check — confirm string chahiye
     if (body.confirm !== 'RESET_ALL_ORDERS') {
       return NextResponse.json({
         success: false,
@@ -33,78 +52,49 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    const results = {};
-    const errors = [];
+    // Delete in FK-safe order — child tables first, parent last
+    const steps = [];
 
-    // 1. order_items
-    const { error: e1 } = await supabase
-      .from('order_items')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-    if (e1) errors.push('order_items: ' + e1.message);
-    else results.order_items = 'cleared';
+    // 1. whatsapp_logs (has FK to orders.id) — MUST come before orders
+    steps.push(await clearTable('whatsapp_logs', 'gt_zero'));
 
-    // 2. order_activity_log
-    const { error: e2 } = await supabase
-      .from('order_activity_log')
-      .delete()
-      .gt('id', 0);
-    if (e2) errors.push('order_activity_log: ' + e2.message);
-    else results.order_activity_log = 'cleared';
+    // 2. order_items
+    steps.push(await clearTable('order_items', 'not_null_uuid'));
 
-    // 3. order_assignments
-    const { error: e3 } = await supabase
-      .from('order_assignments')
-      .delete()
-      .gt('id', 0);
-    if (e3) errors.push('order_assignments: ' + e3.message);
-    else results.order_assignments = 'cleared';
+    // 3. order_activity_log
+    steps.push(await clearTable('order_activity_log', 'gt_zero'));
 
-    // 4. packing_log
-    const { error: e4 } = await supabase
-      .from('packing_log')
-      .delete()
-      .gt('id', 0);
-    if (e4) errors.push('packing_log: ' + e4.message);
-    else results.packing_log = 'cleared';
+    // 4. order_assignments
+    steps.push(await clearTable('order_assignments', 'gt_zero'));
 
-    // 5. courier_bookings (order se linked wale)
-    const { error: e5 } = await supabase
-      .from('courier_bookings')
-      .delete()
-      .not('order_id', 'is', null);
-    if (e5) errors.push('courier_bookings: ' + e5.message);
-    else results.courier_bookings = 'cleared';
+    // 5. packing_log
+    steps.push(await clearTable('packing_log', 'gt_zero'));
 
-    // 6. courier_sync_log
-    const { error: e6 } = await supabase
-      .from('courier_sync_log')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-    if (e6) errors.push('courier_sync_log: ' + e6.message);
-    else results.courier_sync_log = 'cleared';
+    // 6. courier_bookings (only order-linked)
+    steps.push(await clearTable('courier_bookings', 'order_id_not_null'));
 
-    // 7. orders — last step
-    const { error: e7, count } = await supabase
-      .from('orders')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000');
-    if (e7) errors.push('orders: ' + e7.message);
-    else results.orders = 'cleared';
+    // 7. courier_sync_log (history log, safe to clear)
+    steps.push(await clearTable('courier_sync_log', 'not_null_uuid'));
+
+    // 8. FINAL: orders
+    steps.push(await clearTable('orders', 'not_null_uuid'));
+
+    const errors = steps.filter(s => s.status === 'error');
+    const cleared = steps.filter(s => s.status === 'cleared').map(s => s.name);
 
     if (errors.length > 0) {
       return NextResponse.json({
         success: false,
-        partial: results,
+        cleared,
         errors,
-        message: `Kuch tables clear nahi hue: ${errors.join(' | ')}`,
+        message: `Kuch tables clear nahi hue — neeche error list dekho`,
       }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      cleared: results,
-      message: '✅ Sab orders data clear ho gaya. Ab Shopify sync karo.',
+      cleared,
+      message: '✅ Sab orders data clear ho gaya. Ab sync-unfulfilled chalao.',
     });
 
   } catch (err) {
