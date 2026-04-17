@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { sendText } from '../../../../lib/whatsapp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -112,6 +113,16 @@ export async function POST(request) {
 
       console.log(`[whatsapp-webhook] ✅ Order ${orderNumber} confirmed`);
 
+      // Auto-reply to customer (24hr window opens on button click)
+      const confirmMsg =
+        `Thank you for confirming your order ${orderNumber}.\n\n` +
+        `This is an automatic message. Your order will be dispatched soon.\n\n` +
+        `If you have any query, please reach us on WhatsApp: +92 303 2244550\n\n` +
+        `Team RS ZEVAR ❤️`;
+      const reply = await sendText(fromPhone, confirmMsg);
+      if (!reply.sent) console.error('[whatsapp-webhook] Confirm reply failed:', reply.reason);
+      else console.log('[whatsapp-webhook] Confirm reply sent');
+
     } else if (action === 'CANCEL') {
       await supabase.from('orders').update({
         status: 'cancelled',
@@ -130,6 +141,15 @@ export async function POST(request) {
       });
 
       console.log(`[whatsapp-webhook] ❌ Order ${orderNumber} cancelled`);
+
+      // Auto-reply to customer (24hr window opens on button click)
+      const cancelMsg =
+        `Your order ${orderNumber} has been cancelled.\n\n` +
+        `This is an automatic message. If you cancelled by mistake, please reach us to reactivate your order on WhatsApp: +92 303 2244550\n\n` +
+        `Team RS ZEVAR ❤️`;
+      const reply = await sendText(fromPhone, cancelMsg);
+      if (!reply.sent) console.error('[whatsapp-webhook] Cancel reply failed:', reply.reason);
+      else console.log('[whatsapp-webhook] Cancel reply sent');
     }
 
     return NextResponse.json({ received: true });
