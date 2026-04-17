@@ -75,6 +75,7 @@ export async function GET(request) {
     const courier = searchParams.get('courier');   // PostEx | Leopards | Kangaroo | Other
     const type = searchParams.get('type');         // wholesale | international | walkin
     const payment = searchParams.get('payment');   // paid | unpaid | refunded
+    const review = searchParams.get('review');     // wa_cancelled (whatsapp cancel review)
     const dateFrom = searchParams.get('from');
     const dateTo = searchParams.get('to');
     const sort = searchParams.get('sort') || 'created_at';
@@ -98,6 +99,10 @@ export async function GET(request) {
       if (type === 'international') q = q.eq('is_international', true);
       if (type === 'walkin') q = q.eq('is_walkin', true);
       if (payment && payment !== 'all') q = q.eq('payment_status', payment);
+      if (review === 'wa_cancelled') {
+        // WhatsApp-cancelled orders pending team review
+        q = q.eq('status', 'cancelled').contains('tags', ['whatsapp_cancelled']);
+      }
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
       if (search) {
@@ -176,6 +181,7 @@ export async function GET(request) {
       { count: gPacked },
       { count: gPaid },
       { count: gUnpaid },
+      { count: gWaCancelled },
     ] = await Promise.all([
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
@@ -195,6 +201,7 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'packed'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', ['whatsapp_cancelled']),
     ]);
 
     const globalCounts = {
@@ -216,6 +223,7 @@ export async function GET(request) {
       packed: gPacked || 0,
       paid: gPaid || 0,
       unpaid: gUnpaid || 0,
+      wa_cancelled: gWaCancelled || 0,
     };
 
     // ── Batch-fetch assignments for these orders ──
