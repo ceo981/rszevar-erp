@@ -11,6 +11,7 @@ import AnalyticsPage from './analytics/page';
 import EmployeesPage from './employees/page';
 import CustomersPage from './customers/page';
 import ComplaintsPage from './complaints/page';
+import MessagesPage from './messages/page';
 import HRPage from './hr/page';
 import SettingsPage from './settings/page';
 import ReportsPage from './reports/page';
@@ -34,6 +35,7 @@ const MODULES = [
   { id: 'courier',      label: 'Courier',         icon: '🚚', perm: 'courier.view' },
   { id: 'courier-sync', label: 'Courier Sync',   icon: '⟳',  perm: 'courier.view' },
   { id: 'customers',    label: 'Customers',      icon: '👥', perm: 'customers.view' },
+  { id: 'messages',     label: 'Messages',       icon: '💬', perm: 'customers.view' },
   { id: 'complaints',   label: 'Complaints',     icon: '📢', perm: 'customers.view' },
   { id: 'analytics',    label: 'Analytics',      icon: '📊', perm: 'analytics.view' },
   { id: 'dead-stock',   label: 'Dead Stock',     icon: '🪦', perm: 'deadstock.view' },
@@ -350,6 +352,7 @@ export default function ERPApp() {
         {activeModule === 'reports' && <ReportsPage />}
         {activeModule === 'wholesale' && <WholesalePage />}
         {activeModule === 'complaints' && <ComplaintsPage />}
+        {activeModule === 'messages' && <MessagesPage />}
         {activeModule === 'hr' && <HRPage />}
         {activeModule === 'operations' && <OperationsPage user={{ profile }} />}
         {activeModule === 'users' && <UsersPage />}
