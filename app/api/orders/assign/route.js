@@ -166,14 +166,24 @@ export async function POST(request) {
 
       const isPackingTeam = assignment.notes === 'packing_team' || !assignment.assigned_to;
 
-      // Get order items count
+      // ── Get order items: quantity + total_price (for leaderboard amount priority) ──
       const { data: orderItems } = await supabase
         .from('order_items')
-        .select('quantity')
+        .select('quantity, total_price, unit_price')
         .eq('order_id', order_id);
 
       let totalItems = (orderItems || []).reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
       if (totalItems === 0) totalItems = 1;
+
+      // Sum total_price — fallback to unit_price × quantity if total_price missing
+      let totalAmount = (orderItems || []).reduce((s, i) => {
+        const tp = parseFloat(i.total_price);
+        if (!isNaN(tp) && tp > 0) return s + tp;
+        const up = parseFloat(i.unit_price) || 0;
+        const qty = parseInt(i.quantity) || 1;
+        return s + (up * qty);
+      }, 0);
+      totalAmount = Math.round(totalAmount * 100) / 100; // 2 decimals
 
       // Update order status → packed
       await supabase
@@ -187,7 +197,7 @@ export async function POST(request) {
         .update({ status: 'packed', completed_at: new Date().toISOString() })
         .eq('id', assignment.id);
 
-      // ── Leaderboard: packing_log entries ──
+      // ── Leaderboard: packing_log entries (items + amount dono) ──
       if (isPackingTeam) {
         // Get all active packing team members
         const { data: team } = await supabase
@@ -197,13 +207,15 @@ export async function POST(request) {
           .eq('role', 'Packing Team');
 
         const teamCount = (team || []).length || 1;
-        const itemsPerPerson = Math.round(totalItems / teamCount);
+        const itemsPerPerson  = Math.round(totalItems / teamCount);
+        const amountPerPerson = Math.round((totalAmount / teamCount) * 100) / 100;
 
         // Create one packing_log entry per team member
         const logs = (team || []).map(emp => ({
           order_id,
           employee_id: emp.id,
           items_packed: itemsPerPerson,
+          items_amount: amountPerPerson,
           completed_at: new Date().toISOString(),
           notes: 'Packing Team (shared)',
         }));
@@ -212,11 +224,12 @@ export async function POST(request) {
           await supabase.from('packing_log').insert(logs);
         }
       } else {
-        // Individual packer
+        // Individual packer — full credit
         await supabase.from('packing_log').insert({
           order_id,
           employee_id: assignment.assigned_to,
           items_packed: totalItems,
+          items_amount: totalAmount,
           completed_at: new Date().toISOString(),
           notes: '',
         });
@@ -230,13 +243,18 @@ export async function POST(request) {
       await supabase.from('order_activity_log').insert({
         order_id,
         action: 'packed',
-        notes: `Packed — ${totalItems} items by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'}`,
+        notes: `Packed — ${totalItems} items (Rs. ${totalAmount.toLocaleString()}) by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'}`,
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: new Date().toISOString(),
       });
 
-      return NextResponse.json({ success: true, items_packed: totalItems, is_team: isPackingTeam });
+      return NextResponse.json({
+        success: true,
+        items_packed: totalItems,
+        items_amount: totalAmount,
+        is_team: isPackingTeam,
+      });
     }
 
     return NextResponse.json({ success: false, error: 'Unknown action' });
