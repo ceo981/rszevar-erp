@@ -101,7 +101,7 @@ export async function GET(request) {
       if (payment && payment !== 'all') q = q.eq('payment_status', payment);
       if (review === 'wa_cancelled') {
         // WhatsApp-cancelled orders pending team review
-        q = q.eq('status', 'cancelled').contains('tags', ['whatsapp_cancelled']);
+        q = q.eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]');
       }
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
@@ -201,7 +201,7 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'packed'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', ['whatsapp_cancelled']),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
     ]);
 
     const globalCounts = {
