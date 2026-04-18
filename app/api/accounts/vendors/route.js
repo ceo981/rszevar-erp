@@ -63,6 +63,21 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
+    if (action === 'update_transaction') {
+      const { id, amount, payment_date, due_date, item_description, note, reference } = body;
+      if (!id) return NextResponse.json({ success: false, error: 'id required' });
+      const updatePayload = {};
+      if (amount !== undefined) updatePayload.amount = parseFloat(amount);
+      if (payment_date !== undefined) updatePayload.payment_date = payment_date || new Date().toISOString().split('T')[0];
+      if (due_date !== undefined) updatePayload.due_date = due_date || null;
+      if (item_description !== undefined) updatePayload.item_description = item_description || '';
+      if (note !== undefined) updatePayload.note = note || '';
+      if (reference !== undefined) updatePayload.reference = reference || '';
+      const { data, error } = await supabase.from('vendor_payments').update(updatePayload).eq('id', id).select().single();
+      if (error) throw error;
+      return NextResponse.json({ success: true, transaction: data });
+    }
+
     if (action === 'delete_vendor') {
       await supabase.from('vendor_payments').delete().eq('vendor_id', body.vendor_id);
       await supabase.from('vendors').delete().eq('id', body.vendor_id);
