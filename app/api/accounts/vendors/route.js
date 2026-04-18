@@ -84,6 +84,22 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
+    if (action === 'update_vendor') {
+      const { vendor_id, name, phone, category, payment_terms, contact_person, email } = body;
+      if (!vendor_id) return NextResponse.json({ success: false, error: 'vendor_id required' });
+      if (name !== undefined && !name) return NextResponse.json({ success: false, error: 'Name khaali nahi ho sakta' });
+      const updatePayload = {};
+      if (name !== undefined) updatePayload.name = name;
+      if (phone !== undefined) updatePayload.phone = phone || '';
+      if (category !== undefined) updatePayload.category = category || 'General';
+      if (payment_terms !== undefined) updatePayload.payment_terms = payment_terms || '';
+      if (contact_person !== undefined) updatePayload.contact_person = contact_person || '';
+      if (email !== undefined) updatePayload.email = email || '';
+      const { data, error } = await supabase.from('vendors').update(updatePayload).eq('id', vendor_id).select().single();
+      if (error) throw error;
+      return NextResponse.json({ success: true, vendor: data });
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown action' });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
