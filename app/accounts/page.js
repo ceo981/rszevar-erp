@@ -175,6 +175,7 @@ function VendorsTab() {
   const [selected, setSelected] = useState(null);
   const [selData, setSelData] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null); // if set, vendor modal is in edit mode
   const [showTxn, setShowTxn] = useState(null);
   const [editingTxn, setEditingTxn] = useState(null); // if set, modal is in edit mode
   const [vForm, setVForm] = useState({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' });
@@ -206,12 +207,15 @@ function VendorsTab() {
     setSaving(true);
     setModalMsg('');
     try {
-      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_vendor', ...vForm }) });
+      const isEdit = !!editingVendor;
+      const payload = isEdit
+        ? { action: 'update_vendor', vendor_id: editingVendor.id, ...vForm }
+        : { action: 'add_vendor', ...vForm };
+      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json();
       if (d.success) {
-        setShowAdd(false);
-        setVForm({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' });
-        sm('✅ Vendor add ho gaya!');
+        closeAdd();
+        sm(isEdit ? '✅ Vendor update ho gaya!' : '✅ Vendor add ho gaya!');
         load();
       } else {
         mm('❌ ' + (d.error || 'Error hua'));
@@ -220,6 +224,25 @@ function VendorsTab() {
       mm('❌ Network error: ' + e.message);
     }
     setSaving(false);
+  }
+
+  function openEditVendor(v) {
+    setEditingVendor(v);
+    setVForm({
+      name: v.name || '',
+      phone: v.phone || '',
+      category: v.category || 'General',
+      payment_terms: v.payment_terms || '',
+      contact_person: v.contact_person || '',
+      email: v.email || '',
+    });
+    setShowAdd(true);
+  }
+
+  function closeAdd() {
+    setShowAdd(false);
+    setEditingVendor(null);
+    setVForm({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' });
   }
 
   async function addTxn(type) {
@@ -309,7 +332,17 @@ function VendorsTab() {
             <div style={{ ...S.card, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#eee' }}>{selV?.name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#eee', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {selV?.name}
+                    {selV && (
+                      <button
+                        onClick={() => openEditVendor(selV)}
+                        title="Edit vendor details"
+                        style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 11, padding: '3px 9px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 500 }}>
+                        ✏️ Edit
+                      </button>
+                    )}
+                  </div>
                   <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
                     {selV?.phone && <span>📞 {selV.phone} &nbsp;</span>}
                     {selV?.payment_terms && <span>⏱ {selV.payment_terms} &nbsp;</span>}
@@ -362,14 +395,14 @@ function VendorsTab() {
       </div>
 
       {showAdd && (
-        <Modal title="🏭 New Vendor" onClose={() => setShowAdd(false)}>
+        <Modal title={editingVendor ? '✏️ Edit Vendor' : '🏭 New Vendor'} onClose={closeAdd}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {[['name','Vendor Name *','e.g. Ali Brothers'],['phone','Phone','03xx-xxxxxxx'],['contact_person','Contact Person','Name'],['payment_terms','Payment Terms','e.g. 30 din baad, advance']].map(([k,l,p]) => (
               <div key={k}><label style={S.label}>{l}</label><input placeholder={p} value={vForm[k]||''} onChange={e=>setVForm(f=>({...f,[k]:e.target.value}))} style={S.input}/></div>
             ))}
             <div><label style={S.label}>Category</label><select value={vForm.category} onChange={e=>setVForm(f=>({...f,category:e.target.value}))} style={S.input}>{['General','Jewelry','Packaging','Accessories','Raw Material','Other'].map(c=><option key={c}>{c}</option>)}</select></div>
             {modalMsg && <div style={{padding:'10px 14px',borderRadius:8,background:modalMsg.startsWith('✅')?'#1a2a1a':'#2a1a1a',color:modalMsg.startsWith('✅')?'#22c55e':'#ef4444',fontSize:13}}>{modalMsg}</div>}
-            <button onClick={addVendor} disabled={saving} style={{...S.btn,background:'#c9a96e',color:'#000',fontWeight:700}}>{saving?'Saving...':'Add Vendor'}</button>
+            <button onClick={addVendor} disabled={saving} style={{...S.btn,background:'#c9a96e',color:'#000',fontWeight:700}}>{saving?'Saving...':editingVendor?'Update Vendor':'Add Vendor'}</button>
           </div>
         </Modal>
       )}
