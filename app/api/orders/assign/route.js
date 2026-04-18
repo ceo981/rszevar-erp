@@ -207,7 +207,11 @@ export async function POST(request) {
           .eq('role', 'Packing Team');
 
         const teamCount = (team || []).length || 1;
-        const itemsPerPerson  = Math.round(totalItems / teamCount);
+        // ITEMS = participation count (not share). Full credit to every team
+        // member who helped pack. Rounding/dividing items causes small orders
+        // (1-3 items) to credit 0 per person when team is large (e.g. 7).
+        // AMOUNT = bonus share, correctly divided by team size.
+        const itemsPerPerson  = totalItems;
         const amountPerPerson = Math.round((totalAmount / teamCount) * 100) / 100;
 
         // Create one packing_log entry per team member
