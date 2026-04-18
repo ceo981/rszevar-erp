@@ -1417,6 +1417,207 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
   );
 }
 
+// ─── Bulk Action Modals ───────────────────────────────────────
+function BulkCancelModal({ count, onClose, onConfirm, running }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ef4444' }}>
+          ✕ Cancel {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Reason sab orders pe lagegi. Shopify pe bhi cancel hoga. Dispatched/Delivered orders skip honge.
+        </p>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Cancel reason (required)..."
+          rows={3}
+          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12, resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={running || !reason.trim()}
+            style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !reason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !reason.trim()) ? 0.5 : 1 }}>
+            {running ? 'Cancelling…' : `Cancel ${count} order${count > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkStatusModal({ count, onClose, onConfirm, running }) {
+  const [newStatus, setNewStatus] = useState('');
+  const [notes, setNotes] = useState('');
+  const options = Object.entries(STATUS_CONFIG).map(([val, cfg]) => ({ value: val, label: cfg.label, color: cfg.color }));
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 480 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: gold }}>
+          ⚙ Change status — {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Select new status. Jo order pehle se same status pe hai, skip hoga.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 14 }}>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setNewStatus(opt.value)}
+              style={{
+                background: newStatus === opt.value ? opt.color + '22' : '#1a1a1a',
+                border: newStatus === opt.value ? `1px solid ${opt.color}` : `1px solid ${border}`,
+                color: newStatus === opt.value ? opt.color : '#aaa',
+                borderRadius: 6,
+                padding: '8px 10px',
+                fontSize: 12,
+                fontWeight: newStatus === opt.value ? 600 : 400,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                textAlign: 'center',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <input
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Notes (optional)"
+          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm({ status: newStatus, notes })}
+            disabled={running || !newStatus}
+            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !newStatus) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !newStatus) ? 0.5 : 1 }}>
+            {running ? 'Updating…' : 'Apply to all'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkAssignModal({ count, onClose, onConfirm, running }) {
+  const [employees, setEmployees] = useState([]);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/orders/assign')
+      .then(r => r.json())
+      .then(d => { setEmployees(d.employees || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 440 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>
+          👤 Assign packer — {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Sirf Confirmed / On Packing orders pe lagega. Baaki skip honge.
+        </p>
+
+        {loading ? (
+          <p style={{ color: '#555', fontSize: 13, marginTop: 14 }}>Loading employees…</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: 320, overflowY: 'auto' }}>
+            <button
+              onClick={() => setAssignedTo('packing_team')}
+              style={{
+                background: assignedTo === 'packing_team' ? '#f59e0b22' : '#1a1a1a',
+                border: assignedTo === 'packing_team' ? `1px solid #f59e0b` : `1px solid ${border}`,
+                color: assignedTo === 'packing_team' ? '#f59e0b' : '#ccc',
+                borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}>
+              🤝 Packing Team (shared credit)
+            </button>
+            {employees.map(emp => (
+              <button
+                key={emp.id}
+                onClick={() => setAssignedTo(String(emp.id))}
+                style={{
+                  background: assignedTo === String(emp.id) ? '#f59e0b22' : '#1a1a1a',
+                  border: assignedTo === String(emp.id) ? `1px solid #f59e0b` : `1px solid ${border}`,
+                  color: assignedTo === String(emp.id) ? '#f59e0b' : '#ccc',
+                  borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}>
+                {emp.name} <span style={{ color: '#555', fontSize: 11 }}>· {emp.designation || emp.role}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm({ assigned_to: assignedTo })}
+            disabled={running || !assignedTo}
+            style={{ background: '#f59e0b', border: `1px solid #f59e0b`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !assignedTo) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !assignedTo) ? 0.5 : 1 }}>
+            {running ? 'Assigning…' : `Assign ${count} order${count > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkResultModal({ result, onClose }) {
+  if (!result) return null;
+  const { summary, results } = result;
+  const failures = results.filter(r => !r.success);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+          {summary.failed === 0 ? '✓ All done' : `⚠ Partial — ${summary.succeeded}/${summary.total} succeeded`}
+        </h3>
+        <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 13 }}>
+          <span style={{ color: '#22c55e' }}>✓ {summary.succeeded} succeeded</span>
+          {summary.failed > 0 && <span style={{ color: '#ef4444' }}>✕ {summary.failed} failed</span>}
+        </div>
+        {failures.length > 0 && (
+          <div style={{ marginTop: 14, flex: 1, overflowY: 'auto', background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 6, padding: 10 }}>
+            <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Failed orders</div>
+            {failures.map(f => (
+              <div key={f.order_id} style={{ fontSize: 12, color: '#ccc', padding: '4px 0', borderBottom: '1px solid #222' }}>
+                <span style={{ color: gold, fontWeight: 600 }}>Order #{f.order_id}</span>
+                <span style={{ color: '#ef4444', marginLeft: 8 }}>— {f.error}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose}
+            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
   const { profile } = useUser();
@@ -1437,6 +1638,12 @@ export default function OrdersPage() {
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const PER_PAGE = 50;
+
+  // ── Bulk selection state ──
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkModal, setBulkModal] = useState(null); // 'cancel' | 'status' | 'assign' | null
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1519,6 +1726,76 @@ export default function OrdersPage() {
     setTimeout(() => setSyncMsg(null), ms);
   };
 
+  // ── Bulk selection helpers ──
+  const pageOrderIds = orders.map(o => o.id);
+  const allSelectedOnPage = pageOrderIds.length > 0 && pageOrderIds.every(id => selectedIds.has(id));
+  const someSelectedOnPage = pageOrderIds.some(id => selectedIds.has(id)) && !allSelectedOnPage;
+
+  const toggleOne = (id, e) => {
+    e?.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllOnPage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelectedOnPage) {
+        pageOrderIds.forEach(id => next.delete(id));
+      } else {
+        pageOrderIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ── Bulk action runner ──
+  const runBulk = async (payload) => {
+    setBulkRunning(true);
+    try {
+      const r = await fetch('/api/orders/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          order_ids: Array.from(selectedIds),
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) {
+        showMsg('error', d.error || 'Bulk action failed');
+        setBulkRunning(false);
+        return;
+      }
+
+      setBulkResult(d);
+      const { summary } = d;
+      if (summary.failed === 0) {
+        showMsg('success', `✓ ${summary.succeeded} order${summary.succeeded > 1 ? 's' : ''} updated`);
+      } else {
+        showMsg('error', `${summary.succeeded} succeeded, ${summary.failed} failed — details check karo`);
+      }
+      clearSelection();
+      setBulkModal(null);
+      load();
+    } catch (e) {
+      showMsg('error', e.message);
+    }
+    setBulkRunning(false);
+  };
+
+  const handleBulkConfirm = () => {
+    if (!window.confirm(`${selectedIds.size} order${selectedIds.size > 1 ? 's' : ''} confirm karne hain?\n\n(Sirf pending/processing/attempted/hold orders confirm honge)`)) return;
+    runBulk({ action: 'confirm' });
+  };
+
   const syncFromShopify = async () => {
     setSyncing(true);
     setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
@@ -1584,6 +1861,35 @@ export default function OrdersPage() {
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
       {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
       {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} performer={performer} />}
+
+      {/* Bulk action modals */}
+      {bulkModal === 'cancel' && (
+        <BulkCancelModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={(reason) => runBulk({ action: 'cancel', reason })}
+        />
+      )}
+      {bulkModal === 'status' && (
+        <BulkStatusModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={({ status, notes }) => runBulk({ action: 'status', status, notes })}
+        />
+      )}
+      {bulkModal === 'assign' && (
+        <BulkAssignModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={({ assigned_to }) => runBulk({ action: 'assign', assigned_to })}
+        />
+      )}
+      {bulkResult && (
+        <BulkResultModal result={bulkResult} onClose={() => setBulkResult(null)} />
+      )}
 
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -1761,12 +2067,84 @@ export default function OrdersPage() {
         `}</style>
       </div>
 
+      {/* ── Bulk Action Toolbar — shows when selection > 0 ── */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '10px 14px', marginBottom: 10,
+          background: gold + '11', border: `1px solid ${gold}55`, borderRadius: 8,
+        }}>
+          <span style={{ color: gold, fontSize: 13, fontWeight: 700 }}>
+            {selectedIds.size} selected
+          </span>
+          <div style={{ width: 1, height: 20, background: border }} />
+
+          <button
+            onClick={handleBulkConfirm}
+            disabled={bulkRunning}
+            title="Confirm all selected pending/processing orders"
+            style={{ background: '#3b82f622', border: '1px solid #3b82f6', color: '#3b82f6', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ✓ Confirm
+          </button>
+
+          <button
+            onClick={() => setBulkModal('assign')}
+            disabled={bulkRunning}
+            title="Assign a packer to selected orders"
+            style={{ background: '#f59e0b22', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            👤 Assign Packer
+          </button>
+
+          <button
+            onClick={() => setBulkModal('status')}
+            disabled={bulkRunning}
+            title="Change status for selected orders"
+            style={{ background: gold + '22', border: `1px solid ${gold}`, color: gold, borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ⚙ Change Status
+          </button>
+
+          <button
+            onClick={() => setBulkModal('cancel')}
+            disabled={bulkRunning}
+            title="Cancel selected orders"
+            style={{ background: '#ef444422', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ✕ Cancel
+          </button>
+
+          <div style={{ flex: 1 }} />
+
+          {bulkRunning && (
+            <span style={{ color: gold, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+              Processing...
+            </span>
+          )}
+
+          <button
+            onClick={clearSelection}
+            disabled={bulkRunning}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            ✕ Clear
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
+                <th style={{ padding: '12px 8px 12px 16px', width: 36, textAlign: 'left' }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelectedOnPage}
+                    ref={el => { if (el) el.indeterminate = someSelectedOnPage; }}
+                    onChange={toggleAllOnPage}
+                    title={allSelectedOnPage ? 'Deselect all on page' : 'Select all on page'}
+                    style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
+                  />
+                </th>
                 {['Order', 'Customer', 'City', 'COD', 'Office Status', 'Payment', 'Courier', 'Courier Status', 'Assigned', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
@@ -1774,10 +2152,10 @@ export default function OrdersPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
               )}
               {orders.map((order, i) => {
                 let typeIcon = '';
@@ -1788,9 +2166,21 @@ export default function OrdersPage() {
                 const isWaCancelledReview = order.status === 'cancelled'
                   && Array.isArray(order.tags)
                   && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
+                const isSelected = selectedIds.has(order.id);
+                const rowBg = isSelected
+                  ? gold + '12'
+                  : (isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : '#0a0a0a'));
                 return (
-                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : '#0a0a0a') }}
+                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: rowBg }}
                     onClick={() => setSelected(order)} className="order-row">
+                    <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleOne(order.id, e)}
+                        style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
+                      />
+                    </td>
                     <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span>{order.order_number || '#' + order.id}</span>
