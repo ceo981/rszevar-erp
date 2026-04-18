@@ -66,16 +66,18 @@ async function reclassifyKangarooOrders(supabase) {
 }
 
 // ─── Helper: extract raw status from Kangaroo API response ─────
-// Kangaroo response shape varies — try common paths
+// Kangaroo's actual response (Apr 2026) — flat object with capital-O 'Orderstatus':
+//   {"orderid":"819225","transaction_id":"KL22919545","Clientname":"RS ZEVAR","Orderstatus":"Confirm"}
 function extractRawStatus(kangarooData) {
   if (!kangarooData) return null;
-  // Most common: { status: 200, data: { booking_status / status / ... } }
   const d = kangarooData.data || kangarooData;
   return (
+    d?.Orderstatus ||        // Kangaroo API actual field (primary)
+    d?.orderstatus ||        // lowercase fallback
     d?.booking_status ||
     d?.status_name ||
     d?.current_status ||
-    (typeof d?.status === 'string' ? d.status : null) ||
+    (typeof d?.status === 'string' && isNaN(Number(d.status)) ? d.status : null) ||
     null
   );
 }
@@ -83,7 +85,14 @@ function extractRawStatus(kangarooData) {
 function extractDeliveryDate(kangarooData) {
   if (!kangarooData) return null;
   const d = kangarooData.data || kangarooData;
-  return d?.delivered_at || d?.delivery_date || d?.delivered_on || null;
+  return (
+    d?.Deliverydate ||
+    d?.DeliveryDate ||
+    d?.delivered_at ||
+    d?.delivery_date ||
+    d?.delivered_on ||
+    null
+  );
 }
 
 // ─── Phase 2: Sync status ──────────────────────────────────────
