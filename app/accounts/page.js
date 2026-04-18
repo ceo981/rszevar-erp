@@ -176,6 +176,7 @@ function VendorsTab() {
   const [selData, setSelData] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showTxn, setShowTxn] = useState(null);
+  const [editingTxn, setEditingTxn] = useState(null); // if set, modal is in edit mode
   const [vForm, setVForm] = useState({ name: '', phone: '', category: 'General', payment_terms: '', contact_person: '' });
   const [tForm, setTForm] = useState({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' });
   const [saving, setSaving] = useState(false);
@@ -226,12 +227,15 @@ function VendorsTab() {
     setSaving(true);
     setModalMsg('');
     try {
-      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add_transaction', vendor_id: selected, payment_type: type, ...tForm }) });
+      const isEdit = !!editingTxn;
+      const payload = isEdit
+        ? { action: 'update_transaction', id: editingTxn.id, ...tForm }
+        : { action: 'add_transaction', vendor_id: selected, payment_type: type, ...tForm };
+      const r = await fetch('/api/accounts/vendors', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json();
       if (d.success) {
-        setShowTxn(null);
-        setTForm({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' });
-        sm('✅ Entry add ho gayi!');
+        closeTxn();
+        sm(isEdit ? '✅ Entry update ho gayi!' : '✅ Entry add ho gayi!');
         load(); loadV(selected);
       } else {
         mm('❌ ' + (d.error || 'Error hua'));
@@ -240,6 +244,24 @@ function VendorsTab() {
       mm('❌ Network error: ' + e.message);
     }
     setSaving(false);
+  }
+
+  function openEdit(t) {
+    setEditingTxn(t);
+    setShowTxn(t.payment_type); // 'purchase' or 'payment' — decides which modal layout
+    setTForm({
+      amount: t.amount ?? '',
+      payment_date: (t.payment_date || '').slice(0, 10) || today(),
+      due_date: (t.due_date || '').slice(0, 10) || '',
+      item_description: t.item_description || '',
+      note: t.note || '',
+    });
+  }
+
+  function closeTxn() {
+    setShowTxn(null);
+    setEditingTxn(null);
+    setTForm({ amount: '', payment_date: today(), due_date: '', item_description: '', note: '' });
   }
 
   async function delTxn(id) {
@@ -323,7 +345,12 @@ function VendorsTab() {
                         <td style={{ ...S.td, color: '#ccc' }}>{t.item_description || t.note || '—'}</td>
                         <td style={{ ...S.td, color: isP ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{fmt(t.amount)}</td>
                         <td style={S.td}>{t.due_date ? <span style={{ color: new Date(t.due_date) < new Date() ? '#ef4444' : '#f59e0b' }}>📅 {fmtDate(t.due_date)}</span> : '—'}</td>
-                        <td style={S.td}><button onClick={() => delTxn(t.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 16 }}>🗑</button></td>
+                        <td style={S.td}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button onClick={() => openEdit(t)} title="Edit entry" style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>✏️ Edit</button>
+                            <button onClick={() => delTxn(t.id)} title="Delete entry" style={{ background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>🗑 Delete</button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -348,7 +375,7 @@ function VendorsTab() {
       )}
 
       {showTxn && (
-        <Modal title={showTxn==='purchase'?'📦 Maal Aya':'💸 Payment Di'} onClose={()=>setShowTxn(null)}>
+        <Modal title={(editingTxn ? '✏️ Edit — ' : '') + (showTxn==='purchase'?'📦 Maal Aya':'💸 Payment Di')} onClose={closeTxn}>
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
               <div><label style={S.label}>Amount (Rs.) *</label><input type="number" placeholder="0" value={tForm.amount} onChange={e=>setTForm(f=>({...f,amount:e.target.value}))} style={S.input}/></div>
@@ -357,7 +384,7 @@ function VendorsTab() {
             {showTxn==='purchase'&&<><div><label style={S.label}>Item Description</label><input placeholder="Kya maal aya..." value={tForm.item_description} onChange={e=>setTForm(f=>({...f,item_description:e.target.value}))} style={S.input}/></div><div><label style={S.label}>Payment Due Date</label><input type="date" value={tForm.due_date} onChange={e=>setTForm(f=>({...f,due_date:e.target.value}))} style={S.input}/></div></>}
             <div><label style={S.label}>Reference / Note</label><input placeholder="Invoice no..." value={tForm.note} onChange={e=>setTForm(f=>({...f,note:e.target.value}))} style={S.input}/></div>
             {modalMsg && <div style={{padding:'10px 14px',borderRadius:8,background:modalMsg.startsWith('✅')?'#1a2a1a':'#2a1a1a',color:modalMsg.startsWith('✅')?'#22c55e':'#ef4444',fontSize:13}}>{modalMsg}</div>}
-            <button onClick={()=>addTxn(showTxn)} disabled={saving} style={{...S.btn,background:showTxn==='purchase'?'#1a2a1a':'#2a1a1a',borderColor:showTxn==='purchase'?'#22c55e44':'#ef444444',color:showTxn==='purchase'?'#22c55e':'#ef4444'}}>{saving?'Saving...':showTxn==='purchase'?'Save Maal Entry':'Save Payment'}</button>
+            <button onClick={()=>addTxn(showTxn)} disabled={saving} style={{...S.btn,background:showTxn==='purchase'?'#1a2a1a':'#2a1a1a',borderColor:showTxn==='purchase'?'#22c55e44':'#ef444444',color:showTxn==='purchase'?'#22c55e':'#ef4444'}}>{saving?'Saving...':editingTxn?'Update Entry':(showTxn==='purchase'?'Save Maal Entry':'Save Payment')}</button>
           </div>
         </Modal>
       )}
