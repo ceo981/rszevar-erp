@@ -9,7 +9,7 @@
 // Login page (/login) ka sidebar skip hota hai.
 // ============================================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserContext } from '@/context/UserContext';
@@ -85,6 +85,92 @@ function AuthenticatedShell({ pathname, router, children }) {
   const [permissions, setPermissions] = useState(new Set());
   const [authLoading, setAuthLoading] = useState(true);
 
+  // ── Browser notifications state ──
+  const [notifPermission, setNotifPermission] = useState('default');
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
+  const prevUnreadRef = useRef(0);
+  const firstUnreadLoadRef = useRef(true);
+
+  // Initialize permission state + decide whether to show banner
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+    const perm = Notification.permission;
+    setNotifPermission(perm);
+    const dismissed = window.localStorage?.getItem('rszevar_notif_asked');
+    if (perm === 'default' && !dismissed) setShowNotifBanner(true);
+  }, []);
+
+  // Helper — soft ding sound via Web Audio API (no asset file needed)
+  const playDing = useCallback(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.35);
+      setTimeout(() => { try { ctx.close(); } catch {} }, 500);
+    } catch (e) {
+      // silent fail — sound is best-effort
+    }
+  }, []);
+
+  // Helper — fire desktop notification (only if permission granted)
+  const fireNotification = useCallback(({ title, body, tag, onClick }) => {
+    try {
+      if (typeof Notification === 'undefined') return;
+      if (Notification.permission !== 'granted') return;
+      const n = new Notification(title, {
+        body,
+        icon: '/rs_zevar_logo_small.png',
+        tag: tag || 'rs-zevar-whatsapp',
+        renotify: true,
+        silent: true, // we play our own ding
+      });
+      n.onclick = () => {
+        try { window.focus(); } catch {}
+        if (onClick) onClick();
+        n.close();
+      };
+      setTimeout(() => { try { n.close(); } catch {} }, 8000);
+    } catch (e) {
+      // silent fail
+    }
+  }, []);
+
+  // Enable handler — triggered by user clicking banner button
+  const enableNotifications = useCallback(async () => {
+    if (typeof Notification === 'undefined') {
+      setShowNotifBanner(false);
+      return;
+    }
+    try {
+      const result = await Notification.requestPermission();
+      setNotifPermission(result);
+      try { window.localStorage?.setItem('rszevar_notif_asked', 'yes'); } catch {}
+      setShowNotifBanner(false);
+      // Tiny confirmation ding so user knows sound works
+      if (result === 'granted') playDing();
+    } catch {
+      setShowNotifBanner(false);
+    }
+  }, [playDing]);
+
+  const dismissNotifBanner = useCallback(() => {
+    try { window.localStorage?.setItem('rszevar_notif_asked', 'dismissed'); } catch {}
+    setShowNotifBanner(false);
+  }, []);
+
   // ── Mobile detection ──
   useEffect(() => {
     const check = () => {
@@ -120,6 +206,8 @@ function AuthenticatedShell({ pathname, router, children }) {
   const visibleModules = MODULES.filter((m) => !m.perm || can(m.perm));
 
   // ── Unread WhatsApp badge polling (every 15s) ──
+  // Also fires browser notifications + ding when unread_total increases,
+  // user has granted permission, and is NOT currently on /messages.
   useEffect(() => {
     if (authLoading) return;
     let cancelled = false;
@@ -127,13 +215,48 @@ function AuthenticatedShell({ pathname, router, children }) {
       try {
         const r = await fetch('/api/whatsapp/inbox/conversations?limit=1');
         const d = await r.json();
-        if (!cancelled && d.success) setUnreadTotal(d.unread_total || 0);
+        if (cancelled || !d.success) return;
+
+        const newTotal = d.unread_total || 0;
+        const prevTotal = prevUnreadRef.current;
+        const onMessagesPage = pathname === '/messages' || pathname?.startsWith('/messages/');
+
+        // Fire notification on INCREASE only (ignore first load + on-messages page)
+        if (!firstUnreadLoadRef.current && newTotal > prevTotal && !onMessagesPage) {
+          const delta = newTotal - prevTotal;
+          const latest = d.conversations?.[0];
+          const sender = latest?.customer_name
+            || latest?.customer_wa_name
+            || latest?.customer_phone
+            || 'Customer';
+          const preview = latest?.last_message_text
+            ? String(latest.last_message_text).slice(0, 120)
+            : '';
+          const title = delta > 1
+            ? `📩 ${delta} new WhatsApp messages`
+            : `📩 ${sender}`;
+          const body = delta > 1
+            ? (preview ? `Latest from ${sender}: ${preview}` : `From ${sender}`)
+            : (preview || 'New message');
+
+          fireNotification({
+            title,
+            body,
+            tag: 'rs-zevar-whatsapp',
+            onClick: () => router.push('/messages'),
+          });
+          playDing();
+        }
+
+        firstUnreadLoadRef.current = false;
+        prevUnreadRef.current = newTotal;
+        setUnreadTotal(newTotal);
       } catch {}
     };
     fetchUnread();
     const t = setInterval(fetchUnread, 15000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [authLoading, pathname]);
+  }, [authLoading, pathname, router, fireNotification, playDing]);
 
   // ── Legacy event listener for inventory SKU nav (from order item click) ──
   // Previously: window.dispatchEvent(new CustomEvent('openInventorySku', { detail: sku }))
@@ -389,6 +512,53 @@ function AuthenticatedShell({ pathname, router, children }) {
           transition: 'margin-left 0.2s ease',
           minWidth: 0,
         }}>
+          {showNotifBanner && (
+            <div style={{
+              padding: '10px 18px',
+              background: 'rgba(34,197,94,0.08)',
+              borderBottom: '1px solid rgba(34,197,94,0.3)',
+              color: '#22c55e',
+              fontSize: 13,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: 16 }}>🔔</span>
+              <span style={{ flex: 1, minWidth: 200 }}>
+                WhatsApp messages ke liye notifications enable karo — ERP tab background mein ho tab bhi alert mil jayega.
+              </span>
+              <button
+                onClick={enableNotifications}
+                style={{
+                  background: '#22c55e',
+                  border: 'none',
+                  color: '#000',
+                  borderRadius: 6,
+                  padding: '6px 14px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}>
+                Enable
+              </button>
+              <button
+                onClick={dismissNotifBanner}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(34,197,94,0.35)',
+                  color: '#22c55e',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}>
+                Not now
+              </button>
+            </div>
+          )}
           {children}
         </main>
         <AIAdvisorFloat />
