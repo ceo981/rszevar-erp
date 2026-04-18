@@ -132,7 +132,7 @@ function AuthenticatedShell({ pathname, router, children }) {
       if (Notification.permission !== 'granted') return;
       const n = new Notification(title, {
         body,
-        icon: '/rs_zevar_logo_small.png',
+        icon: '/rs_zevar_logo_transparent.png',
         tag: tag || 'rs-zevar-whatsapp',
         renotify: true,
         silent: true, // we play our own ding
