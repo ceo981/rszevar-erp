@@ -1,280 +1,256 @@
-// ============================================================================
-// RS ZEVAR ERP — Orders API Route
-// Phase 6: Added `type` filter (wholesale/international/walkin) and
-//          improved `courier` filter (PostEx/Leopards/Kangaroo/Other).
-//          Stats counts are filter-AWARE — show counts within current filter.
-// ============================================================================
-
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import {
+  updateShopifyOrderTags,
+  addShopifyOrderNote,
+  cancelShopifyOrder,
+} from '../../../../lib/shopify';
 
-export async function GET(request) {
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const VALID_STATUSES = [
+  'pending', 'confirmed', 'on_packing', 'processing', 'packed',
+  'dispatched', 'delivered', 'cancelled', 'rto', 'attempted', 'hold',
+];
+
+const CONFIRMABLE = ['pending', 'processing', 'attempted', 'hold'];
+
+// ─── Per-order action handlers ──────────────────────────────────────────
+
+async function doConfirm(orderId, notes, performer, performerEmail) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, order_number, shopify_order_id, status')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return { success: false, error: 'Order nahi mila' };
+  if (!CONFIRMABLE.includes(order.status)) {
+    return { success: false, error: `Status '${order.status}' confirm nahi ho sakta` };
+  }
+
+  const { error } = await supabase.from('orders').update({
+    status: 'confirmed',
+    confirmed_at: new Date().toISOString(),
+    confirmation_notes: notes || '',
+    updated_at: new Date().toISOString(),
+  }).eq('id', orderId);
+
+  if (error) return { success: false, error: error.message };
+
+  // Shopify tag + note — best effort, fail nahi karega order
+  if (order.shopify_order_id) {
+    try {
+      await updateShopifyOrderTags(order.shopify_order_id, ['order_confirmed'], []);
+      if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
+    } catch (e) {
+      console.error('[bulk confirm] Shopify:', e.message);
+    }
+  }
+
+  await supabase.from('order_activity_log').insert({
+    order_id: orderId,
+    action: 'confirmed',
+    notes: notes || 'Bulk confirmed',
+    performed_by: performer,
+    performed_by_email: performerEmail,
+    performed_at: new Date().toISOString(),
+  });
+
+  return { success: true, order_number: order.order_number };
+}
+
+async function doCancel(orderId, reason, performer, performerEmail) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, order_number, shopify_order_id, status')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return { success: false, error: 'Order nahi mila' };
+  if (order.status === 'cancelled') return { success: false, error: 'Pehle se cancelled hai' };
+  if (['dispatched', 'delivered'].includes(order.status)) {
+    return { success: false, error: `'${order.status}' order cancel nahi ho sakta` };
+  }
+
+  const { error } = await supabase.from('orders').update({
+    status: 'cancelled',
+    cancelled_at: new Date().toISOString(),
+    cancel_reason: reason || '',
+    updated_at: new Date().toISOString(),
+  }).eq('id', orderId);
+
+  if (error) return { success: false, error: error.message };
+
+  let shopifyWarning = null;
+  if (order.shopify_order_id) {
+    try {
+      await cancelShopifyOrder(order.shopify_order_id, 'other');
+    } catch (e) {
+      shopifyWarning = e.message;
+      console.error('[bulk cancel] Shopify:', e.message);
+    }
+  }
+
+  await supabase.from('order_activity_log').insert({
+    order_id: orderId,
+    action: 'cancelled',
+    notes: reason || 'Bulk cancelled',
+    performed_by: performer,
+    performed_by_email: performerEmail,
+    performed_at: new Date().toISOString(),
+  });
+
+  return { success: true, order_number: order.order_number, warning: shopifyWarning };
+}
+
+async function doStatus(orderId, newStatus, notes, performer, performerEmail) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, order_number, status')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return { success: false, error: 'Order nahi mila' };
+  if (order.status === newStatus) return { success: false, error: `Pehle se '${newStatus}' hai` };
+
+  const { error } = await supabase.from('orders').update({
+    status: newStatus,
+    updated_at: new Date().toISOString(),
+  }).eq('id', orderId);
+
+  if (error) return { success: false, error: error.message };
+
+  await supabase.from('order_activity_log').insert({
+    order_id: orderId,
+    action: `status_changed_to_${newStatus}`,
+    notes: notes || `Bulk status → ${newStatus}`,
+    performed_by: performer,
+    performed_by_email: performerEmail,
+    performed_at: new Date().toISOString(),
+  });
+
+  return { success: true, order_number: order.order_number };
+}
+
+async function doAssign(orderId, assignedTo, empName, performer, performerEmail) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, order_number, status')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return { success: false, error: 'Order nahi mila' };
+  if (!['on_packing', 'confirmed'].includes(order.status)) {
+    return { success: false, error: `Status '${order.status}' pe packer set nahi ho sakta` };
+  }
+
+  const empId = assignedTo === 'packing_team' ? null : parseInt(assignedTo);
+  const notes = assignedTo === 'packing_team' ? 'packing_team' : '';
+
+  const { error } = await supabase.from('order_assignments').upsert({
+    order_id: orderId,
+    assigned_to: empId,
+    stage: 'packing',
+    status: 'pending',
+    notes,
+    assigned_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  }, { onConflict: 'order_id', ignoreDuplicates: false });
+
+  if (error) return { success: false, error: error.message };
+
+  await supabase.from('order_activity_log').insert({
+    order_id: orderId,
+    action: 'packer_set',
+    notes: `Bulk assigned — Packed by: ${empName}`,
+    performed_by: performer,
+    performed_by_email: performerEmail,
+    performed_at: new Date().toISOString(),
+  });
+
+  return { success: true, order_number: order.order_number };
+}
+
+// ─── POST handler ───────────────────────────────────────────────────────
+
+export async function POST(request) {
   try {
-    const supabase = createServerClient();
-    const { searchParams } = new URL(request.url);
+    const body = await request.json();
+    const {
+      action,
+      order_ids,
+      performed_by,
+      performed_by_email,
+      // action-specific params
+      notes,
+      reason,
+      status,
+      assigned_to,
+    } = body;
 
-    // ── Order items fetch ──
-    const action = searchParams.get('action');
-    if (action === 'items') {
-      const order_id = searchParams.get('order_id');
-      if (!order_id) return NextResponse.json({ items: [] });
-
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('title, sku, quantity, unit_price, total_price, image_url')
-        .eq('order_id', order_id)
-        .order('id');
-
-      const rows = items || [];
-
-      // Enrich: items jinka image_url null ho, products table se SKU match karke image lao
-      const missingSkus = [...new Set(rows.filter(i => !i.image_url && i.sku).map(i => i.sku))];
-      if (missingSkus.length > 0) {
-        const { data: prods } = await supabase
-          .from('products')
-          .select('sku, image_url')
-          .in('sku', missingSkus)
-          .not('image_url', 'is', null);
-
-        const skuMap = {};
-        for (const p of prods || []) {
-          if (p.sku && p.image_url && !skuMap[p.sku]) skuMap[p.sku] = p.image_url;
-        }
-
-        // Apply enrichment + save back to DB (so future loads are instant)
-        const updates = [];
-        for (const item of rows) {
-          if (!item.image_url && item.sku && skuMap[item.sku]) {
-            item.image_url = skuMap[item.sku];
-            updates.push({ sku: item.sku, image_url: skuMap[item.sku] });
-          }
-        }
-
-        // Persist found images to order_items table (best effort, non-blocking)
-        if (updates.length > 0) {
-          for (const u of updates) {
-            supabase
-              .from('order_items')
-              .update({ image_url: u.image_url })
-              .eq('order_id', order_id)
-              .eq('sku', u.sku)
-              .is('image_url', null)
-              .then(() => {}) // fire and forget
-              .catch(() => {});
-          }
-        }
-      }
-
-      return NextResponse.json({ items: rows });
+    if (!action) return NextResponse.json({ success: false, error: 'action required' }, { status: 400 });
+    if (!Array.isArray(order_ids) || order_ids.length === 0) {
+      return NextResponse.json({ success: false, error: 'order_ids array required' }, { status: 400 });
+    }
+    if (order_ids.length > 100) {
+      return NextResponse.json({ success: false, error: 'Maximum 100 orders per bulk action' }, { status: 400 });
     }
 
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const courier = searchParams.get('courier');   // PostEx | Leopards | Kangaroo | Other
-    const type = searchParams.get('type');         // wholesale | international | walkin
-    const payment = searchParams.get('payment');   // paid | unpaid | refunded
-    const review = searchParams.get('review');     // wa_cancelled (whatsapp cancel review)
-    const dateFrom = searchParams.get('from');
-    const dateTo = searchParams.get('to');
-    const sort = searchParams.get('sort') || 'created_at';
-    const order = searchParams.get('order') || 'desc';
+    const performer = performed_by || 'Staff';
+    const performerEmail = performed_by_email || null;
 
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-
-    // Helper to apply shared filters to any query (main + stats)
-    const applyFilters = (q) => {
-      if (status && status !== 'all') q = q.eq('status', status);
-      if (courier && courier !== 'all') {
-        if (courier === 'Other') {
-          // "Other" = anything that's not PostEx/Leopards/Kangaroo (including null)
-          q = q.or('dispatched_courier.is.null,and(dispatched_courier.neq.PostEx,dispatched_courier.neq.Leopards,dispatched_courier.neq.Kangaroo)');
-        } else {
-          q = q.eq('dispatched_courier', courier);
-        }
-      }
-      if (type === 'wholesale') q = q.eq('is_wholesale', true);
-      if (type === 'international') q = q.eq('is_international', true);
-      if (type === 'walkin') q = q.eq('is_walkin', true);
-      if (payment && payment !== 'all') q = q.eq('payment_status', payment);
-      if (review === 'wa_cancelled') {
-        // WhatsApp-cancelled orders pending team review
-        q = q.eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]');
-      }
-      if (dateFrom) q = q.gte('created_at', dateFrom);
-      if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
-      if (search) {
-        q = q.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,customer_city.ilike.%${search}%,tracking_number.ilike.%${search}%`);
-      }
-      return q;
-    };
-
-    // ── Main query (paginated list) ──
-    let query = supabase
-      .from('orders')
-      .select('*, order_items(*)', { count: 'exact' });
-    query = applyFilters(query);
-    query = query.order(sort, { ascending: order === 'asc' }).range(from, to);
-
-    const { data: orders, count, error } = await query;
-    if (error) throw error;
-
-    // ── Stats queries ──
-    // 1. GLOBAL stats (ignore filters, always show totals) — for filter dropdown counts
-    // 2. FILTERED stats (current filter applied) — for summary cards
-    // We do both in parallel.
-
-    const filteredStatQueries = await Promise.all([
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'pending'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'confirmed'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'dispatched'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'delivered'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'returned'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'cancelled'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'rto'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('payment_status', 'paid'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('payment_status', 'unpaid'),
-      applyFilters(supabase.from('orders').select('total_amount').eq('payment_method', 'COD').in('status', ['pending', 'confirmed', 'dispatched'])),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'attempted'),
-      applyFilters(supabase.from('orders').select('*', { count: 'exact', head: true })).eq('status', 'hold'),
-    ]);
-
-    const codOrders = filteredStatQueries[10].data || [];
-    const totalCOD = codOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
-
-    const orderStats = {
-      total: filteredStatQueries[0].count || 0,
-      pending: filteredStatQueries[1].count || 0,
-      confirmed: filteredStatQueries[2].count || 0,
-      dispatched: filteredStatQueries[3].count || 0,
-      delivered: filteredStatQueries[4].count || 0,
-      returned: filteredStatQueries[5].count || 0,
-      cancelled: filteredStatQueries[6].count || 0,
-      rto: filteredStatQueries[7].count || 0,
-      paid: filteredStatQueries[8].count || 0,
-      unpaid: filteredStatQueries[9].count || 0,
-      total_cod: totalCOD,
-      attempted: filteredStatQueries[11].count || 0,
-      hold: filteredStatQueries[12].count || 0,
-    };
-
-    // ── GLOBAL type/courier/status counts for dropdown (ignore current filters) ──
-    const [
-      { count: wholesaleCount },
-      { count: internationalCount },
-      { count: walkinCount },
-      { count: leopardsCount },
-      { count: postexCount },
-      { count: kangarooCount },
-      { count: gPending },
-      { count: gConfirmed },
-      { count: gOnPacking },
-      { count: gDispatched },
-      { count: gDelivered },
-      { count: gRto },
-      { count: gCancelled },
-      { count: gAttempted },
-      { count: gHold },
-      { count: gPacked },
-      { count: gPaid },
-      { count: gUnpaid },
-      { count: gWaCancelled },
-    ] = await Promise.all([
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_walkin', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Leopards'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'PostEx'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Kangaroo'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'on_packing'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'dispatched'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'rto'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'attempted'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'hold'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'packed'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
-    ]);
-
-    const globalCounts = {
-      wholesale: wholesaleCount || 0,
-      international: internationalCount || 0,
-      walkin: walkinCount || 0,
-      leopards: leopardsCount || 0,
-      postex: postexCount || 0,
-      kangaroo: kangarooCount || 0,
-      pending: gPending || 0,
-      confirmed: gConfirmed || 0,
-      on_packing: gOnPacking || 0,
-      dispatched: gDispatched || 0,
-      delivered: gDelivered || 0,
-      rto: gRto || 0,
-      cancelled: gCancelled || 0,
-      attempted: gAttempted || 0,
-      hold: gHold || 0,
-      packed: gPacked || 0,
-      paid: gPaid || 0,
-      unpaid: gUnpaid || 0,
-      wa_cancelled: gWaCancelled || 0,
-    };
-
-    // ── Batch-fetch assignments for these orders ──
-    let ordersWithAssignment = orders || [];
-    if (ordersWithAssignment.length > 0) {
-      const orderIds = ordersWithAssignment.map(o => o.id);
-      const { data: assignments } = await supabase
-        .from('order_assignments')
-        .select('order_id, employee:assigned_to(name)')
-        .in('order_id', orderIds)
-        .order('created_at', { ascending: false }); // latest first
-      if (assignments && assignments.length > 0) {
-        const aMap = {};
-        // latest assignment jeet-ta hai (created_at DESC se already sorted)
-        assignments.forEach(a => {
-          if (a.order_id && a.employee?.name && !aMap[a.order_id]) {
-            aMap[a.order_id] = a.employee.name;
-          }
-        });
-        ordersWithAssignment = ordersWithAssignment.map(o => ({ ...o, assigned_to_name: aMap[o.id] || null }));
-      }
-      // ── Fallback: Shopify packing:NAME tags se assigned naam lo ──
-      ordersWithAssignment = ordersWithAssignment.map(o => {
-        if (o.assigned_to_name) return o; // already found from DB
-        const tags = Array.isArray(o.tags) ? o.tags : [];
-        const packingTag = tags.find(t => String(t).toLowerCase().startsWith('packing:'));
-        if (packingTag) {
-          const rawName = packingTag.split(':')[1] || '';
-          const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-          return { ...o, assigned_to_name: name, assigned_from_tag: true };
-        }
-        return o;
-      });
+    // Pre-validate action-specific params
+    if (action === 'cancel' && (!reason || !reason.trim())) {
+      return NextResponse.json({ success: false, error: 'Cancel reason required' }, { status: 400 });
     }
+    if (action === 'status') {
+      if (!status) return NextResponse.json({ success: false, error: 'status required' }, { status: 400 });
+      if (!VALID_STATUSES.includes(status)) return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
+    }
+
+    // For assign, resolve employee name once
+    let empName = 'Packing Team';
+    if (action === 'assign') {
+      if (!assigned_to) return NextResponse.json({ success: false, error: 'assigned_to required' }, { status: 400 });
+      if (assigned_to !== 'packing_team') {
+        const numId = parseInt(assigned_to);
+        if (isNaN(numId)) return NextResponse.json({ success: false, error: 'Valid employee id chahiye' }, { status: 400 });
+        const { data: emp } = await supabase.from('employees').select('name').eq('id', numId).single();
+        if (!emp) return NextResponse.json({ success: false, error: 'Employee nahi mila' }, { status: 404 });
+        empName = emp.name;
+      }
+    }
+
+    // Process each order — sequential to avoid Shopify rate limits
+    const results = [];
+    for (const orderId of order_ids) {
+      try {
+        let res;
+        if (action === 'confirm')     res = await doConfirm(orderId, notes, performer, performerEmail);
+        else if (action === 'cancel') res = await doCancel(orderId, reason, performer, performerEmail);
+        else if (action === 'status') res = await doStatus(orderId, status, notes, performer, performerEmail);
+        else if (action === 'assign') res = await doAssign(orderId, assigned_to, empName, performer, performerEmail);
+        else res = { success: false, error: 'Unknown action' };
+
+        results.push({ order_id: orderId, ...res });
+      } catch (e) {
+        results.push({ order_id: orderId, success: false, error: e.message });
+      }
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    const failed    = results.length - succeeded;
 
     return NextResponse.json({
       success: true,
-      orders: ordersWithAssignment,
-      total: count || 0,
-      page,
-      limit,
-      total_pages: Math.ceil((count || 0) / limit),
-      stats: orderStats,
-      global_counts: globalCounts,
+      summary: { total: results.length, succeeded, failed },
+      results,
     });
-
-  } catch (error) {
-    console.error('Orders fetch error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+  } catch (e) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
