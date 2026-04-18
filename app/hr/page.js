@@ -907,10 +907,6 @@ function LeaderboardTab() {
         )}
       </div>
 
-      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 12, color: '#94a3b8' }}>
-        <strong style={{ color: '#c9a96e' }}>Ranking logic:</strong> Top rank amount ke hisaab se milti hai (jitna zyada Rs ka saman pack kiya, utni upar rank)۔ Items count saath track hota hai lekin priority <strong>amount</strong> ko hai — warna 300-400 Rs wale sasty items pack karne wale upar aa jaate the, aur mehenga time-consuming pack karne walon ka haq maara jaata tha۔
-      </div>
-
       {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : !data?.leaderboard?.length ? (
         <div style={{ color: '#475569', textAlign: 'center', padding: 40 }}>Is month mein koi packing log nahi hai</div>
       ) : (
