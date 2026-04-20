@@ -62,14 +62,23 @@ export async function POST(request) {
       );
     }
 
-    // Fetch current order state — need status for transition guard, payment_method for COD auto-paid
+    // Fetch minimal fields — only what we strictly need for logic.
+    // Avoid reading optional timestamp columns (delivered_at, rto_at, dispatched_at)
+    // which may not exist in schema. We'll just always write them fresh.
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, status, payment_status, payment_method, confirmed_at, delivered_at, rto_at, dispatched_at')
+      .select('status, payment_status, payment_method, confirmed_at')
       .eq('id', order_id)
       .single();
 
-    if (fetchErr || !order) {
+    if (fetchErr) {
+      console.error('[status] fetch error:', fetchErr.message);
+      return NextResponse.json(
+        { success: false, error: `DB error: ${fetchErr.message}` },
+        { status: 500 },
+      );
+    }
+    if (!order) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
@@ -92,29 +101,47 @@ export async function POST(request) {
     if (status === 'confirmed' && !order.confirmed_at) {
       patch.confirmed_at = nowIso;
     }
-    if (status === 'dispatched' && !order.dispatched_at) {
+    if (status === 'dispatched') {
       // Shopify-booked flow: dispatcher manually flips status after Shopify fulfillment.
-      // Tracking number + courier already came in via orders/fulfilled webhook — we
-      // just record the dispatched_at timestamp here.
+      // Tracking number + courier already came in via orders/fulfilled webhook.
       patch.dispatched_at = nowIso;
     }
     if (status === 'delivered') {
-      if (!order.delivered_at) patch.delivered_at = nowIso;
+      patch.delivered_at = nowIso;
       // COD auto-paid rule — memory: `pending → confirmed → dispatched → delivered → paid`
       if (order.payment_method === 'COD' && order.payment_status === 'unpaid') {
         patch.payment_status = 'paid';
         patch.paid_at = nowIso;
       }
     }
-    if (status === 'rto' && !order.rto_at) {
+    if (status === 'rto') {
       patch.rto_at = nowIso;
     }
 
-    const { error: updateErr } = await supabase
-      .from('orders')
-      .update(patch)
-      .eq('id', order_id);
-
+    // Resilient UPDATE — if an optional timestamp column (delivered_at, rto_at,
+    // paid_at) doesn't exist in schema, strip it and retry. dispatched_at,
+    // confirmed_at are assumed to exist since older code writes to them.
+    const OPTIONAL_COLS = ['delivered_at', 'rto_at', 'paid_at'];
+    let updateErr = null;
+    let attempt = 0;
+    while (attempt < 3) {
+      const { error } = await supabase
+        .from('orders')
+        .update(patch)
+        .eq('id', order_id);
+      if (!error) { updateErr = null; break; }
+      updateErr = error;
+      const missingCol = OPTIONAL_COLS.find(col =>
+        String(error.message || '').toLowerCase().includes(col),
+      );
+      if (missingCol && patch[missingCol] !== undefined) {
+        console.warn(`[status] column '${missingCol}' not in schema — skipping`);
+        delete patch[missingCol];
+        attempt++;
+        continue;
+      }
+      break;
+    }
     if (updateErr) throw updateErr;
 
     // Activity log — always attribute performer
