@@ -4,7 +4,14 @@
 // RS ZEVAR ERP — Single Order Page (Shopify-inspired full view)
 // Route: /orders/[id]
 // ----------------------------------------------------------------------------
-// Design:
+// Phase 1 (Apr 20 2026): Shopify-style UI enhancement
+//   - Header: [🔗 Shopify] [✏️ Edit] [🖨 Print ▾] [⋯ More ▾]
+//   - Items card: Shopify-style "compound" action button with status dropdown
+//   - Payment card: "Collect payment ▾" button with Mark-as-paid dropdown
+//   - All existing state, handlers, API calls preserved unchanged
+//   - Placeholders for: Mark as paid, Print PDFs, Duplicate, Archive (future phases)
+//
+// Design (unchanged):
 //   - Dark theme (ERP aesthetic) + Shopify-style 2-col card layout
 //   - Left:  Items | Status/Dispatch | Payment Summary | Timeline
 //   - Right: Notes | Customer | Shipping | Assignment | Tags | Metadata
@@ -103,6 +110,40 @@ function HeaderBtn({ onClick, href, target, children, primary, title }) {
   return <button onClick={onClick} style={style} title={title}>{children}</button>;
 }
 
+// ─── Dropdown menu item (shared styling for Print/More/Collect/Fulfill) ───
+function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex',
+        width: '100%',
+        textAlign: 'left',
+        gap: 10,
+        alignItems: 'flex-start',
+        background: 'transparent',
+        border: 'none',
+        color: disabled ? '#555' : danger ? '#ef4444' : '#ddd',
+        fontSize: 12,
+        padding: '8px 12px',
+        borderRadius: 5,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontFamily: 'inherit',
+        opacity: disabled ? 0.5 : 1,
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = '#1a1a1a'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+    >
+      {icon && <span style={{ fontSize: 14, flexShrink: 0, width: 16, textAlign: 'center' }}>{icon}</span>}
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500 }}>{label}</div>
+        {sub && <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{sub}</div>}
+      </span>
+    </button>
+  );
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function SingleOrderPage() {
   const params = useParams();
@@ -127,6 +168,9 @@ export default function SingleOrderPage() {
   const [showCancelBox, setShowCancelBox] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+
+  // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
+  const [openMenu, setOpenMenu] = useState(null);
 
   // ─── Data fetchers ──────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
@@ -165,6 +209,14 @@ export default function SingleOrderPage() {
   useEffect(() => { loadTimeline(); }, [loadTimeline]);
   useEffect(() => { loadPackingStaff(); }, [loadPackingStaff]);
 
+  // Close any open dropdown on outside click
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [openMenu]);
+
   // ─── Tab title ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (order?.order_number) document.title = `${order.order_number} — RS ZEVAR ERP`;
@@ -179,6 +231,18 @@ export default function SingleOrderPage() {
 
   const refreshAll = async () => {
     await Promise.all([loadOrder(), loadTimeline()]);
+  };
+
+  // Toggle a menu (stopPropagation in click handler so doc-click doesn't close it immediately)
+  const toggleMenu = (name) => (e) => {
+    e.stopPropagation();
+    setOpenMenu(openMenu === name ? null : name);
+  };
+
+  // Phase 1 placeholder — features coming in later phases
+  const comingSoon = (featureName, phase = 2) => {
+    setOpenMenu(null);
+    flash('info', `${featureName} — Phase ${phase} mein add hoga`);
   };
 
   // ─── Inline actions ─────────────────────────────────────────────────────
@@ -287,6 +351,7 @@ export default function SingleOrderPage() {
   const shipping = parseFloat(order.shipping_fee || 0);
   const total = parseFloat(order.total_amount || 0);
   const isPaid = order.payment_status === 'paid';
+  const isRefunded = order.payment_status === 'refunded';
   const paidAmt = isPaid ? total : 0;
   const balance = total - paidAmt;
   const isCancelled = order.status === 'cancelled';
@@ -312,6 +377,22 @@ export default function SingleOrderPage() {
   }
 
   const statusOptions = Object.keys(STATUS_CONFIG).filter(s => s !== order.status && s !== 'cancelled');
+
+  // Fulfill dropdown items — only shown if we have a primary action
+  const fulfillSecondary = [
+    { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered },
+    { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered },
+  ].filter(x => x.show);
+
+  // Fulfilled/Unfulfilled header badge
+  const itemsHeaderLabel =
+      isDelivered  ? `Delivered (${items.length})`
+    : isDispatched ? `Fulfilled (${items.length})`
+    :                `Unfulfilled (${items.length})`;
+  const itemsHeaderColor =
+      isDelivered  ? { bg: 'rgba(34,197,94,0.15)', fg: '#22c55e', br: '#22c55e44' }
+    : isDispatched ? { bg: 'rgba(168,85,247,0.15)', fg: '#a855f7', br: '#a855f744' }
+    :                { bg: 'rgba(245,158,11,0.15)', fg: '#f59e0b', br: '#f59e0b44' };
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
@@ -347,14 +428,63 @@ export default function SingleOrderPage() {
                 {order.shopify_order_id && <span> · from Shopify</span>}
               </div>
             </div>
+
+            {/* Phase 1: Shopify-style action button row */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {order.shopify_order_id && (
                 <HeaderBtn href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank">
                   🔗 Shopify
                 </HeaderBtn>
               )}
-              <HeaderBtn onClick={() => window.print()}>🖨 Print</HeaderBtn>
-              <HeaderBtn onClick={() => setShowDrawer(true)} primary>⚡ Quick Actions</HeaderBtn>
+
+              {/* Edit — opens OrderDrawer (same as old Quick Actions) */}
+              <HeaderBtn onClick={() => setShowDrawer(true)} title="Edit order details / dispatch / book courier">
+                ✏️ Edit
+              </HeaderBtn>
+
+              {/* Print dropdown */}
+              <div style={{ position: 'relative' }}>
+                <HeaderBtn onClick={toggleMenu('print')}>🖨 Print ▾</HeaderBtn>
+                {openMenu === 'print' && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                      background: '#0f0f0f', border: `1px solid ${border}`,
+                      borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    <MenuItem icon="📋" label="Print packing slip" sub="For packing staff"
+                      onClick={() => { setOpenMenu(null); window.print(); }} />
+                    <MenuItem icon="🧾" label="Print invoice" sub="For customer (Phase 4 → PDF)"
+                      onClick={() => { setOpenMenu(null); window.print(); }} />
+                  </div>
+                )}
+              </div>
+
+              {/* More actions dropdown (placeholders — future phases) */}
+              <div style={{ position: 'relative' }}>
+                <HeaderBtn onClick={toggleMenu('more')}>⋯ More ▾</HeaderBtn>
+                {openMenu === 'more' && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                      background: '#0f0f0f', border: `1px solid ${border}`,
+                      borderRadius: 8, padding: 5, minWidth: 220, zIndex: 50,
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    <MenuItem icon="📋" label="Duplicate order" onClick={() => comingSoon('Duplicate order', 5)} />
+                    <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
+                    <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
+                    <div style={{ height: 1, background: border, margin: '4px 0' }} />
+                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => comingSoon('Manual courier booking', 5)} />
+                    <MenuItem icon="🚚" label="Book at Leopards" onClick={() => comingSoon('Manual courier booking', 5)} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -363,9 +493,11 @@ export default function SingleOrderPage() {
         {msg && (
           <div style={{
             padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
-            background: msg.type === 'success' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
-            border: `1px solid ${msg.type === 'success' ? '#4ade80' : '#f87171'}`,
-            color: msg.type === 'success' ? '#4ade80' : '#f87171',
+            background: msg.type === 'success' ? 'rgba(74,222,128,0.12)'
+                      : msg.type === 'info'    ? 'rgba(201,169,110,0.12)'
+                      : 'rgba(248,113,113,0.12)',
+            border: `1px solid ${msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171'}`,
+            color:  msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171',
           }}>{msg.text}</div>
         )}
 
@@ -375,17 +507,17 @@ export default function SingleOrderPage() {
           {/* ═══ LEFT COLUMN ═══ */}
           <div>
 
-            {/* Items card */}
+            {/* Items card — Shopify-style fulfilled/unfulfilled badge */}
             <Card
               title={
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{
-                    background: isDelivered ? 'rgba(34,197,94,0.15)' : isDispatched ? 'rgba(168,85,247,0.15)' : 'rgba(245,158,11,0.15)',
-                    color:      isDelivered ? '#22c55e' : isDispatched ? '#a855f7' : '#f59e0b',
-                    border: `1px solid ${isDelivered ? '#22c55e44' : isDispatched ? '#a855f744' : '#f59e0b44'}`,
+                    background: itemsHeaderColor.bg,
+                    color:      itemsHeaderColor.fg,
+                    border: `1px solid ${itemsHeaderColor.br}`,
                     padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
                   }}>
-                    {isDelivered ? `Delivered (${items.length})` : isDispatched ? `Dispatched (${items.length})` : `Items (${items.length})`}
+                    {itemsHeaderLabel}
                   </span>
                   <span style={{ background: '#1a1a1a', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: '#888' }}>
                     📍 OFFICE
@@ -393,6 +525,7 @@ export default function SingleOrderPage() {
                 </div>
               }
               noPadBody
+              overflowVisible
             >
               <div>
                 {items.length === 0 && (
@@ -443,32 +576,77 @@ export default function SingleOrderPage() {
                   </div>
                 ))}
 
-                {/* Primary action strip */}
+                {/* Primary action strip — Shopify-style compound button */}
                 {primaryAction && !isCancelled && (
-                  <div style={{ padding: '14px 20px', borderTop: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)', display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={primaryAction.onClick}
-                      disabled={actionBusy}
-                      style={{
-                        background: '#1a1a1a',
-                        border: `1px solid ${gold}`,
-                        color: gold,
-                        borderRadius: 7,
-                        padding: '9px 20px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: actionBusy ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit',
-                        opacity: actionBusy ? 0.5 : 1,
-                      }}>
-                      {actionBusy ? '⟳ Working…' : primaryAction.label}
-                    </button>
+                  <div style={{ padding: '14px 20px', borderTop: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)', display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
+                    <div style={{ display: 'inline-flex', position: 'relative' }}>
+                      <button
+                        onClick={primaryAction.onClick}
+                        disabled={actionBusy}
+                        style={{
+                          background: '#1a1a1a',
+                          border: `1px solid ${gold}`,
+                          borderRight: fulfillSecondary.length > 0 ? 'none' : `1px solid ${gold}`,
+                          color: gold,
+                          borderRadius: fulfillSecondary.length > 0 ? '7px 0 0 7px' : 7,
+                          padding: '9px 20px',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: actionBusy ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                          opacity: actionBusy ? 0.5 : 1,
+                        }}>
+                        {actionBusy ? '⟳ Working…' : primaryAction.label}
+                      </button>
+                      {fulfillSecondary.length > 0 && (
+                        <>
+                          <button
+                            onClick={toggleMenu('fulfill')}
+                            disabled={actionBusy}
+                            style={{
+                              background: '#1a1a1a',
+                              border: `1px solid ${gold}`,
+                              color: gold,
+                              borderRadius: '0 7px 7px 0',
+                              padding: '9px 10px',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              cursor: actionBusy ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                              opacity: actionBusy ? 0.5 : 1,
+                              borderLeft: '1px solid rgba(0,0,0,0.3)',
+                            }}>
+                            ▾
+                          </button>
+                          {openMenu === 'fulfill' && (
+                            <div
+                              onClick={e => e.stopPropagation()}
+                              style={{
+                                position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                                background: '#0f0f0f', border: `1px solid ${border}`,
+                                borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
+                                boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                              }}
+                            >
+                              {fulfillSecondary.map(opt => (
+                                <MenuItem
+                                  key={opt.status}
+                                  icon={opt.icon}
+                                  label={opt.label}
+                                  onClick={() => { setOpenMenu(null); setStatus(opt.status); }}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             </Card>
 
-            {/* Status & Dispatch info */}
+            {/* Status & Dispatch info — unchanged */}
             <Card title="Status & Dispatch" overflowVisible>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                 <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
@@ -512,7 +690,7 @@ export default function SingleOrderPage() {
                 </div>
               )}
 
-              {/* Inline secondary actions */}
+              {/* Inline secondary actions — preserved exactly */}
               {!isCancelled && (
                 <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
@@ -576,17 +754,20 @@ export default function SingleOrderPage() {
               )}
             </Card>
 
-            {/* Payment Summary — Shopify-style */}
-            <Card title={
-              <span style={{
-                background: isPaid ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
-                color: isPaid ? '#22c55e' : '#f59e0b',
-                border: `1px solid ${isPaid ? '#22c55e44' : '#f59e0b44'}`,
-                padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-              }}>
-                {isPaid ? '✓ Paid' : order.payment_status === 'refunded' ? 'Refunded' : 'Payment pending'}
-              </span>
-            }>
+            {/* Payment Summary — Shopify-style with Collect payment button */}
+            <Card
+              title={
+                <span style={{
+                  background: isPaid ? 'rgba(34,197,94,0.15)' : isRefunded ? 'rgba(156,163,175,0.15)' : 'rgba(245,158,11,0.15)',
+                  color: isPaid ? '#22c55e' : isRefunded ? '#9ca3af' : '#f59e0b',
+                  border: `1px solid ${isPaid ? '#22c55e44' : isRefunded ? '#9ca3af44' : '#f59e0b44'}`,
+                  padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                }}>
+                  {isPaid ? '✓ Paid' : isRefunded ? 'Refunded' : 'Payment pending'}
+                </span>
+              }
+              overflowVisible
+            >
               <Row label={`Subtotal (${items.length} item${items.length !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
               {discount > 0 && <Row label="Discount" value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>} />}
               <Row label="Shipping" value={fmt(shipping)} />
@@ -603,9 +784,46 @@ export default function SingleOrderPage() {
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, fontSize: 11, color: '#666' }}>
                 Payment method: <span style={{ color: '#888' }}>{order.payment_method || 'COD'}</span>
               </div>
+
+              {/* Collect payment button — only when unpaid and not cancelled */}
+              {!isPaid && !isRefunded && !isCancelled && balance > 0 && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={toggleMenu('payment')}
+                      style={{
+                        background: '#1a1a1a',
+                        border: `1px solid ${gold}`,
+                        color: gold,
+                        borderRadius: 7,
+                        padding: '8px 18px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                      }}>
+                      💰 Collect payment ▾
+                    </button>
+                    {openMenu === 'payment' && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                          background: '#0f0f0f', border: `1px solid ${border}`,
+                          borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                        }}
+                      >
+                        <MenuItem icon="✓" label="Mark as paid" sub="Phase 2 mein Shopify sync"
+                          onClick={() => comingSoon('Mark as paid', 2)} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </Card>
 
-            {/* Timeline */}
+            {/* Timeline — unchanged */}
             <Card title={`Timeline (${timeline.length})`}>
               {/* Comment input */}
               <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
@@ -667,7 +885,7 @@ export default function SingleOrderPage() {
             </Card>
           </div>
 
-          {/* ═══ RIGHT SIDEBAR ═══ */}
+          {/* ═══ RIGHT SIDEBAR ═══ (unchanged) */}
           <div>
 
             {/* Notes (confirmation_notes) */}
@@ -716,6 +934,11 @@ export default function SingleOrderPage() {
                   View on map ↗
                 </a>
               )}
+            </Card>
+
+            {/* Billing address (Shopify-style — same as shipping for COD) */}
+            <Card title="Billing address">
+              <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>Same as shipping address</div>
             </Card>
 
             {/* Assignment */}
@@ -769,7 +992,7 @@ export default function SingleOrderPage() {
         </div>
       </div>
 
-      {/* Drawer overlay — Quick Actions */}
+      {/* Drawer overlay — opens on Edit button click */}
       {showDrawer && (
         <OrderDrawer
           order={order}
