@@ -40,14 +40,15 @@ function formatShortDate(iso) {
 }
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────
-function Card({ title, children, pad = '18px 20px', noPadBody = false }) {
+function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false }) {
   return (
     <div style={{
       background: card,
       border: `1px solid ${border}`,
       borderRadius: 10,
       marginBottom: 16,
-      overflow: 'hidden',
+      overflow: overflowVisible ? 'visible' : 'hidden',
+      position: 'relative',
     }}>
       {title && (
         <div style={{
@@ -268,7 +269,19 @@ export default function SingleOrderPage() {
   }
 
   // ─── Derived data ───────────────────────────────────────────────────────
-  const items = (order.order_items || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+  // Items: prefer DB order_items; fallback to shopify_raw.line_items for older
+  // orders where order_items rows weren't backfilled. Same pattern as the
+  // original OrderDrawer's buildItems helper.
+  const items = (order.order_items?.length > 0)
+    ? order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
+    : (order.shopify_raw?.line_items || []).map(it => ({
+        title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+        sku: it.sku || null,
+        quantity: it.quantity,
+        unit_price: parseFloat(it.price) || 0,
+        total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
+        image_url: null,
+      }));
   const subtotal = parseFloat(order.subtotal || 0);
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
@@ -456,7 +469,7 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Status & Dispatch info */}
-            <Card title="Status & Dispatch">
+            <Card title="Status & Dispatch" overflowVisible>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                 <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
