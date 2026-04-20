@@ -630,6 +630,7 @@ export default function OrdersPage() {
   const [globalCounts, setGlobalCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // debounced version used by API
   const [filter, setFilter] = useState({ type: null, value: null }); // unified filter
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
@@ -647,14 +648,38 @@ export default function OrdersPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
 
+  // ── Debounce search typing ──
+  // User har keystroke pe API hit na ho. 350ms ruk ke fire hoti hai query.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ── Request cancellation + sequence guard ──
+  // Race condition fix: fast typing ke saath parallel API calls aate the, aur
+  // late-arriving response UI ko overwrite kar deti thi. Ab pehle wali request
+  // abort ho jaati hai, aur safety ke liye requestId se bhi guard hai.
+  const abortRef = useRef(null);
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async () => {
+    // Cancel any in-flight request — late response ab UI overwrite nahi karegi
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (filter.type && filter.value) params.append(filter.type, filter.value);
-      const r = await fetch(`/api/orders?${params}`);
+      const r = await fetch(`/api/orders?${params}`, { signal: controller.signal });
       const d = await r.json();
+
+      // Guard: agar naya request fire ho chuka hai to is purani response ko ignore karo
+      if (requestId !== requestIdRef.current) return;
+
       const newOrders = d.orders || [];
       if (page === 1) {
         setOrders(newOrders);
@@ -664,9 +689,12 @@ export default function OrdersPage() {
       setHasMore(newOrders.length === PER_PAGE);
       if (d.stats) setStats(d.stats);
       if (d.global_counts) setGlobalCounts(d.global_counts);
-    } catch {}
-    setLoading(false);
-  }, [page, search, filter]);
+    } catch (e) {
+      if (e.name === 'AbortError') return; // expected — naya request le chuka
+    }
+    // Sirf latest request hi loading state ko off karegi
+    if (requestId === requestIdRef.current) setLoading(false);
+  }, [page, debouncedSearch, filter]);
 
   useEffect(() => { load(); }, [load]);
 
