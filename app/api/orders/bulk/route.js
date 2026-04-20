@@ -1,29 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================================================
+// RS ZEVAR ERP — Bulk Actions Route  (FIXED Apr 2026)
+// ----------------------------------------------------------------------------
+// Changes:
+//   1. VALID_STATUSES imported from lib/order-status.js (no more fragmentation
+//      between 3 files). Removes in_transit (not in DB enum), adds returned+refunded.
+//   2. doStatus now uses canTransition — bulk can no longer illegally mass-flip
+//      delivered → pending or cancelled → dispatched.
+//   3. Bulk dispatched and cancelled statuses BLOCKED from bulk — must use
+//      per-order dispatch/cancel flow so courier booking + Shopify sync happen.
+//   4. doStatus adds same side effects as status route (delivered→paid, etc.)
+//   5. sync_shopify flag passed through to doCancel for ERP-only bulk cancel.
+// ============================================================================
+
 import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase';
+import { canTransition, VALID_STATUSES } from '@/lib/order-status';
 import {
   updateShopifyOrderTags,
   addShopifyOrderNote,
   cancelShopifyOrder,
-} from '../../../../lib/shopify';
+} from '@/lib/shopify';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-const VALID_STATUSES = [
-  'pending', 'confirmed', 'on_packing', 'processing', 'packed',
-  'dispatched', 'delivered', 'cancelled', 'rto', 'attempted', 'hold',
-];
+const supabaseFactory = () => createServerClient();
+
+// Bulk route blocks these — they need different workflows
+// NOTE: 'dispatched' is allowed in bulk. Reason: orders are typically booked via
+// Shopify courier apps, so by the time user bulk-flips, tracking already exists.
+// This is just a status flip (+ dispatched_at). ERP-initiated courier booking
+// via Kangaroo/Leopards is per-order only (has modals with custom fields).
+const BLOCKED_BULK_STATUS = new Set(['cancelled']);
 
 const CONFIRMABLE = ['pending', 'processing', 'attempted', 'hold'];
+const NO_CANCEL_FROM = new Set(['dispatched', 'delivered', 'rto', 'returned', 'refunded']);
 
 // ─── Per-order action handlers ──────────────────────────────────────────
 
-async function doConfirm(orderId, notes, performer, performerEmail) {
+async function doConfirm(supabase, orderId, notes, performer, performerEmail) {
   const { data: order } = await supabase
     .from('orders')
-    .select('id, order_number, shopify_order_id, status')
+    .select('id, order_number, shopify_order_id, status, confirmed_at')
     .eq('id', orderId)
     .single();
 
@@ -32,20 +50,31 @@ async function doConfirm(orderId, notes, performer, performerEmail) {
     return { success: false, error: `Status '${order.status}' confirm nahi ho sakta` };
   }
 
-  const { error } = await supabase.from('orders').update({
-    status: 'confirmed',
-    confirmed_at: new Date().toISOString(),
-    confirmation_notes: notes || '',
-    updated_at: new Date().toISOString(),
-  }).eq('id', orderId);
+  const gate = canTransition(order.status, 'confirmed', 'manual');
+  if (!gate.allowed) {
+    return { success: false, error: `Confirm blocked: ${gate.reason}` };
+  }
 
+  const nowIso = new Date().toISOString();
+  const patch = {
+    status: 'confirmed',
+    confirmation_notes: notes || '',
+    updated_at: nowIso,
+  };
+  if (!order.confirmed_at) patch.confirmed_at = nowIso;
+
+  const { error } = await supabase.from('orders').update(patch).eq('id', orderId);
   if (error) return { success: false, error: error.message };
 
-  // Shopify tag + note — best effort, fail nahi karega order
   if (order.shopify_order_id) {
     try {
       await updateShopifyOrderTags(order.shopify_order_id, ['order_confirmed'], []);
-      if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
+      if (notes) {
+        await addShopifyOrderNote(
+          order.shopify_order_id,
+          `ERP Confirmed by ${performer}: ${notes}`,
+        );
+      }
     } catch (e) {
       console.error('[bulk confirm] Shopify:', e.message);
     }
@@ -57,13 +86,13 @@ async function doConfirm(orderId, notes, performer, performerEmail) {
     notes: notes || 'Bulk confirmed',
     performed_by: performer,
     performed_by_email: performerEmail,
-    performed_at: new Date().toISOString(),
+    performed_at: nowIso,
   });
 
   return { success: true, order_number: order.order_number };
 }
 
-async function doCancel(orderId, reason, performer, performerEmail) {
+async function doCancel(supabase, orderId, reason, performer, performerEmail, syncShopify) {
   const { data: order } = await supabase
     .from('orders')
     .select('id, order_number, shopify_order_id, status')
@@ -72,23 +101,31 @@ async function doCancel(orderId, reason, performer, performerEmail) {
 
   if (!order) return { success: false, error: 'Order nahi mila' };
   if (order.status === 'cancelled') return { success: false, error: 'Pehle se cancelled hai' };
-  if (['dispatched', 'delivered'].includes(order.status)) {
-    return { success: false, error: `'${order.status}' order cancel nahi ho sakta` };
+  if (NO_CANCEL_FROM.has(order.status)) {
+    return { success: false, error: `'${order.status}' order cancel nahi ho sakta — RTO/Returned flow use karo` };
   }
 
+  const gate = canTransition(order.status, 'cancelled', 'manual');
+  if (!gate.allowed) {
+    return { success: false, error: `Cancel blocked: ${gate.reason}` };
+  }
+
+  const nowIso = new Date().toISOString();
   const { error } = await supabase.from('orders').update({
     status: 'cancelled',
-    cancelled_at: new Date().toISOString(),
+    cancelled_at: nowIso,
     cancel_reason: reason || '',
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   }).eq('id', orderId);
 
   if (error) return { success: false, error: error.message };
 
   let shopifyWarning = null;
-  if (order.shopify_order_id) {
+  let shopifyCancelled = false;
+  if (order.shopify_order_id && syncShopify) {
     try {
       await cancelShopifyOrder(order.shopify_order_id, 'other');
+      shopifyCancelled = true;
     } catch (e) {
       shopifyWarning = e.message;
       console.error('[bulk cancel] Shopify:', e.message);
@@ -98,30 +135,50 @@ async function doCancel(orderId, reason, performer, performerEmail) {
   await supabase.from('order_activity_log').insert({
     order_id: orderId,
     action: 'cancelled',
-    notes: reason || 'Bulk cancelled',
+    notes: [
+      reason || 'Bulk cancelled',
+      shopifyCancelled ? '+ Shopify cancelled' : null,
+      shopifyWarning ? `Shopify error: ${shopifyWarning}` : null,
+      !syncShopify ? '(ERP only)' : null,
+    ].filter(Boolean).join(' | '),
     performed_by: performer,
     performed_by_email: performerEmail,
-    performed_at: new Date().toISOString(),
+    performed_at: nowIso,
   });
 
   return { success: true, order_number: order.order_number, warning: shopifyWarning };
 }
 
-async function doStatus(orderId, newStatus, notes, performer, performerEmail) {
+async function doStatus(supabase, orderId, newStatus, notes, performer, performerEmail) {
   const { data: order } = await supabase
     .from('orders')
-    .select('id, order_number, status')
+    .select('id, order_number, status, payment_status, payment_method, delivered_at, rto_at, confirmed_at, dispatched_at')
     .eq('id', orderId)
     .single();
 
   if (!order) return { success: false, error: 'Order nahi mila' };
   if (order.status === newStatus) return { success: false, error: `Pehle se '${newStatus}' hai` };
 
-  const { error } = await supabase.from('orders').update({
-    status: newStatus,
-    updated_at: new Date().toISOString(),
-  }).eq('id', orderId);
+  const gate = canTransition(order.status, newStatus, 'manual');
+  if (!gate.allowed) {
+    return { success: false, error: `${order.status} → ${newStatus} blocked (${gate.reason})` };
+  }
 
+  const nowIso = new Date().toISOString();
+  const patch = { status: newStatus, updated_at: nowIso };
+
+  if (newStatus === 'confirmed' && !order.confirmed_at) patch.confirmed_at = nowIso;
+  if (newStatus === 'dispatched' && !order.dispatched_at) patch.dispatched_at = nowIso;
+  if (newStatus === 'delivered') {
+    if (!order.delivered_at) patch.delivered_at = nowIso;
+    if (order.payment_method === 'COD' && order.payment_status === 'unpaid') {
+      patch.payment_status = 'paid';
+      patch.paid_at = nowIso;
+    }
+  }
+  if (newStatus === 'rto' && !order.rto_at) patch.rto_at = nowIso;
+
+  const { error } = await supabase.from('orders').update(patch).eq('id', orderId);
   if (error) return { success: false, error: error.message };
 
   await supabase.from('order_activity_log').insert({
@@ -130,13 +187,13 @@ async function doStatus(orderId, newStatus, notes, performer, performerEmail) {
     notes: notes || `Bulk status → ${newStatus}`,
     performed_by: performer,
     performed_by_email: performerEmail,
-    performed_at: new Date().toISOString(),
+    performed_at: nowIso,
   });
 
   return { success: true, order_number: order.order_number };
 }
 
-async function doAssign(orderId, assignedTo, empName, performer, performerEmail) {
+async function doAssign(supabase, orderId, assignedTo, empName, performer, performerEmail) {
   const { data: order } = await supabase
     .from('orders')
     .select('id, order_number, status')
@@ -149,19 +206,38 @@ async function doAssign(orderId, assignedTo, empName, performer, performerEmail)
   }
 
   const empId = assignedTo === 'packing_team' ? null : parseInt(assignedTo);
-  const notes = assignedTo === 'packing_team' ? 'packing_team' : '';
+  const assignNotes = assignedTo === 'packing_team' ? 'packing_team' : '';
+
+  const { data: existingAssign } = await supabase
+    .from('order_assignments')
+    .select('id, created_at')
+    .eq('order_id', orderId)
+    .maybeSingle();
+
+  const nowIso = new Date().toISOString();
 
   const { error } = await supabase.from('order_assignments').upsert({
     order_id: orderId,
     assigned_to: empId,
     stage: 'packing',
     status: 'pending',
-    notes,
-    assigned_at: new Date().toISOString(),
-    created_at: new Date().toISOString(),
+    notes: assignNotes,
+    assigned_at: nowIso,
+    created_at: existingAssign?.created_at || nowIso,
   }, { onConflict: 'order_id', ignoreDuplicates: false });
 
   if (error) return { success: false, error: error.message };
+
+  // Promote confirmed → on_packing (matches single-assign behavior)
+  if (order.status === 'confirmed') {
+    const gate = canTransition('confirmed', 'on_packing', 'manual');
+    if (gate.allowed) {
+      await supabase
+        .from('orders')
+        .update({ status: 'on_packing', updated_at: nowIso })
+        .eq('id', orderId);
+    }
+  }
 
   await supabase.from('order_activity_log').insert({
     order_id: orderId,
@@ -169,7 +245,7 @@ async function doAssign(orderId, assignedTo, empName, performer, performerEmail)
     notes: `Bulk assigned — Packed by: ${empName}`,
     performed_by: performer,
     performed_by_email: performerEmail,
-    performed_at: new Date().toISOString(),
+    performed_at: nowIso,
   });
 
   return { success: true, order_number: order.order_number };
@@ -178,6 +254,7 @@ async function doAssign(orderId, assignedTo, empName, performer, performerEmail)
 // ─── POST handler ───────────────────────────────────────────────────────
 
 export async function POST(request) {
+  const supabase = supabaseFactory();
   try {
     const body = await request.json();
     const {
@@ -185,41 +262,84 @@ export async function POST(request) {
       order_ids,
       performed_by,
       performed_by_email,
-      // action-specific params
+      // action-specific
       notes,
       reason,
       status,
       assigned_to,
+      sync_shopify, // for cancel; default true
     } = body;
 
-    if (!action) return NextResponse.json({ success: false, error: 'action required' }, { status: 400 });
+    if (!action) {
+      return NextResponse.json({ success: false, error: 'action required' }, { status: 400 });
+    }
     if (!Array.isArray(order_ids) || order_ids.length === 0) {
-      return NextResponse.json({ success: false, error: 'order_ids array required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'order_ids array required' },
+        { status: 400 },
+      );
     }
     if (order_ids.length > 100) {
-      return NextResponse.json({ success: false, error: 'Maximum 100 orders per bulk action' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Maximum 100 orders per bulk action' },
+        { status: 400 },
+      );
     }
 
     const performer = performed_by || 'Staff';
     const performerEmail = performed_by_email || null;
+    const shouldSyncShopifyOnCancel = sync_shopify !== false;
 
-    // Pre-validate action-specific params
+    // Per-action pre-validation
     if (action === 'cancel' && (!reason || !reason.trim())) {
-      return NextResponse.json({ success: false, error: 'Cancel reason required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Cancel reason required' },
+        { status: 400 },
+      );
     }
     if (action === 'status') {
-      if (!status) return NextResponse.json({ success: false, error: 'status required' }, { status: 400 });
-      if (!VALID_STATUSES.includes(status)) return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
+      if (!status) {
+        return NextResponse.json({ success: false, error: 'status required' }, { status: 400 });
+      }
+      if (!VALID_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { success: false, error: `Invalid status: ${status}` },
+          { status: 400 },
+        );
+      }
+      if (BLOCKED_BULK_STATUS.has(status)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Cancel bulk ke liye action="cancel" use karo, status="cancelled" nahi',
+          },
+          { status: 400 },
+        );
+      }
     }
 
-    // For assign, resolve employee name once
+    // Resolve employee name once for assign
     let empName = 'Packing Team';
     if (action === 'assign') {
-      if (!assigned_to) return NextResponse.json({ success: false, error: 'assigned_to required' }, { status: 400 });
+      if (!assigned_to) {
+        return NextResponse.json(
+          { success: false, error: 'assigned_to required' },
+          { status: 400 },
+        );
+      }
       if (assigned_to !== 'packing_team') {
         const numId = parseInt(assigned_to);
-        if (isNaN(numId)) return NextResponse.json({ success: false, error: 'Valid employee id chahiye' }, { status: 400 });
-        const { data: emp } = await supabase.from('employees').select('name').eq('id', numId).single();
+        if (isNaN(numId)) {
+          return NextResponse.json(
+            { success: false, error: 'Valid employee id chahiye' },
+            { status: 400 },
+          );
+        }
+        const { data: emp } = await supabase
+          .from('employees')
+          .select('name')
+          .eq('id', numId)
+          .single();
         if (!emp) return NextResponse.json({ success: false, error: 'Employee nahi mila' }, { status: 404 });
         empName = emp.name;
       }
@@ -230,10 +350,10 @@ export async function POST(request) {
     for (const orderId of order_ids) {
       try {
         let res;
-        if (action === 'confirm')     res = await doConfirm(orderId, notes, performer, performerEmail);
-        else if (action === 'cancel') res = await doCancel(orderId, reason, performer, performerEmail);
-        else if (action === 'status') res = await doStatus(orderId, status, notes, performer, performerEmail);
-        else if (action === 'assign') res = await doAssign(orderId, assigned_to, empName, performer, performerEmail);
+        if (action === 'confirm')      res = await doConfirm(supabase, orderId, notes, performer, performerEmail);
+        else if (action === 'cancel')  res = await doCancel(supabase, orderId, reason, performer, performerEmail, shouldSyncShopifyOnCancel);
+        else if (action === 'status')  res = await doStatus(supabase, orderId, status, notes, performer, performerEmail);
+        else if (action === 'assign')  res = await doAssign(supabase, orderId, assigned_to, empName, performer, performerEmail);
         else res = { success: false, error: 'Unknown action' };
 
         results.push({ order_id: orderId, ...res });
@@ -243,7 +363,7 @@ export async function POST(request) {
     }
 
     const succeeded = results.filter(r => r.success).length;
-    const failed    = results.length - succeeded;
+    const failed = results.length - succeeded;
 
     return NextResponse.json({
       success: true,
@@ -251,6 +371,7 @@ export async function POST(request) {
       results,
     });
   } catch (e) {
+    console.error('[bulk] error:', e.message);
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
