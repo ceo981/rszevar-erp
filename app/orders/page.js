@@ -426,6 +426,11 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
   const [tab, setTab] = useState('actions');
   const [log, setLog] = useState([]);
   const [localStatus, setLocalStatus] = useState(order.status);
+
+  // FIX: keep localStatus in sync with order prop after parent refresh.
+  // Previously useState(order.status) only ran on mount — status shown in drawer
+  // could go stale if parent re-fetched and passed new order prop.
+  useEffect(() => { setLocalStatus(order.status); }, [order.status]);
   const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
   const [showKangarooModal, setShowKangarooModal] = useState(false);
   const [kangarooForm, setKangarooForm] = useState({
@@ -698,16 +703,25 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
     if (!assignedTo) return;
     setLoading(true); setMsg('');
     try {
+      // FIX: explicit action field (was silently failing with "Unknown action")
+      // + performer attribution for audit log
       const r = await fetch('/api/orders/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.id, assigned_to: parseInt(assignedTo) }),
+        body: JSON.stringify({
+          order_id: order.id,
+          action: 'set_packer',
+          assigned_to: parseInt(assignedTo),
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
       });
       const d = await r.json();
       if (d.success) {
         const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
         setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
-        setLocalStatus('on_packing');
+        // Only claim on_packing if backend actually promoted the status
+        if (d.status_promoted) setLocalStatus('on_packing');
         setMsg(`✅ Assigned to ${emp?.name || 'packer'}!`);
         onRefresh();
       } else { setMsg('❌ ' + d.error); }
@@ -1033,7 +1047,11 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
               {/* ══════════════════════════════════════════════ */}
 
               {/* Mark as Packed — Adil/CEO, on_packing status pe */}
-              {canPack && (s === 'on_packing' || s === 'confirmed') && (
+              {/* FIX: Pehle 'confirmed' pe bhi show hota tha, par backend mein  */}
+              {/* canTransition guard confirmed → packed block karta hai.        */}
+              {/* Confirmed pe pehle packer assign karo → status on_packing     */}
+              {/* → phir Mark as Packed.                                         */}
+              {canPack && s === 'on_packing' && (
                 <div style={{ background: card, border: `1px solid #06b6d433`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#06b6d4', marginBottom: 10 }}>📦 Mark as Packed</div>
 
@@ -1061,12 +1079,45 @@ function OrderDrawer({ order, onClose, onRefresh, performer }) {
                 </div>
               )}
 
-              {/* Mark as Dispatched — Adil/CEO, packed status pe */}
+              {/* Dispatch section — Adil/CEO, packed status pe */}
+              {/* FIX: Primary button = Mark as Dispatched (Shopify pe book ho chuka, */}
+              {/* tracking aa chuki orders/fulfilled webhook se). Kangaroo/Leopards    */}
+              {/* secondary — sirf jab Shopify pe book NAHI hua (rare case).           */}
+              {/* Pehle wala issue: secondary modals direct hi dispatch flow the —     */}
+              {/* Shopify-booked orders pe click karne se DOUBLE BOOKING ho jaati.     */}
               {canPack && s === 'packed' && (
-                <button onClick={() => setStatus('dispatched')} disabled={loading}
-                  style={{ background: '#a855f722', border: '1px solid #a855f744', color: '#a855f7', borderRadius: 10, padding: '14px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
-                  🚚 Dispatched — Office se gaya, zimmedari khatam
-                </button>
+                <div style={{ background: card, border: '1px solid #a855f744', borderRadius: 10, padding: '14px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>🚚 Dispatch Order</div>
+
+                  {/* Primary: Shopify pe already book ho chuka, sirf status flip */}
+                  <button onClick={() => setStatus('dispatched')} disabled={loading}
+                    style={{ background: '#a855f722', border: '1px solid #a855f744', color: '#a855f7', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%', marginBottom: 10 }}>
+                    ✅ Mark as Dispatched
+                  </button>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 10, textAlign: 'center', lineHeight: 1.4 }}>
+                    Shopify pe already book ho chuka? Ye click karo.
+                  </div>
+
+                  {/* Secondary: ERP direct booking (Shopify pe book nahi hua) */}
+                  <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
+                    <div style={{ fontSize: 10, color: '#555', marginBottom: 6, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      — OR ERP se directly book —
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setShowKangarooModal(true)} disabled={loading}
+                        style={{ flex: 1, background: '#f59e0b22', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🦘 Kangaroo
+                      </button>
+                      <button onClick={() => setShowLeopardsModal(true)} disabled={loading}
+                        style={{ flex: 1, background: '#e87d4422', border: '1px solid #e87d4444', color: '#e87d44', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🐆 Leopards
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 6, textAlign: 'center', lineHeight: 1.4 }}>
+                      ⚠️ Sirf tab jab Shopify pe book NAHI hua — warna double booking ho jayegi
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* ══════════════════════════════════════════════ */}
@@ -1456,7 +1507,13 @@ function BulkCancelModal({ count, onClose, onConfirm, running }) {
 function BulkStatusModal({ count, onClose, onConfirm, running }) {
   const [newStatus, setNewStatus] = useState('');
   const [notes, setNotes] = useState('');
-  const options = Object.entries(STATUS_CONFIG).map(([val, cfg]) => ({ value: val, label: cfg.label, color: cfg.color }));
+  // FIX: exclude cancelled (use action=cancel instead) and in_transit/processing
+  // (in_transit not in DB enum; processing barely used). 'dispatched' allowed —
+  // legitimate for Shopify-booked orders bulk status flip.
+  const BULK_ALLOWED = ['pending', 'confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'returned', 'rto', 'attempted', 'hold'];
+  const options = BULK_ALLOWED
+    .filter(val => STATUS_CONFIG[val])
+    .map(val => ({ value: val, label: STATUS_CONFIG[val].label, color: STATUS_CONFIG[val].color }));
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 480 }}>
@@ -1634,7 +1691,7 @@ export default function OrdersPage() {
   const [hasMore, setHasMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
+  // FIX: cleaning state + button removed — /api/orders/cleanup endpoint doesn't exist (404)
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const PER_PAGE = 50;
@@ -1667,6 +1724,15 @@ export default function OrdersPage() {
   }, [page, search, filter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // FIX: keep the currently-open drawer order in sync with the latest `orders`
+  // data after a refresh. Previously `onRefresh` was using closure-stale orders,
+  // so the drawer showed pre-action data (old status, old items) after a refresh.
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = orders.find(o => o.id === selected.id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+  }, [orders, selected]);
 
   // Background auto-sync — page load pe silently Leopards + Kangaroo dono sync
   useEffect(() => {
@@ -1838,29 +1904,15 @@ export default function OrdersPage() {
     }
   };
 
-  const cleanUndefinedOrders = async () => {
-    if (!window.confirm('Sab #undefined orders delete ho jayein gi. Confirm?')) return;
-    setCleaning(true);
-    try {
-      const r = await fetch('/api/orders/cleanup', { method: 'POST' });
-      const d = await r.json();
-      if (d.success) {
-        showMsg('success', d.message);
-        await load();
-      } else {
-        showMsg('error', `✗ ${d.error}`);
-      }
-    } catch (e) { showMsg('error', `✗ ${e.message}`); }
-    setCleaning(false);
-  };
+  const cleanUndefinedOrders = null; // removed — endpoint /api/orders/cleanup doesn't exist
 
   const c = stats || {};
-  const anySyncing = syncing || cleaning;
+  const anySyncing = syncing;
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
       {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
-      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => { load(); setSelected(prev => orders.find(o => o.id === prev?.id) || prev); }} performer={performer} />}
+      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => load()} performer={performer} />}
 
       {/* Bulk action modals */}
       {bulkModal === 'cancel' && (
@@ -2038,29 +2090,7 @@ export default function OrdersPage() {
           {syncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>⟱ Sync from Shopify</>)}
         </button>
 
-        <button
-          onClick={cleanUndefinedOrders}
-          disabled={anySyncing}
-          style={{
-            background: cleaning ? '#1a1a1a' : 'transparent',
-            border: `1px solid ${cleaning ? border : '#ef4444'}`,
-            color: cleaning ? '#888' : '#ef4444',
-            borderRadius: 8,
-            padding: '9px 14px',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: anySyncing ? 'not-allowed' : 'pointer',
-            opacity: (anySyncing && !cleaning) ? 0.5 : 1,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            fontFamily: 'inherit',
-          }}
-          title="Delete karo sab #undefined / ghost orders"
-        >
-          {cleaning ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Cleaning…</>) : (<>🗑️ Clean</>)}
-        </button>
-
+        {/* FIX: Clean button removed — /api/orders/cleanup endpoint doesn't exist */}
 
         <style jsx>{`
           @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
