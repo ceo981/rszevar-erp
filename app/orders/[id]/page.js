@@ -471,8 +471,8 @@ export default function SingleOrderPage() {
                 </HeaderBtn>
               )}
 
-              {/* Edit — opens OrderDrawer (same as old Quick Actions) */}
-              <HeaderBtn onClick={() => setShowDrawer(true)} title="Edit order details / dispatch / book courier">
+              {/* Edit — goes to Shopify-style line items edit page */}
+              <HeaderBtn onClick={() => router.push(`/orders/${id}/edit`)} title="Edit order line items (add/remove/qty/discount/shipping)">
                 ✏️ Edit
               </HeaderBtn>
 
@@ -730,7 +730,7 @@ export default function SingleOrderPage() {
                   <button
                     onClick={() => { setShowDrawer(true); }}
                     style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    ✏️ Edit order
+                    ✏️ Edit customer info
                   </button>
                   <div style={{ position: 'relative' }}>
                     <button
