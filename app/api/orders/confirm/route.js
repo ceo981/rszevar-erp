@@ -1,69 +1,92 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================================================
+// RS ZEVAR ERP — Order Confirm Route  (FIXED Apr 2026)
+// ----------------------------------------------------------------------------
+// Changes:
+//   1. Uses canTransition() guard instead of hardcoded confirmable list — keeps
+//      rules in one place (lib/order-status.js)
+//   2. Preserves existing confirmed_at on re-confirmation (doesn't stomp history)
+//   3. Added performer attribution to any Shopify note for audit trail
+//   4. Returns from_status in response for UI optimism
+// ============================================================================
+
 import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase';
+import { canTransition } from '@/lib/order-status';
 import { updateShopifyOrderTags, addShopifyOrderNote } from '@/lib/shopify';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
+  const supabase = createServerClient();
   try {
     const { order_id, notes, performed_by, performed_by_email } = await request.json();
-    if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+    if (!order_id) {
+      return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+    }
 
     const performer = performed_by || 'Staff';
 
-    // Get order info
-    const { data: order } = await supabase
+    const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('shopify_order_id, status')
+      .select('id, shopify_order_id, status, confirmed_at')
       .eq('id', order_id)
       .single();
 
-    if (!order) return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
-
-    // Only confirm if pending/processing
-    const confirmable = ['pending', 'processing', 'attempted', 'hold'];
-    if (!confirmable.includes(order.status)) {
-      return NextResponse.json({ success: false, error: `Order status '${order.status}' confirm nahi ho sakta` }, { status: 400 });
+    if (fetchErr || !order) {
+      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    // Update order status to confirmed — simple, no assignment
-    const { error } = await supabase
+    // Central transition guard — allows pending/processing/attempted/hold → confirmed,
+    // blocks illegal jumps like delivered → confirmed
+    const gate = canTransition(order.status, 'confirmed', 'manual');
+    if (!gate.allowed) {
+      return NextResponse.json(
+        { success: false, error: `Confirm nahi ho sakta: '${order.status}' se (${gate.reason})` },
+        { status: 400 },
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+    const patch = {
+      status: 'confirmed',
+      confirmation_notes: notes || '',
+      updated_at: nowIso,
+    };
+    // Preserve confirmed_at if already set (re-confirmation after hold/attempted)
+    if (!order.confirmed_at) patch.confirmed_at = nowIso;
+
+    const { error: updateErr } = await supabase
       .from('orders')
-      .update({
-        status: 'confirmed',
-        confirmed_at: new Date().toISOString(),
-        confirmation_notes: notes || '',
-        updated_at: new Date().toISOString(),
-      })
+      .update(patch)
       .eq('id', order_id);
 
-    if (error) throw error;
+    if (updateErr) throw updateErr;
 
-    // Shopify: add order_confirmed tag + note
+    // Shopify sync — best-effort, never blocks
     if (order.shopify_order_id) {
       try {
         await updateShopifyOrderTags(order.shopify_order_id, ['order_confirmed'], []);
-        if (notes) await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
+        if (notes) {
+          await addShopifyOrderNote(order.shopify_order_id, `ERP Confirmed by ${performer}: ${notes}`);
+        }
       } catch (e) {
-        console.error('[confirm] Shopify tag error:', e.message);
+        console.error('[confirm] Shopify tag/note error:', e.message);
       }
     }
 
-    // Activity log
     await supabase.from('order_activity_log').insert({
       order_id,
       action: 'confirmed',
       notes: notes || '',
       performed_by: performer,
       performed_by_email: performed_by_email || null,
-      performed_at: new Date().toISOString(),
+      performed_at: nowIso,
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, from_status: order.status });
   } catch (e) {
+    console.error('[confirm] error:', e.message);
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
