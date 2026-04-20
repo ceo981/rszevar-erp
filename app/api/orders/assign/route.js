@@ -1,19 +1,34 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================================================
+// RS ZEVAR ERP — Order Assign Route  (FIXED Apr 2026)
+// ----------------------------------------------------------------------------
+// Changes:
+//   1. Default action fallback — if caller omits `action` but sends `assigned_to`,
+//      treat as `set_packer`. This fixes the drawer "Assign Packer" button which
+//      was silently failing with "Unknown action".
+//   2. set_packer now promotes status 'confirmed' → 'on_packing' (was leaving it
+//      at confirmed, causing UI flicker after optimistic updates)
+//   3. packed action guards with canTransition (must be on_packing to go packed)
+//   4. Upsert no longer resets created_at on update (preserves history)
+//   5. Unassign reverts on_packing → confirmed via canTransition guard
+// ============================================================================
+
 import { NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase';
+import { canTransition } from '@/lib/order-status';
+import { updateShopifyOrderTags } from '@/lib/shopify';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// GET — packing staff list + current assignment
+// ─── GET — packing staff list OR current assignment for order ─────────────
 export async function GET(request) {
+  const supabase = createServerClient();
   try {
     const { searchParams } = new URL(request.url);
     const order_id = searchParams.get('order_id');
 
     if (order_id) {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('order_assignments')
         .select('*, employee:assigned_to(id, name, role)')
         .eq('order_id', order_id)
@@ -23,7 +38,6 @@ export async function GET(request) {
       return NextResponse.json({ success: true, assignment: data || null });
     }
 
-    // Packing team employees
     const { data: employees } = await supabase
       .from('employees')
       .select('id, name, role, designation')
@@ -38,11 +52,31 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  const supabase = createServerClient();
   try {
     const body = await request.json();
-    const { order_id, action, performed_by, performed_by_email } = body;
+    const {
+      order_id,
+      assigned_to,
+      performed_by,
+      performed_by_email,
+    } = body;
+
+    // Default action resolution — if caller forgot `action` but included
+    // `assigned_to`, they meant set_packer. This preserves old drawer call sites.
+    const action = body.action || (assigned_to != null ? 'set_packer' : null);
     const performer = performed_by || 'Staff';
     const performerEmail = performed_by_email || null;
+
+    if (!order_id) {
+      return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+    }
+    if (!action) {
+      return NextResponse.json(
+        { success: false, error: 'action ya assigned_to required (unassign | set_packer | packed)' },
+        { status: 400 },
+      );
+    }
 
     // ── Unassign ──────────────────────────────────────────────
     if (action === 'unassign') {
@@ -59,19 +93,24 @@ export async function POST(request) {
           ? ord.tags.filter(t => !String(t).toLowerCase().startsWith('packing:'))
           : [];
         const updatePayload = { tags: cleanedTags, updated_at: new Date().toISOString() };
-        if (ord.status === 'on_packing') updatePayload.status = 'confirmed';
+
+        // Only revert status if currently on_packing — use canTransition as safety
+        if (ord.status === 'on_packing') {
+          const gate = canTransition('on_packing', 'confirmed', 'manual');
+          if (gate.allowed) updatePayload.status = 'confirmed';
+        }
         await supabase.from('orders').update(updatePayload).eq('id', order_id);
 
+        // Strip packing:* tag from Shopify too
         if (ord.shopify_order_id) {
-          try {
-            const { updateShopifyOrderTags } = await import('@/lib/shopify');
-            const packingTags = Array.isArray(ord.tags)
-              ? ord.tags.filter(t => String(t).toLowerCase().startsWith('packing:'))
-              : [];
-            if (packingTags.length > 0) {
+          const packingTags = Array.isArray(ord.tags)
+            ? ord.tags.filter(t => String(t).toLowerCase().startsWith('packing:'))
+            : [];
+          if (packingTags.length > 0) {
+            try {
               await updateShopifyOrderTags(ord.shopify_order_id, [], packingTags);
-            }
-          } catch (e) { console.error('[unassign] Shopify:', e.message); }
+            } catch (e) { console.error('[unassign] Shopify:', e.message); }
+          }
         }
       }
 
@@ -87,13 +126,8 @@ export async function POST(request) {
       return NextResponse.json({ success: true });
     }
 
-    // ── Set Packer (from mobile packing screen) ───────────────
-    // Packing staff khud apna naam dalte hain
+    // ── Set Packer ─────────────────────────────────────────────
     if (action === 'set_packer') {
-      const { assigned_to } = body; // employee id (number) OR 'packing_team' (string)
-      if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
-
-      // Get order
       const { data: ord } = await supabase
         .from('orders')
         .select('id, order_number, status')
@@ -102,7 +136,10 @@ export async function POST(request) {
 
       if (!ord) return NextResponse.json({ success: false, error: 'Order nahi mila' }, { status: 404 });
       if (!['on_packing', 'confirmed'].includes(ord.status)) {
-        return NextResponse.json({ success: false, error: `Order status '${ord.status}' pe packer set nahi ho sakta` }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: `Order status '${ord.status}' pe packer set nahi ho sakta` },
+          { status: 400 },
+        );
       }
 
       let empName = 'Packing Team';
@@ -113,39 +150,98 @@ export async function POST(request) {
         empId = null;
       } else {
         const numId = parseInt(assigned_to);
-        if (isNaN(numId)) return NextResponse.json({ success: false, error: 'Valid employee select karo' }, { status: 400 });
-        const { data: emp } = await supabase.from('employees').select('name').eq('id', numId).single();
+        if (isNaN(numId)) {
+          return NextResponse.json(
+            { success: false, error: 'Valid employee select karo' },
+            { status: 400 },
+          );
+        }
+        const { data: emp } = await supabase
+          .from('employees')
+          .select('name')
+          .eq('id', numId)
+          .single();
         if (!emp) return NextResponse.json({ success: false, error: 'Employee nahi mila' }, { status: 404 });
         empName = emp.name;
         empId = numId;
       }
 
-      // Upsert assignment
-      await supabase.from('order_assignments').upsert({
+      // Check if an assignment already exists — to preserve created_at on update
+      const { data: existingAssign } = await supabase
+        .from('order_assignments')
+        .select('id, created_at')
+        .eq('order_id', order_id)
+        .maybeSingle();
+
+      const nowIso = new Date().toISOString();
+      const assignPayload = {
         order_id,
         assigned_to: empId,
         stage: 'packing',
         status: 'pending',
         notes: assigned_to === 'packing_team' ? 'packing_team' : '',
-        assigned_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      }, { onConflict: 'order_id', ignoreDuplicates: false });
+        assigned_at: nowIso,
+        // Only set created_at for NEW rows; preserve on update
+        created_at: existingAssign?.created_at || nowIso,
+      };
+
+      await supabase.from('order_assignments').upsert(assignPayload, {
+        onConflict: 'order_id',
+        ignoreDuplicates: false,
+      });
+
+      // ── Promote confirmed → on_packing (was missing before) ──
+      let statusPromoted = false;
+      if (ord.status === 'confirmed') {
+        const gate = canTransition('confirmed', 'on_packing', 'manual');
+        if (gate.allowed) {
+          await supabase
+            .from('orders')
+            .update({ status: 'on_packing', updated_at: nowIso })
+            .eq('id', order_id);
+          statusPromoted = true;
+        }
+      }
 
       await supabase.from('order_activity_log').insert({
         order_id,
         action: 'packer_set',
-        notes: `Packed by: ${empName}`,
+        notes: statusPromoted
+          ? `Packed by: ${empName} (status → on_packing)`
+          : `Packed by: ${empName}`,
         performed_by: performer,
         performed_by_email: performerEmail,
-        performed_at: new Date().toISOString(),
+        performed_at: nowIso,
       });
 
-      return NextResponse.json({ success: true, packed_by: empName });
+      return NextResponse.json({
+        success: true,
+        packed_by: empName,
+        status_promoted: statusPromoted,
+      });
     }
 
-    // ── Mark as Packed (dispatcher karta hai) ─────────────────
+    // ── Mark as Packed (Dispatcher) ────────────────────────────
     if (action === 'packed') {
-      if (!order_id) return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+      const { data: ord } = await supabase
+        .from('orders')
+        .select('id, status')
+        .eq('id', order_id)
+        .single();
+
+      if (!ord) return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+
+      // Central guard — on_packing → packed allowed, others blocked
+      const gate = canTransition(ord.status, 'packed', 'manual');
+      if (!gate.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Mark Packed blocked: order status '${ord.status}' se packed nahi ho sakta (${gate.reason})`,
+          },
+          { status: 400 },
+        );
+      }
 
       // Check packed_by exists
       const { data: assignment } = await supabase
@@ -166,40 +262,41 @@ export async function POST(request) {
 
       const isPackingTeam = assignment.notes === 'packing_team' || !assignment.assigned_to;
 
-      // ── Get order items: quantity + total_price (for leaderboard amount priority) ──
+      // Compute leaderboard credits
       const { data: orderItems } = await supabase
         .from('order_items')
         .select('quantity, total_price, unit_price')
         .eq('order_id', order_id);
 
-      let totalItems = (orderItems || []).reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+      let totalItems = (orderItems || []).reduce(
+        (s, i) => s + (parseInt(i.quantity) || 1),
+        0,
+      );
       if (totalItems === 0) totalItems = 1;
 
-      // Sum total_price — fallback to unit_price × quantity if total_price missing
       let totalAmount = (orderItems || []).reduce((s, i) => {
         const tp = parseFloat(i.total_price);
         if (!isNaN(tp) && tp > 0) return s + tp;
         const up = parseFloat(i.unit_price) || 0;
         const qty = parseInt(i.quantity) || 1;
-        return s + (up * qty);
+        return s + up * qty;
       }, 0);
-      totalAmount = Math.round(totalAmount * 100) / 100; // 2 decimals
+      totalAmount = Math.round(totalAmount * 100) / 100;
 
-      // Update order status → packed
+      const nowIso = new Date().toISOString();
+
       await supabase
         .from('orders')
-        .update({ status: 'packed', updated_at: new Date().toISOString() })
+        .update({ status: 'packed', updated_at: nowIso })
         .eq('id', order_id);
 
-      // Mark assignment as packed
       await supabase
         .from('order_assignments')
-        .update({ status: 'packed', completed_at: new Date().toISOString() })
+        .update({ status: 'packed', completed_at: nowIso })
         .eq('id', assignment.id);
 
-      // ── Leaderboard: packing_log entries (items + amount dono) ──
+      // ── Leaderboard entries ──
       if (isPackingTeam) {
-        // Get all active packing team members
         const { data: team } = await supabase
           .from('employees')
           .select('id, name')
@@ -207,20 +304,15 @@ export async function POST(request) {
           .eq('role', 'Packing Team');
 
         const teamCount = (team || []).length || 1;
-        // ITEMS = participation count (not share). Full credit to every team
-        // member who helped pack. Rounding/dividing items causes small orders
-        // (1-3 items) to credit 0 per person when team is large (e.g. 7).
-        // AMOUNT = bonus share, correctly divided by team size.
-        const itemsPerPerson  = totalItems;
+        const itemsPerPerson = totalItems; // full credit per member
         const amountPerPerson = Math.round((totalAmount / teamCount) * 100) / 100;
 
-        // Create one packing_log entry per team member
         const logs = (team || []).map(emp => ({
           order_id,
           employee_id: emp.id,
           items_packed: itemsPerPerson,
           items_amount: amountPerPerson,
-          completed_at: new Date().toISOString(),
+          completed_at: nowIso,
           notes: 'Packing Team (shared)',
         }));
 
@@ -228,18 +320,16 @@ export async function POST(request) {
           await supabase.from('packing_log').insert(logs);
         }
       } else {
-        // Individual packer — full credit
         await supabase.from('packing_log').insert({
           order_id,
           employee_id: assignment.assigned_to,
           items_packed: totalItems,
           items_amount: totalAmount,
-          completed_at: new Date().toISOString(),
+          completed_at: nowIso,
           notes: '',
         });
       }
 
-      // Activity log
       const { data: empData } = assignment.assigned_to
         ? await supabase.from('employees').select('name').eq('id', assignment.assigned_to).single()
         : { data: null };
@@ -250,7 +340,7 @@ export async function POST(request) {
         notes: `Packed — ${totalItems} items (Rs. ${totalAmount.toLocaleString()}) by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'}`,
         performed_by: performer,
         performed_by_email: performerEmail,
-        performed_at: new Date().toISOString(),
+        performed_at: nowIso,
       });
 
       return NextResponse.json({
@@ -261,8 +351,12 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({ success: false, error: 'Unknown action' });
+    return NextResponse.json(
+      { success: false, error: `Unknown action: '${action}'` },
+      { status: 400 },
+    );
   } catch (e) {
+    console.error('[assign] error:', e.message);
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
