@@ -150,12 +150,14 @@ async function doCancel(supabase, orderId, reason, performer, performerEmail, sy
 }
 
 async function doStatus(supabase, orderId, newStatus, notes, performer, performerEmail) {
-  const { data: order } = await supabase
+  // Fetch minimal fields — skip optional timestamp columns that may not exist
+  const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, order_number, status, payment_status, payment_method, delivered_at, rto_at, confirmed_at, dispatched_at')
+    .select('id, order_number, status, payment_status, payment_method, confirmed_at')
     .eq('id', orderId)
     .single();
 
+  if (fetchErr) return { success: false, error: `DB error: ${fetchErr.message}` };
   if (!order) return { success: false, error: 'Order nahi mila' };
   if (order.status === newStatus) return { success: false, error: `Pehle se '${newStatus}' hai` };
 
@@ -168,18 +170,35 @@ async function doStatus(supabase, orderId, newStatus, notes, performer, performe
   const patch = { status: newStatus, updated_at: nowIso };
 
   if (newStatus === 'confirmed' && !order.confirmed_at) patch.confirmed_at = nowIso;
-  if (newStatus === 'dispatched' && !order.dispatched_at) patch.dispatched_at = nowIso;
+  if (newStatus === 'dispatched') patch.dispatched_at = nowIso;
   if (newStatus === 'delivered') {
-    if (!order.delivered_at) patch.delivered_at = nowIso;
+    patch.delivered_at = nowIso;
     if (order.payment_method === 'COD' && order.payment_status === 'unpaid') {
       patch.payment_status = 'paid';
       patch.paid_at = nowIso;
     }
   }
-  if (newStatus === 'rto' && !order.rto_at) patch.rto_at = nowIso;
+  if (newStatus === 'rto') patch.rto_at = nowIso;
 
-  const { error } = await supabase.from('orders').update(patch).eq('id', orderId);
-  if (error) return { success: false, error: error.message };
+  // Resilient UPDATE — strip missing optional columns if schema lacks them
+  const OPTIONAL_COLS = ['delivered_at', 'rto_at', 'paid_at'];
+  let updateErr = null;
+  let attempt = 0;
+  while (attempt < 3) {
+    const { error } = await supabase.from('orders').update(patch).eq('id', orderId);
+    if (!error) { updateErr = null; break; }
+    updateErr = error;
+    const missingCol = OPTIONAL_COLS.find(col =>
+      String(error.message || '').toLowerCase().includes(col),
+    );
+    if (missingCol && patch[missingCol] !== undefined) {
+      delete patch[missingCol];
+      attempt++;
+      continue;
+    }
+    break;
+  }
+  if (updateErr) return { success: false, error: updateErr.message };
 
   await supabase.from('order_activity_log').insert({
     order_id: orderId,
