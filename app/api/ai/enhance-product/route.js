@@ -1,34 +1,16 @@
-// =====================================================================
-// RS ZEVAR ERP — AI Enhance: Generate Product Content
-// File: app/api/ai/enhance-product/route.js
-//
-// POST body:
-//   {
-//     shopify_product_id: "12345",
-//     product_title: "Antique Turkish Gemstone Necklace Set",
-//     input_facts: "kundan work, bridal, green enamel, ~180g",
-//     input_occasions: ["bridal", "mehndi"],
-//     input_customers: ["young_bride"],
-//     input_keywords: "green kundan choker",
-//     input_tone: "luxurious",
-//     input_language_mix: "mixed"
-//   }
-//
-// Returns:
-//   { success, enhancement_id, generated: {...9 sections}, usage, duration_ms }
-// =====================================================================
-
 import { NextResponse } from 'next/server';
-import { createServerClient } from '../../../../lib/supabase';
+import { createServerClient } from '@/lib/supabase';
 import Anthropic from '@anthropic-ai/sdk';
 
+// RS ZEVAR ERP — AI Enhance: Generate product description + SEO via Claude
+// POST: generates 9-section output, saves to ai_enhancements table.
+
 export const runtime = 'nodejs';
-export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const MODEL = process.env.AI_MODEL || 'claude-sonnet-4-6';
 
-// Pricing per 1M tokens (approximate, April 2026) — used to track cost
 const PRICING = {
   'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
   'claude-opus-4-7':   { input: 15.00, output: 75.00 },
@@ -36,9 +18,6 @@ const PRICING = {
   'claude-haiku-4-5-20251001': { input: 0.80, output: 4.00 },
 };
 
-// =====================================================================
-// THE SYSTEM PROMPT — RS ZEVAR's brand voice encoded
-// =====================================================================
 const SYSTEM_PROMPT = `You are a senior SEO copywriter for RS ZEVAR, a Karachi-based premium artificial jewelry brand. You write product content for their Shopify store (rszevar.com) targeting Pakistani women.
 
 ═══ BRAND VOICE ═══
@@ -154,9 +133,6 @@ SEO_SCORE (0-100):
 
 Your output must be valid parseable JSON. No markdown code fences. No preamble. No trailing commentary. Just the JSON object.`;
 
-// =====================================================================
-// Build the user message from product context + user inputs
-// =====================================================================
 function buildUserPrompt({
   product_title,
   current_description,
@@ -203,14 +179,10 @@ Generate the full JSON output with all 9 sections as defined in your system inst
 Return ONLY the JSON object. No preamble, no code fences.`;
 }
 
-// =====================================================================
-// POST handler
-// =====================================================================
 export async function POST(request) {
   const startTime = Date.now();
 
   try {
-    // API key check
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({
         success: false,
@@ -243,7 +215,6 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // ─── Call Claude ───
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const userPrompt = buildUserPrompt({
@@ -260,11 +231,9 @@ export async function POST(request) {
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    // ─── Extract text and parse JSON ───
     const textBlock = response.content.find(b => b.type === 'text');
     const rawText = textBlock?.text || '';
 
-    // Strip any accidental code fences
     const cleaned = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/, '')
@@ -284,7 +253,6 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
-    // Validate required keys
     const requiredKeys = [
       'title_suggestions', 'description_html', 'meta_title',
       'meta_description', 'url_handle', 'alt_texts', 'tags', 'faqs',
@@ -298,13 +266,11 @@ export async function POST(request) {
       }, { status: 500 });
     }
 
-    // ─── Compute cost ───
     const pricing = PRICING[MODEL] || PRICING['claude-sonnet-4-6'];
     const inputTokens = response.usage?.input_tokens || 0;
     const outputTokens = response.usage?.output_tokens || 0;
-    const costUsd = ((inputTokens * pricing.input) + (outputTokens * pricing.output)) / 1_000_000;
+    const costUsd = ((inputTokens * pricing.input) + (outputTokens * pricing.output)) / 1000000;
 
-    // ─── Save to DB ───
     const supabase = createServerClient();
     const { data: saved, error: dbErr } = await supabase
       .from('ai_enhancements')
@@ -330,7 +296,6 @@ export async function POST(request) {
 
     if (dbErr) {
       console.error('[ai-enhance] DB save error:', dbErr);
-      // Still return the generation — don't lose Claude's work
       return NextResponse.json({
         success: true,
         warning: 'Generation succeeded but DB save failed: ' + dbErr.message,
