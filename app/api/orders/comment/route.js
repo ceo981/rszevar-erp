@@ -2,10 +2,16 @@
 // RS ZEVAR ERP — Staff Comments on Orders
 // POST /api/orders/comment  { order_id, comment, staff_name }
 // GET  /api/orders/comment?order_id=XXX  → all activity + comments
+// ----------------------------------------------------------------------------
+// Change (Apr 20 2026): ERP staff comment ab Shopify ke order note field mein
+// bhi append hota hai — same pattern jaisa cancel/edit routes use karti hain.
+// Format: [ERP Comment by {staff_name}]: {comment}
+// Shopify call failure ERP save ko block nahi karegi (graceful degradation).
 // ============================================================================
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { addShopifyOrderNote } from '@/lib/shopify';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -19,18 +25,47 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'order_id aur comment zaroori hai' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('order_activity_log').insert({
+    const trimmed = comment.trim();
+    const performer = staff_name || staff_email || 'Staff';
+
+    // 1. ERP save — ye pehle kara jaaye, Shopify fail bhi ho to ERP comment save ho
+    const { error: dbErr } = await supabase.from('order_activity_log').insert({
       order_id,
       action: 'staff_comment',
-      notes: comment.trim(),
-      performed_by: staff_name || staff_email || 'Staff',
+      notes: trimmed,
+      performed_by: performer,
       performed_by_email: staff_email || null,
       performed_at: new Date().toISOString(),
     });
+    if (dbErr) throw dbErr;
 
-    if (error) throw error;
+    // 2. Shopify sync — best effort, failure ERP ko nahi rokegi
+    let shopifyError = null;
+    let shopifySynced = false;
+    try {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('shopify_order_id')
+        .eq('id', order_id)
+        .single();
 
-    return NextResponse.json({ success: true });
+      if (order?.shopify_order_id) {
+        await addShopifyOrderNote(
+          order.shopify_order_id,
+          `[ERP Comment by ${performer}]: ${trimmed}`,
+        );
+        shopifySynced = true;
+      }
+    } catch (e) {
+      shopifyError = e.message;
+      console.error('[comment] Shopify sync error:', e.message);
+    }
+
+    return NextResponse.json({
+      success: true,
+      shopify_synced: shopifySynced,
+      warning: shopifyError,
+    });
   } catch (e) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
