@@ -17,6 +17,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { canTransition, VALID_STATUSES } from '@/lib/order-status';
+import { markShopifyOrderAsPaid } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,7 +68,7 @@ export async function POST(request) {
     // which may not exist in schema. We'll just always write them fresh.
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('status, payment_status, payment_method, confirmed_at')
+      .select('status, payment_status, payment_method, confirmed_at, shopify_order_id, order_number')
       .eq('id', order_id)
       .single();
 
@@ -144,6 +145,20 @@ export async function POST(request) {
     }
     if (updateErr) throw updateErr;
 
+    // Phase 2 (Apr 20 2026): if auto-paid happened (COD delivered flow), also
+    // mark Shopify order as paid. Best-effort: failure doesn't roll back ERP.
+    let shopifyPaidSynced = false;
+    let shopifyPaidError = null;
+    if (patch.payment_status === 'paid' && order.shopify_order_id) {
+      try {
+        await markShopifyOrderAsPaid(order.shopify_order_id);
+        shopifyPaidSynced = true;
+      } catch (e) {
+        shopifyPaidError = e.message;
+        console.error('[status] Shopify mark-as-paid sync error:', e.message);
+      }
+    }
+
     // Activity log — always attribute performer
     await supabase.from('order_activity_log').insert({
       order_id,
@@ -153,6 +168,24 @@ export async function POST(request) {
       performed_by_email: performed_by_email || null,
       performed_at: nowIso,
     });
+
+    // Additional log entry for the auto-paid side-effect — makes the Shopify
+    // sync visible in timeline, same as manual /mark-paid route does.
+    if (patch.payment_status === 'paid') {
+      await supabase.from('order_activity_log').insert({
+        order_id,
+        action: 'payment_marked_paid',
+        notes: [
+          'Auto-paid on delivery (COD)',
+          order.shopify_order_id
+            ? (shopifyPaidSynced ? '(Shopify synced ✓)' : `(Shopify sync failed: ${shopifyPaidError || 'unknown'})`)
+            : '(no Shopify order — ERP only)',
+        ].filter(Boolean).join(' '),
+        performed_by: performed_by || 'System (auto)',
+        performed_by_email: performed_by_email || null,
+        performed_at: nowIso,
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -164,6 +197,8 @@ export async function POST(request) {
         dispatched_at_set: !!patch.dispatched_at,
         rto_at_set: !!patch.rto_at,
         confirmed_at_set: !!patch.confirmed_at,
+        shopify_paid_synced: shopifyPaidSynced,
+        shopify_paid_error: shopifyPaidError,
       },
     });
   } catch (e) {
