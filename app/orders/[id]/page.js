@@ -172,6 +172,9 @@ export default function SingleOrderPage() {
   // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
   const [openMenu, setOpenMenu] = useState(null);
 
+  // Phase 2 NEW: confirmation box state for Mark as Paid (irreversible-ish, needs confirmation)
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+
   // ─── Data fetchers ──────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
     if (!id) return;
@@ -270,6 +273,37 @@ export default function SingleOrderPage() {
   const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
   const markPacked   = () => doAction('/api/orders/status', { order_id: id, status: 'packed' }, '✓ Marked as Packed');
   const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
+
+  // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
+  const markAsPaid = async () => {
+    setShowPaidConfirm(false);
+    setOpenMenu(null);
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/mark-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: id, performed_by: performer, performed_by_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        const msgText = d.shopify_synced
+          ? (d.shopify_already_paid
+            ? '✓ Paid (Shopify already paid)'
+            : '✓ Paid — Shopify synced')
+          : (d.warning
+            ? `⚠ Paid in ERP — Shopify sync failed: ${d.warning}`
+            : '✓ Paid');
+        flash(d.shopify_synced || !d.warning ? 'success' : 'info', msgText, 6000);
+        await refreshAll();
+      } else {
+        flash('error', d.error || 'Mark as paid failed');
+      }
+    } catch (e) {
+      flash('error', e.message);
+    }
+    setActionBusy(false);
+  };
 
   const cancelOrder = async () => {
     if (!cancelReason.trim()) { flash('error', 'Reason zaroori hai'); return; }
@@ -814,10 +848,35 @@ export default function SingleOrderPage() {
                           boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                         }}
                       >
-                        <MenuItem icon="✓" label="Mark as paid" sub="Phase 2 mein Shopify sync"
-                          onClick={() => comingSoon('Mark as paid', 2)} />
+                        <MenuItem icon="✓" label="Mark as paid" sub="ERP + Shopify dono sync honge"
+                          onClick={() => { setOpenMenu(null); setShowPaidConfirm(true); }} />
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Phase 2: Mark as Paid confirmation box */}
+              {showPaidConfirm && !isPaid && !isCancelled && (
+                <div style={{ marginTop: 14, padding: 14, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: '#4ade80', marginBottom: 6, fontWeight: 600 }}>
+                    ✓ Confirm: Mark as Paid
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
+                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> paid mark ho jaayega.
+                    {order.shopify_order_id
+                      ? ' Shopify pe bhi "Paid" dikhane lagega.'
+                      : ' (Manual order — sirf ERP mein mark hoga)'}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setShowPaidConfirm(false)}
+                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancel
+                    </button>
+                    <button onClick={markAsPaid} disabled={actionBusy}
+                      style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      {actionBusy ? 'Marking…' : '✓ Yes, mark as paid'}
+                    </button>
                   </div>
                 </div>
               )}
