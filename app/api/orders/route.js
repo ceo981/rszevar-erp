@@ -19,13 +19,33 @@ export async function GET(request) {
       const order_id = searchParams.get('order_id');
       if (!order_id) return NextResponse.json({ items: [] });
 
-      const { data: items } = await supabase
+      // Try order_items table first
+      const { data: dbItems } = await supabase
         .from('order_items')
         .select('title, sku, quantity, unit_price, total_price, image_url')
         .eq('order_id', order_id)
         .order('id');
 
-      const rows = items || [];
+      let rows = dbItems || [];
+
+      // Fallback: shopify_raw.line_items for old orders where order_items
+      // was never backfilled. Needed so drawer/single-page can show images.
+      if (rows.length === 0) {
+        const { data: orderRow } = await supabase
+          .from('orders')
+          .select('shopify_raw')
+          .eq('id', order_id)
+          .maybeSingle();
+        const rawItems = orderRow?.shopify_raw?.line_items || [];
+        rows = rawItems.map(it => ({
+          title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+          sku: it.sku || null,
+          quantity: it.quantity,
+          unit_price: parseFloat(it.price) || 0,
+          total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
+          image_url: it.image?.src || null,
+        }));
+      }
 
       // Enrich: items jinka image_url null ho, products table se SKU match karke image lao
       const missingSkus = [...new Set(rows.filter(i => !i.image_url && i.sku).map(i => i.sku))];
@@ -42,11 +62,14 @@ export async function GET(request) {
         }
 
         // Apply enrichment + save back to DB (so future loads are instant)
+        // Only persist if the item came from order_items (has a DB row), not
+        // from shopify_raw fallback (no row to update).
+        const cameFromDb = (dbItems || []).length > 0;
         const updates = [];
         for (const item of rows) {
           if (!item.image_url && item.sku && skuMap[item.sku]) {
             item.image_url = skuMap[item.sku];
-            updates.push({ sku: item.sku, image_url: skuMap[item.sku] });
+            if (cameFromDb) updates.push({ sku: item.sku, image_url: skuMap[item.sku] });
           }
         }
 
