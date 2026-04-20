@@ -44,8 +44,23 @@ export async function GET(request, { params }) {
       );
     }
 
-    // ── Image enrichment for items with null image_url (SKU → products) ──
-    const items = order.order_items || [];
+    // ── Resolve items: prefer order_items table, fallback to shopify_raw ──
+    let items = [];
+    if (order.order_items && order.order_items.length > 0) {
+      items = order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+    } else if (order.shopify_raw?.line_items) {
+      // Old orders where order_items was never backfilled
+      items = order.shopify_raw.line_items.map(it => ({
+        title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+        sku: it.sku || null,
+        quantity: it.quantity,
+        unit_price: parseFloat(it.price) || 0,
+        total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
+        image_url: it.image?.src || null,
+      }));
+    }
+
+    // ── SKU → image enrichment from products table (applies to both paths) ──
     const missingSkus = [...new Set(items.filter(i => !i.image_url && i.sku).map(i => i.sku))];
     if (missingSkus.length > 0) {
       const { data: prods } = await supabase
@@ -58,14 +73,15 @@ export async function GET(request, { params }) {
       for (const p of prods || []) {
         if (p.sku && p.image_url && !skuMap[p.sku]) skuMap[p.sku] = p.image_url;
       }
-
-      // Apply enrichment in-memory
       for (const item of items) {
         if (!item.image_url && item.sku && skuMap[item.sku]) {
           item.image_url = skuMap[item.sku];
         }
       }
     }
+
+    // Replace order.order_items with resolved+enriched list (page just reads this)
+    order.order_items = items;
 
     // ── Fetch latest assignment (for assigned_to_name) ──
     const { data: assignments } = await supabase
