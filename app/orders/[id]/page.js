@@ -1,31 +1,133 @@
 'use client';
 
 // ============================================================================
-// RS ZEVAR ERP — Single Order Page
-// Route:  /orders/[id]
-// Usage:  Opened from orders list via Ctrl+click / middle-click / ↗ button.
-//         Renders the OrderDrawer in full-page mode — same functionality,
-//         different layout. All Drawer actions (confirm/dispatch/cancel/edit/
-//         assign/comment/status) work identically because the underlying
-//         component is the exact same one used in the list-page drawer.
+// RS ZEVAR ERP — Single Order Page (Shopify-inspired full view)
+// Route: /orders/[id]
+// ----------------------------------------------------------------------------
+// Design:
+//   - Dark theme (ERP aesthetic) + Shopify-style 2-col card layout
+//   - Left:  Items | Status/Dispatch | Payment Summary | Timeline
+//   - Right: Notes | Customer | Shipping | Assignment | Tags | Metadata
+//   - Simple actions (confirm/cancel/status/comment/assign) inline
+//   - Complex actions (dispatch/edit) open OrderDrawer as overlay
 // ============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
-import OrderDrawer, { gold, border } from '../_components/OrderDrawer';
+import OrderDrawer, {
+  StatusBadge, PaymentBadge, fmt, timeAgo,
+  gold, card, border, STATUS_CONFIG,
+} from '../_components/OrderDrawer';
 
+// ─── Format helpers ───────────────────────────────────────────────────────
+function formatFullDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleString('en-GB', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).replace(',', ' at');
+}
+
+function formatShortDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+}
+
+// ─── Small UI atoms ───────────────────────────────────────────────────────
+function Card({ title, children, pad = '18px 20px', noPadBody = false }) {
+  return (
+    <div style={{
+      background: card,
+      border: `1px solid ${border}`,
+      borderRadius: 10,
+      marginBottom: 16,
+      overflow: 'hidden',
+    }}>
+      {title && (
+        <div style={{
+          padding: '14px 20px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'rgba(201,169,110,0.03)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>{title}</div>
+        </div>
+      )}
+      <div style={{ padding: noPadBody ? 0 : pad }}>{children}</div>
+    </div>
+  );
+}
+
+function Row({ label, value, mono, color }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+      <span style={{ color: '#888' }}>{label}</span>
+      <span style={{
+        color: color || '#e5e5e5',
+        fontFamily: mono ? 'monospace' : 'inherit',
+        textAlign: 'right',
+        maxWidth: '60%',
+        wordBreak: 'break-word',
+      }}>{value ?? <span style={{ color: '#444' }}>—</span>}</span>
+    </div>
+  );
+}
+
+function HeaderBtn({ onClick, href, target, children, primary, title }) {
+  const style = {
+    background: primary ? gold : '#1a1a1a',
+    border: `1px solid ${primary ? gold : border}`,
+    color: primary ? '#000' : '#ccc',
+    borderRadius: 7,
+    padding: '7px 14px',
+    fontSize: 12,
+    fontWeight: primary ? 600 : 500,
+    cursor: 'pointer',
+    textDecoration: 'none',
+    fontFamily: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    whiteSpace: 'nowrap',
+  };
+  if (href) return <a href={href} target={target} rel="noopener noreferrer" style={style} title={title}>{children}</a>;
+  return <button onClick={onClick} style={style} title={title}>{children}</button>;
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────
 export default function SingleOrderPage() {
   const params = useParams();
   const router = useRouter();
   const { profile, userEmail } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
+  const userRole = profile?.role || '';
+  const isCEO = userRole === 'super_admin' || userRole === 'admin';
+  const isOpsManager = userRole === 'manager';
+  const canConfirm = isCEO || isOpsManager;
 
   const id = params?.id;
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+  const [packingStaff, setPackingStaff] = useState([]);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [showCancelBox, setShowCancelBox] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
 
+  // ─── Data fetchers ──────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -33,66 +135,637 @@ export default function SingleOrderPage() {
     try {
       const r = await fetch(`/api/orders/${id}`);
       const d = await r.json();
-      if (d.success) {
-        setOrder(d.order);
-      } else {
-        setError(d.error || 'Order load failed');
-      }
+      if (d.success) setOrder(d.order);
+      else setError(d.error || 'Order load failed');
     } catch (e) {
       setError(e.message);
     }
     setLoading(false);
   }, [id]);
 
-  useEffect(() => { loadOrder(); }, [loadOrder]);
+  const loadTimeline = useCallback(async () => {
+    if (!id) return;
+    try {
+      const r = await fetch(`/api/orders/comment?order_id=${id}`);
+      const d = await r.json();
+      setTimeline(d.log || []);
+    } catch {}
+  }, [id]);
 
-  // ── Tab title ──
+  const loadPackingStaff = useCallback(async () => {
+    try {
+      const r = await fetch('/api/orders/assign');
+      const d = await r.json();
+      setPackingStaff(d.staff || []);
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadOrder(); }, [loadOrder]);
+  useEffect(() => { loadTimeline(); }, [loadTimeline]);
+  useEffect(() => { loadPackingStaff(); }, [loadPackingStaff]);
+
+  // ─── Tab title ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (order?.order_number) {
-      document.title = `${order.order_number} — RS ZEVAR ERP`;
-    } else if (loading) {
-      document.title = 'Loading… — RS ZEVAR ERP';
-    }
+    if (order?.order_number) document.title = `${order.order_number} — RS ZEVAR ERP`;
+    else if (loading) document.title = 'Loading… — RS ZEVAR ERP';
   }, [order, loading]);
 
-  // ── Loading / error / not-found states ──
+  // ─── Helpers ────────────────────────────────────────────────────────────
+  const flash = (type, text, ms = 4000) => {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), ms);
+  };
+
+  const refreshAll = async () => {
+    await Promise.all([loadOrder(), loadTimeline()]);
+  };
+
+  // ─── Inline actions ─────────────────────────────────────────────────────
+  const doAction = async (url, payload, successMsg) => {
+    setActionBusy(true);
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, performed_by: performer, performed_by_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        flash('success', successMsg);
+        await refreshAll();
+      } else {
+        flash('error', d.error || 'Action failed');
+      }
+    } catch (e) {
+      flash('error', e.message);
+    }
+    setActionBusy(false);
+  };
+
+  const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
+  const markPacked   = () => doAction('/api/orders/status', { order_id: id, status: 'packed' }, '✓ Marked as Packed');
+  const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
+
+  const cancelOrder = async () => {
+    if (!cancelReason.trim()) { flash('error', 'Reason zaroori hai'); return; }
+    await doAction('/api/orders/cancel', { order_id: id, reason: cancelReason }, '✓ Order cancelled');
+    setShowCancelBox(false);
+    setCancelReason('');
+  };
+
+  const addComment = async () => {
+    const txt = commentText.trim();
+    if (!txt) return;
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: id, comment: txt, staff_name: performer, staff_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setCommentText('');
+        await loadTimeline();
+        flash('success', '✓ Comment added');
+      } else {
+        flash('error', d.error || 'Comment failed');
+      }
+    } catch (e) {
+      flash('error', e.message);
+    }
+    setActionBusy(false);
+  };
+
+  const assignTo = async (staffId) => {
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: id, assigned_to: staffId, performed_by: performer, performed_by_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) { flash('success', '✓ Assigned'); await refreshAll(); }
+      else flash('error', d.error || 'Assign failed');
+    } catch (e) { flash('error', e.message); }
+    setActionBusy(false);
+  };
+
+  // ─── Loading / error / not-found ────────────────────────────────────────
   if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: 14 }}>
-        ⟳ Loading order…
-      </div>
-    );
+    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: 14 }}>⟳ Loading order…</div>;
   }
-
-  if (error) {
+  if (error || !order) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
-        <div style={{ color: '#ef4444', fontSize: 14 }}>✗ {error}</div>
-        <a href="/orders" style={{ background: gold, color: '#000', padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+        <div style={{ color: '#ef4444', fontSize: 14 }}>{error || 'Order not found'}</div>
+        <Link href="/orders" style={{ background: gold, color: '#000', padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
           ← Back to Orders
-        </a>
+        </Link>
       </div>
     );
   }
 
-  if (!order) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
-        <div style={{ color: '#555', fontSize: 14 }}>Order not found</div>
-        <a href="/orders" style={{ background: gold, color: '#000', padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-          ← Back to Orders
-        </a>
-      </div>
-    );
+  // ─── Derived data ───────────────────────────────────────────────────────
+  const items = (order.order_items || []).slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+  const subtotal = parseFloat(order.subtotal || 0);
+  const discount = parseFloat(order.discount || 0);
+  const shipping = parseFloat(order.shipping_fee || 0);
+  const total = parseFloat(order.total_amount || 0);
+  const isPaid = order.payment_status === 'paid';
+  const paidAmt = isPaid ? total : 0;
+  const balance = total - paidAmt;
+  const isCancelled = order.status === 'cancelled';
+  const isDelivered = order.status === 'delivered';
+  const isDispatched = !!order.tracking_number || ['dispatched', 'delivered'].includes(order.status);
+
+  const typeBadges = [];
+  if (order.is_wholesale)     typeBadges.push({ label: '🏢 Wholesale',     color: '#8b5cf6' });
+  if (order.is_international) typeBadges.push({ label: '🌍 International', color: '#22d3ee' });
+  if (order.is_walkin)        typeBadges.push({ label: '🚶 Walk-in',        color: '#f59e0b' });
+  const isWaCancelledReview = order.status === 'cancelled'
+    && Array.isArray(order.tags)
+    && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
+
+  // Primary action based on status (Shopify-style big button)
+  let primaryAction = null;
+  if (order.status === 'pending' && canConfirm) {
+    primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
+  } else if (order.status === 'confirmed' || order.status === 'on_packing') {
+    primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
+  } else if (order.status === 'packed') {
+    primaryAction = { label: '🚚 Dispatch Order', onClick: () => setShowDrawer(true) };
   }
 
+  const statusOptions = Object.keys(STATUS_CONFIG).filter(s => s !== order.status && s !== 'cancelled');
+
+  // ─── Render ─────────────────────────────────────────────────────────────
   return (
-    <OrderDrawer
-      order={order}
-      onClose={() => router.push('/orders')}
-      onRefresh={loadOrder}
-      performer={performer}
-      variant="page"
-    />
+    <div style={{ background: '#0a0a0a', minHeight: '100vh', color: '#e5e5e5' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px 40px' }}>
+
+        {/* ─── Header ─── */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <Link href="/orders" style={{ color: '#888', textDecoration: 'none', fontSize: 13 }}>
+                  ← Orders
+                </Link>
+                <span style={{ color: '#333' }}>/</span>
+                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>
+                  {order.order_number || `#${String(order.id).slice(0, 8)}`}
+                </h1>
+                <StatusBadge status={order.status} />
+                <PaymentBadge payment_status={order.payment_status} />
+                {typeBadges.map(b => (
+                  <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{b.label}</span>
+                ))}
+                {isWaCancelledReview && (
+                  <span title="Customer ne WhatsApp se cancel kiya — review zaroori"
+                    style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+                    ⚠️ Review needed
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>
+                {formatFullDate(order.created_at)}
+                {order.shopify_order_id && <span> · from Shopify</span>}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {order.shopify_order_id && (
+                <HeaderBtn href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank">
+                  🔗 Shopify
+                </HeaderBtn>
+              )}
+              <HeaderBtn onClick={() => window.print()}>🖨 Print</HeaderBtn>
+              <HeaderBtn onClick={() => setShowDrawer(true)} primary>⚡ Quick Actions</HeaderBtn>
+            </div>
+          </div>
+        </div>
+
+        {/* Status message */}
+        {msg && (
+          <div style={{
+            padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
+            background: msg.type === 'success' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.12)',
+            border: `1px solid ${msg.type === 'success' ? '#4ade80' : '#f87171'}`,
+            color: msg.type === 'success' ? '#4ade80' : '#f87171',
+          }}>{msg.text}</div>
+        )}
+
+        {/* ─── 2-Column Grid ─── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
+
+          {/* ═══ LEFT COLUMN ═══ */}
+          <div>
+
+            {/* Items card */}
+            <Card
+              title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{
+                    background: isDelivered ? 'rgba(34,197,94,0.15)' : isDispatched ? 'rgba(168,85,247,0.15)' : 'rgba(245,158,11,0.15)',
+                    color:      isDelivered ? '#22c55e' : isDispatched ? '#a855f7' : '#f59e0b',
+                    border: `1px solid ${isDelivered ? '#22c55e44' : isDispatched ? '#a855f744' : '#f59e0b44'}`,
+                    padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                  }}>
+                    {isDelivered ? `Delivered (${items.length})` : isDispatched ? `Dispatched (${items.length})` : `Items (${items.length})`}
+                  </span>
+                  <span style={{ background: '#1a1a1a', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: '#888' }}>
+                    📍 OFFICE
+                  </span>
+                </div>
+              }
+              noPadBody
+            >
+              <div>
+                {items.length === 0 && (
+                  <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 13 }}>
+                    No items in this order
+                  </div>
+                )}
+                {items.map((item, idx) => (
+                  <div key={item.id || idx} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                    padding: '14px 20px',
+                    borderBottom: idx < items.length - 1 ? `1px solid ${border}` : 'none',
+                  }}>
+                    <div style={{
+                      width: 52, height: 52, borderRadius: 8,
+                      background: '#1a1a1a', border: `1px solid ${border}`,
+                      overflow: 'hidden', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {item.image_url
+                        ? <img src={item.image_url} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ color: '#444', fontSize: 22 }}>📦</span>
+                      }
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Link
+                        href={item.sku ? `/inventory?search=${encodeURIComponent(item.sku)}` : '#'}
+                        style={{ color: '#fff', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}
+                      >
+                        {item.title || 'Untitled'}
+                      </Link>
+                      {item.sku && (
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 3, fontFamily: 'monospace' }}>
+                          SKU: {item.sku}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 13, color: '#ccc' }}>
+                        {fmt(item.unit_price)} × {item.quantity}
+                      </div>
+                      <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
+                        {fmt(item.total_price || (item.unit_price * item.quantity))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Primary action strip */}
+                {primaryAction && !isCancelled && (
+                  <div style={{ padding: '14px 20px', borderTop: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={primaryAction.onClick}
+                      disabled={actionBusy}
+                      style={{
+                        background: '#1a1a1a',
+                        border: `1px solid ${gold}`,
+                        color: gold,
+                        borderRadius: 7,
+                        padding: '9px 20px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: actionBusy ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                        opacity: actionBusy ? 0.5 : 1,
+                      }}>
+                      {actionBusy ? '⟳ Working…' : primaryAction.label}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Status & Dispatch info */}
+            <Card title="Status & Dispatch">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
+                  <StatusBadge status={order.status} />
+                  {order.confirmed_at && (
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                      Confirmed {timeAgo(order.confirmed_at)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ background: '#0f0f0f', border: `1px solid #2a1a4a`, borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🚚 Courier Status</div>
+                  {order.courier_status_raw
+                    ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{order.courier_status_raw}</span>
+                    : <span style={{ color: '#444', fontSize: 12 }}>Not dispatched yet</span>}
+                  {order.courier_last_synced_at && (
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                      Last sync {timeAgo(order.courier_last_synced_at)}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {order.dispatched_courier && (
+                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
+                  <Row label="Courier" value={order.dispatched_courier} />
+                  <Row
+                    label="Tracking #"
+                    value={order.tracking_number
+                      ? (order.courier_tracking_url
+                        ? <a href={order.courier_tracking_url} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'none', fontFamily: 'monospace' }}>{order.tracking_number} ↗</a>
+                        : <span style={{ fontFamily: 'monospace' }}>{order.tracking_number}</span>)
+                      : null}
+                  />
+                  <Row label="Dispatched at" value={formatShortDate(order.dispatched_at)} />
+                  {order.courier_slip_url && (
+                    <Row label="Slip" value={<a href={order.courier_slip_url} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'none' }}>📄 Print slip ↗</a>} />
+                  )}
+                  {order.delivered_at && <Row label="Delivered at" value={formatShortDate(order.delivered_at)} color="#22c55e" />}
+                </div>
+              )}
+
+              {/* Inline secondary actions */}
+              {!isCancelled && (
+                <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => { setShowDrawer(true); }}
+                    style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ✏️ Edit order
+                  </button>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowStatusMenu(v => !v)}
+                      style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      🔄 Change status ▾
+                    </button>
+                    {showStatusMenu && (
+                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 180, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                        {statusOptions.map(s => (
+                          <button
+                            key={s}
+                            onClick={() => setStatus(s)}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 12, padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <StatusBadge status={s} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {!isDelivered && (
+                    <button
+                      onClick={() => setShowCancelBox(v => !v)}
+                      style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      ✕ Cancel order
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {showCancelBox && (
+                <div style={{ marginTop: 12, padding: 14, background: '#1a0000', border: '1px solid #660000', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Cancel reason (required)</div>
+                  <textarea
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                    rows={2}
+                    placeholder="Kyun cancel kar rahe ho..."
+                    style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                    <button onClick={() => { setShowCancelBox(false); setCancelReason(''); }}
+                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Back
+                    </button>
+                    <button onClick={cancelOrder} disabled={actionBusy || !cancelReason.trim()}
+                      style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: (actionBusy || !cancelReason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !cancelReason.trim()) ? 0.5 : 1 }}>
+                      {actionBusy ? 'Cancelling…' : 'Confirm cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Payment Summary — Shopify-style */}
+            <Card title={
+              <span style={{
+                background: isPaid ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                color: isPaid ? '#22c55e' : '#f59e0b',
+                border: `1px solid ${isPaid ? '#22c55e44' : '#f59e0b44'}`,
+                padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+              }}>
+                {isPaid ? '✓ Paid' : order.payment_status === 'refunded' ? 'Refunded' : 'Payment pending'}
+              </span>
+            }>
+              <Row label={`Subtotal (${items.length} item${items.length !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
+              {discount > 0 && <Row label="Discount" value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>} />}
+              <Row label="Shipping" value={fmt(shipping)} />
+              <div style={{ borderTop: `1px solid ${border}`, margin: '8px 0', paddingTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
+                  <span style={{ color: '#fff' }}>Total</span>
+                  <span style={{ color: '#fff' }}>{fmt(total)}</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}` }}>
+                <Row label="Paid" value={<span style={{ color: paidAmt > 0 ? '#22c55e' : '#e5e5e5' }}>{fmt(paidAmt)}</span>} />
+                <Row label="Balance" value={<span style={{ color: balance > 0 ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>{fmt(balance)}</span>} />
+              </div>
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, fontSize: 11, color: '#666' }}>
+                Payment method: <span style={{ color: '#888' }}>{order.payment_method || 'COD'}</span>
+              </div>
+            </Card>
+
+            {/* Timeline */}
+            <Card title={`Timeline (${timeline.length})`}>
+              {/* Comment input */}
+              <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: gold + '22', color: gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                    {(performer[0] || '?').toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <textarea
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      placeholder="Leave a comment… (internal note)"
+                      rows={2}
+                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                    />
+                    {commentText.trim() && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                        <button onClick={addComment} disabled={actionBusy}
+                          style={{ background: gold, border: 'none', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                          {actionBusy ? '...' : 'Post'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Log */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {timeline.length === 0 && (
+                  <div style={{ textAlign: 'center', color: '#555', fontSize: 12, padding: 20 }}>No activity yet</div>
+                )}
+                {timeline.map(l => {
+                  const isComment = l.action === 'staff_comment';
+                  const actionColor = l.action?.startsWith('protocol_violation') ? '#f87171'
+                    : l.action === 'confirmed' ? '#3b82f6'
+                    : l.action === 'dispatched' ? '#a855f7'
+                    : l.action === 'delivered' ? '#22c55e'
+                    : l.action === 'cancelled' ? '#ef4444'
+                    : gold;
+                  return (
+                    <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : '#0f0f0f', border: `1px solid ${border}`, borderRadius: 7 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', color: actionColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>
+                        {isComment ? '💬' : '•'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: actionColor, fontWeight: 600 }}>
+                          {(l.action || '').replace(/_/g, ' ')}
+                        </div>
+                        {l.notes && <div style={{ fontSize: 13, color: '#ccc', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l.notes}</div>}
+                        <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+                          {l.performed_by || 'System'} · {formatShortDate(l.performed_at)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          {/* ═══ RIGHT SIDEBAR ═══ */}
+          <div>
+
+            {/* Notes (confirmation_notes) */}
+            <Card title="Notes">
+              {order.confirmation_notes
+                ? <div style={{ fontSize: 13, color: '#ccc', whiteSpace: 'pre-wrap' }}>{order.confirmation_notes}</div>
+                : <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No notes from customer</div>}
+            </Card>
+
+            {/* Customer */}
+            <Card title="Customer">
+              <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
+              {order.customer_order_count > 0 && (
+                <Link href={`/customers?phone=${encodeURIComponent(order.customer_phone || '')}`}
+                  style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 6 }}>
+                  {order.customer_order_count === 1 ? '1st order' : `${order.customer_order_count} orders total`} →
+                </Link>
+              )}
+            </Card>
+
+            {/* Contact */}
+            <Card title="Contact information">
+              {order.customer_phone ? (
+                <a href={`tel:${order.customer_phone}`} style={{ fontSize: 13, color: gold, textDecoration: 'none' }}>
+                  {order.customer_phone}
+                </a>
+              ) : <div style={{ fontSize: 12, color: '#555' }}>No phone</div>}
+              <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>No email provided</div>
+            </Card>
+
+            {/* Shipping address */}
+            <Card title="Shipping address">
+              <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.55 }}>
+                <div style={{ color: '#fff', fontWeight: 500 }}>{order.customer_name || '—'}</div>
+                {order.customer_address && <div>{order.customer_address}</div>}
+                {order.customer_city && <div>{order.customer_city}</div>}
+                <div>Pakistan</div>
+                {order.customer_phone && <div style={{ marginTop: 4 }}>{order.customer_phone}</div>}
+              </div>
+              {order.customer_address && (
+                <a
+                  href={`https://maps.google.com/?q=${encodeURIComponent(`${order.customer_address}, ${order.customer_city || ''}`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 10 }}
+                >
+                  View on map ↗
+                </a>
+              )}
+            </Card>
+
+            {/* Assignment */}
+            <Card title="Assigned to">
+              {order.assigned_to_name ? (
+                <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginBottom: 10 }}>
+                  👤 {order.assigned_to_name}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 10, fontStyle: 'italic' }}>Not assigned yet</div>
+              )}
+              {packingStaff.length > 0 && !isCancelled && (
+                <select
+                  value=""
+                  onChange={e => { if (e.target.value) assignTo(e.target.value); }}
+                  disabled={actionBusy}
+                  style={{ width: '100%', background: '#0f0f0f', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
+                >
+                  <option value="">Change / assign…</option>
+                  {packingStaff.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              )}
+            </Card>
+
+            {/* Tags */}
+            <Card title="Tags">
+              {Array.isArray(order.tags) && order.tags.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {order.tags.map((tag, i) => (
+                    <span key={i} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '3px 8px', borderRadius: 4, fontSize: 11 }}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No tags</div>
+              )}
+            </Card>
+
+            {/* Metadata */}
+            <Card title="Order info">
+              <Row label="Created" value={formatShortDate(order.created_at)} />
+              <Row label="Updated" value={formatShortDate(order.updated_at)} />
+              {order.shopify_order_id && <Row label="Shopify ID" value={order.shopify_order_id} mono />}
+              {order.shopify_synced_at && <Row label="Last synced" value={timeAgo(order.shopify_synced_at)} />}
+              <Row label="Order type" value={order.is_wholesale ? 'Wholesale' : order.is_international ? 'International' : order.is_walkin ? 'Walk-in' : 'Retail'} />
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Drawer overlay — Quick Actions */}
+      {showDrawer && (
+        <OrderDrawer
+          order={order}
+          onClose={() => setShowDrawer(false)}
+          onRefresh={refreshAll}
+          performer={performer}
+          variant="drawer"
+        />
+      )}
+    </div>
   );
 }
