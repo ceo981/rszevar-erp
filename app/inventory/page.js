@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
+import AiEnhanceModal from './_components/AiEnhanceModal';
 
 const ABC_COLORS = {
   A: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.4)' },
@@ -71,6 +72,7 @@ export default function InventoryPage() {
   const [abcStats, setAbcStats] = useState(null);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState(null);
+  const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);
 
   const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
   const revCol = abcWindow === '180d' ? 'revenue_180d' : 'revenue_90d';
@@ -462,7 +464,22 @@ export default function InventoryPage() {
         <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 400, background: 'var(--bg2)', borderLeft: '1px solid var(--border)', zIndex: 200, overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.5)' }}>
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 1 }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--gold)', fontFamily: "'Cormorant Garamond', serif" }}>Product Details</h3>
-            <button onClick={() => setSelectedProduct(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>×</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {selectedProduct.shopify_product_id && (
+                <button onClick={() => setAiEnhanceOpen(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 12px', background: 'var(--gold-dim)',
+                    border: '1px solid var(--gold)', borderRadius: 'var(--radius)',
+                    color: 'var(--gold)', fontSize: 11, fontWeight: 600,
+                    fontFamily: 'inherit', cursor: 'pointer', letterSpacing: 0.3,
+                  }}
+                  title="Generate AI-optimized description, SEO meta, alt texts & FAQs">
+                  ✨ AI Enhance
+                </button>
+              )}
+              <button onClick={() => setSelectedProduct(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>×</button>
+            </div>
           </div>
           <div style={{ padding: 20 }}>
             {selectedProduct.image_url && <img src={selectedProduct.image_url} alt="" style={{ width: '100%', maxHeight: 250, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 16, background: '#fff' }} />}
@@ -497,6 +514,31 @@ export default function InventoryPage() {
         </div>
       )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* ✨ AI Enhance Modal */}
+      {aiEnhanceOpen && selectedProduct && (
+        <AiEnhanceModal
+          product={{
+            shopify_product_id: selectedProduct.shopify_product_id,
+            title: selectedProduct.title || selectedProduct.parent_title,
+            parent_title: selectedProduct.parent_title,
+            image_url: selectedProduct.image_url,
+            category: selectedProduct.category,
+            vendor: selectedProduct.vendor,
+            selling_price: selectedProduct.selling_price,
+            variants_summary: selectedProduct.variant_count
+              ? `${selectedProduct.variant_count} variants`
+              : '',
+            image_count: 6,
+            current_description: '',
+          }}
+          onClose={() => setAiEnhanceOpen(false)}
+          onPushed={() => {
+            setAiEnhanceOpen(false);
+            fetchProducts();
+          }}
+        />
+      )}
     </div>
   );
 }
