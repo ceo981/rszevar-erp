@@ -87,9 +87,24 @@ export async function GET(request, { params }) {
       }
     }
 
+    // ── Customer's total order count (for "Nth order" display) ──
+    let customer_order_count = 0;
+    if (order.customer_phone) {
+      const phoneVariants = [
+        order.customer_phone,
+        '+' + order.customer_phone.replace(/^\+/, ''),
+        '0' + order.customer_phone.replace(/^(\+?92|0)/, ''),
+      ];
+      const { count } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .in('customer_phone', phoneVariants);
+      customer_order_count = count || 1;
+    }
+
     return NextResponse.json({
       success: true,
-      order: { ...order, assigned_to_name },
+      order: { ...order, assigned_to_name, customer_order_count },
     });
   } catch (error) {
     console.error('[api/orders/id] error:', error);
