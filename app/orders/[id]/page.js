@@ -490,9 +490,9 @@ export default function SingleOrderPage() {
                     }}
                   >
                     <MenuItem icon="📋" label="Print packing slip" sub="For packing staff"
-                      onClick={() => { setOpenMenu(null); window.print(); }} />
-                    <MenuItem icon="🧾" label="Print invoice" sub="For customer (Phase 4 → PDF)"
-                      onClick={() => { setOpenMenu(null); window.print(); }} />
+                      onClick={() => { setOpenMenu(null); window.open(`/orders/${id}/print/packing-slip`, '_blank'); }} />
+                    <MenuItem icon="🧾" label="Print invoice" sub="For customer"
+                      onClick={() => { setOpenMenu(null); window.open(`/orders/${id}/print/invoice`, '_blank'); }} />
                   </div>
                 )}
               </div>
