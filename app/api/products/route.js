@@ -71,9 +71,16 @@ export async function GET(request) {
     let query = supabase.from('products').select('*');
 
     if (search) {
-      query = query.or(
-        `title.ilike.%${search}%,parent_title.ilike.%${search}%,sku.ilike.%${search}%,category.ilike.%${search}%,vendor.ilike.%${search}%`
-      );
+      // Sanitize: strip characters that break PostgREST .or() parser
+      //   ,  → separates OR conditions
+      //   () → groups conditions
+      //   %  → ilike wildcard (user shouldn't inject these)
+      const safeSearch = search.replace(/[,()%]/g, ' ').trim();
+      if (safeSearch) {
+        query = query.or(
+          `title.ilike.%${safeSearch}%,parent_title.ilike.%${safeSearch}%,sku.ilike.%${safeSearch}%,category.ilike.%${safeSearch}%,vendor.ilike.%${safeSearch}%`
+        );
+      }
     }
     if (category && category !== 'all') query = query.eq('category', category);
     if (stockFilter === 'out') query = query.eq('stock_quantity', 0);
@@ -144,11 +151,22 @@ export async function GET(request) {
     };
 
     // ── Categories dropdown ──
-    const { data: cats } = await supabase.from('products').select('category').not('category', 'is', null);
+    // Must bypass Supabase's default 1000-row cap — with 4,900+ variants
+    // some categories would be missing if we didn't page through all rows.
+    const { data: cats } = await supabase
+      .from('products')
+      .select('category')
+      .not('category', 'is', null)
+      .range(0, MAX_FETCH - 1);
     const categories = [...new Set((cats || []).map(c => c.category).filter(Boolean))].sort();
 
     // ── Collections dropdown (extract unique from JSONB) ──
-    const { data: collRows } = await supabase.from('products').select('collections').not('collections', 'eq', '[]');
+    // Same reason as above — need full scan, not first 1000.
+    const { data: collRows } = await supabase
+      .from('products')
+      .select('collections')
+      .not('collections', 'eq', '[]')
+      .range(0, MAX_FETCH - 1);
     const collMap = new Map();
     for (const row of collRows || []) {
       for (const c of row.collections || []) {
