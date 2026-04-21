@@ -37,11 +37,6 @@ const TONES = [
   { v: 'crisp',     l: 'Crisp & modern' },
 ];
 
-const LANG_MIX = [
-  { v: 'mixed',         l: 'English + Urdu (mehndi, dulhan)' },
-  { v: 'pure_english',  l: 'Pure English' },
-];
-
 export default function AiEnhanceModal({ product, onClose, onPushed }) {
   // ── Input state ──
   const [facts, setFacts] = useState('');
@@ -49,7 +44,6 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
   const [customers, setCustomers] = useState([]);
   const [keywords, setKeywords] = useState('');
   const [tone, setTone] = useState('luxurious');
-  const [langMix, setLangMix] = useState('mixed');
 
   // ── Flow state ──
   const [step, setStep] = useState('input'); // input | generating | output | pushing | pushed
@@ -126,7 +120,7 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
           input_customers: customers,
           input_keywords: keywords,
           input_tone: tone,
-          input_language_mix: langMix,
+          input_language_mix: 'pure_english',
         }),
       });
       const data = await res.json();
@@ -312,20 +306,10 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
               placeholder="e.g. green kundan choker, bridal necklace pakistan"
               style={inputStyle} />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={labelStyle}>Tone</label>
-                <select value={tone} onChange={e => setTone(e.target.value)} style={inputStyle}>
-                  {TONES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Language</label>
-                <select value={langMix} onChange={e => setLangMix(e.target.value)} style={inputStyle}>
-                  {LANG_MIX.map(l => <option key={l.v} value={l.v}>{l.l}</option>)}
-                </select>
-              </div>
-            </div>
+            <label style={labelStyle}>Tone</label>
+            <select value={tone} onChange={e => setTone(e.target.value)} style={inputStyle}>
+              {TONES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
+            </select>
 
             {/* Generate button */}
             <div style={{ marginTop: 24 }}>
