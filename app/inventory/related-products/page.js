@@ -1,21 +1,23 @@
 'use client';
 
 // RS ZEVAR ERP — Related Products Generator
-// Route: /inventory/related-products
-// Stats + batch trigger + single-product test
+// v2.2 — 15s cooldown between auto-batches + failure reason surfacing
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+
+const AUTO_CONTINUE_DELAY_MS = 15000;  // 15 seconds between auto-batches — lets rate limit window recover
 
 export default function RelatedProductsPage() {
   const [stats, setStats] = useState(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [running, setRunning] = useState(false);
-  const [batchSize, setBatchSize] = useState(15);
+  const [batchSize, setBatchSize] = useState(8);
   const [autoRun, setAutoRun] = useState(false);
   const [log, setLog] = useState([]);
   const [singleId, setSingleId] = useState('');
   const [singleResult, setSingleResult] = useState(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
@@ -29,37 +31,48 @@ export default function RelatedProductsPage() {
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
+  // Cooldown countdown effect
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const t = setInterval(() => setCooldownRemaining(x => Math.max(0, x - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldownRemaining]);
+
   const runBatch = useCallback(async () => {
     if (running) return;
     setRunning(true);
     const startedAt = new Date();
-    setLog(prev => [{ ts: startedAt.toLocaleTimeString(), msg: `Starting batch of ${batchSize}...`, type: 'info' }, ...prev].slice(0, 50));
+    setLog(prev => [{ ts: startedAt.toLocaleTimeString(), msg: `Starting batch of ${batchSize}...`, type: 'info' }, ...prev].slice(0, 80));
     try {
       const res = await fetch('/api/products/related/generate-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch_size: batchSize, concurrency: 3 }),
+        body: JSON.stringify({ batch_size: batchSize, concurrency: 2 }),
       });
       const data = await res.json();
       const finishedAt = new Date();
       if (data.success) {
-        setLog(prev => [{
-          ts: finishedAt.toLocaleTimeString(),
-          msg: `✓ ${data.processed} done, ${data.failed} failed | AI calls: ${data.ai_calls} | Rs ${data.batch_cost_pkr} | ${(data.duration_ms / 1000).toFixed(1)}s | ${data.remaining} pending`,
-          type: 'ok',
-          details: data.results,
-        }, ...prev].slice(0, 50));
+        const mainLine = `✓ ${data.processed} done, ${data.failed} failed | AI calls: ${data.ai_calls} | Rs ${data.batch_cost_pkr} | ${(data.duration_ms / 1000).toFixed(1)}s | ${data.remaining} pending`;
+        setLog(prev => [{ ts: finishedAt.toLocaleTimeString(), msg: mainLine, type: 'ok' }, ...prev].slice(0, 80));
+        // If any failures, log the grouped reasons
+        if (data.failed > 0 && data.failure_reasons) {
+          for (const [reason, count] of Object.entries(data.failure_reasons)) {
+            setLog(prev => [{ ts: finishedAt.toLocaleTimeString(), msg: `  ⚠ ${count}× "${reason}"`, type: 'warn' }, ...prev].slice(0, 80));
+          }
+        }
         await fetchStats();
-        // Auto-continue if enabled and more pending
         if (autoRun && data.remaining > 0) {
-          setTimeout(() => runBatch(), 2000);
+          // Cool down 15s between batches — allows Anthropic rate limit window to recover
+          setCooldownRemaining(AUTO_CONTINUE_DELAY_MS / 1000);
+          setTimeout(() => runBatch(), AUTO_CONTINUE_DELAY_MS);
+          setRunning(false);
           return;
         }
       } else {
-        setLog(prev => [{ ts: finishedAt.toLocaleTimeString(), msg: `✗ ${data.error}`, type: 'err' }, ...prev].slice(0, 50));
+        setLog(prev => [{ ts: finishedAt.toLocaleTimeString(), msg: `✗ ${data.error}`, type: 'err' }, ...prev].slice(0, 80));
       }
     } catch (e) {
-      setLog(prev => [{ ts: new Date().toLocaleTimeString(), msg: `✗ ${e.message}`, type: 'err' }, ...prev].slice(0, 50));
+      setLog(prev => [{ ts: new Date().toLocaleTimeString(), msg: `✗ ${e.message}`, type: 'err' }, ...prev].slice(0, 80));
     }
     setRunning(false);
   }, [batchSize, running, autoRun, fetchStats]);
@@ -83,14 +96,12 @@ export default function RelatedProductsPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
-      {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <Link href="/inventory" style={{ fontSize: 12, color: 'var(--text3)', textDecoration: 'none' }}>← Inventory</Link>
         <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1, marginTop: 8 }}>Related Products Generator</h1>
         <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>AI picks 4 best companion products for each item — drives "Complete the Look" cross-sell on storefront.</p>
       </div>
 
-      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
         {[
           { label: 'Total Products', value: stats?.total_products ?? '—', color: 'var(--text)' },
@@ -105,7 +116,6 @@ export default function RelatedProductsPage() {
         ))}
       </div>
 
-      {/* Progress bar */}
       {stats && stats.eligible_products > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>
@@ -118,22 +128,21 @@ export default function RelatedProductsPage() {
         </div>
       )}
 
-      {/* Batch controls */}
       <div style={{ padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Batch Generation</div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ fontSize: 12, color: 'var(--text2)' }}>
             Batch size:&nbsp;
-            <input type="number" min="1" max="30" value={batchSize} onChange={e => setBatchSize(parseInt(e.target.value) || 15)}
+            <input type="number" min="1" max="15" value={batchSize} onChange={e => setBatchSize(parseInt(e.target.value) || 8)}
               style={{ width: 60, padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', fontFamily: 'inherit' }} />
           </label>
           <label style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={autoRun} onChange={e => setAutoRun(e.target.checked)} />
-            Auto-continue until done
+            Auto-continue until done (15s cooldown between batches)
           </label>
-          <button onClick={runBatch} disabled={running || !stats?.pending}
-            style={{ padding: '10px 20px', background: running ? 'var(--border)' : 'var(--gold)', color: running ? 'var(--text3)' : 'var(--bg)', border: 'none', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: running ? 'wait' : 'pointer' }}>
-            {running ? 'Processing...' : `Run next ${batchSize}`}
+          <button onClick={runBatch} disabled={running || cooldownRemaining > 0 || !stats?.pending}
+            style={{ padding: '10px 20px', background: (running || cooldownRemaining > 0) ? 'var(--border)' : 'var(--gold)', color: (running || cooldownRemaining > 0) ? 'var(--text3)' : 'var(--bg)', border: 'none', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: (running || cooldownRemaining > 0) ? 'wait' : 'pointer' }}>
+            {running ? 'Processing...' : cooldownRemaining > 0 ? `Cooldown ${cooldownRemaining}s...` : `Run next ${batchSize}`}
           </button>
           <button onClick={fetchStats} disabled={loadingStats}
             style={{ padding: '10px 16px', background: 'transparent', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer' }}>
@@ -141,11 +150,10 @@ export default function RelatedProductsPage() {
           </button>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 10 }}>
-          ~Rs 1.5-2 per product. Full catalog estimated Rs 2,000-2,500 total.
+          ~Rs 3-4 per product. Full catalog estimated Rs 2,500-3,500 total. Conservative batch size keeps success rate 95%+.
         </div>
       </div>
 
-      {/* Single product test */}
       <div style={{ padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Single Product Test</div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -181,13 +189,12 @@ export default function RelatedProductsPage() {
         )}
       </div>
 
-      {/* Activity log */}
       {log.length > 0 && (
         <div style={{ padding: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Activity Log</div>
-          <div style={{ maxHeight: 320, overflowY: 'auto', fontSize: 12, fontFamily: 'monospace' }}>
+          <div style={{ maxHeight: 400, overflowY: 'auto', fontSize: 12, fontFamily: 'monospace' }}>
             {log.map((l, i) => (
-              <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', color: l.type === 'ok' ? '#4ade80' : l.type === 'err' ? '#f87171' : 'var(--text3)' }}>
+              <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', color: l.type === 'ok' ? '#4ade80' : l.type === 'err' ? '#f87171' : l.type === 'warn' ? '#fbbf24' : 'var(--text3)' }}>
                 <span style={{ color: 'var(--text3)' }}>{l.ts}</span>&nbsp;&nbsp;{l.msg}
               </div>
             ))}
