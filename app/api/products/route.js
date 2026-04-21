@@ -89,6 +89,10 @@ export async function GET(request) {
     if (activeFilter === 'draft') query = query.eq('is_active', false);
     if (abc !== 'all') query = query.eq(abcCol, abc);
 
+    // SEO tier filter (Phase 1.2)
+    const seoTier = searchParams.get('seo_tier');
+    if (seoTier && seoTier !== 'all') query = query.eq('seo_tier', seoTier);
+
     // Collection filter: JSONB contains — checks if collections array has an
     // object with matching handle, e.g. [{"handle":"bangles"}]
     if (collection && collection !== 'all') {
