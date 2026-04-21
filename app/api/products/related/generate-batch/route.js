@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { generateRelatedProductsForOne } from '@/lib/related-products';
 
 // Related Products — batch generator + stats
-// GET  → progress stats (total / done / pending counts)
+// GET  → progress stats
 // POST → process next N products that don't have related_products yet
-//        Body: { batch_size: 15, concurrency: 3 }
-// Calls generate-one internally for each product.
+// Uses shared lib directly (no internal HTTP fetch — avoids middleware auth issues)
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,6 @@ export const maxDuration = 60;
 const DEFAULT_BATCH = 15;
 const DEFAULT_CONCURRENCY = 3;
 
-// Run async fn over an array with a concurrency cap.
 async function runWithConcurrency(items, concurrency, fn) {
   const results = new Array(items.length);
   let cursor = 0;
@@ -33,19 +32,9 @@ async function runWithConcurrency(items, concurrency, fn) {
   return results;
 }
 
-function getBaseUrl(request) {
-  // Prefer VERCEL_URL when deployed, fall back to request origin in dev
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  const proto = request.headers.get('x-forwarded-proto') || 'https';
-  const host = request.headers.get('host');
-  return `${proto}://${host}`;
-}
-
 export async function GET() {
   try {
     const supabase = createServerClient();
-
-    // Pull all (shopify_product_id, related_products) — paginate
     const all = [];
     const PAGE = 1000;
     let off = 0;
@@ -62,17 +51,12 @@ export async function GET() {
       off += PAGE;
     }
 
-    // Distinct products
     const seen = new Map();
     for (const r of all) {
       if (!seen.has(r.shopify_product_id)) seen.set(r.shopify_product_id, r);
     }
 
-    let total = 0;
-    let withRelated = 0;
-    let activeInStock = 0;
-    let pending = 0;
-    let totalCostUsd = 0;
+    let total = 0, withRelated = 0, activeInStock = 0, pending = 0, totalCostUsd = 0;
     for (const r of seen.values()) {
       total++;
       const isEligible = r.is_active && (r.stock_quantity || 0) > 0;
@@ -92,7 +76,7 @@ export async function GET() {
       total_products: total,
       eligible_products: activeInStock,
       with_related: withRelated,
-      pending: pending,
+      pending,
       progress_pct: activeInStock > 0 ? Math.round((withRelated / activeInStock) * 100) : 0,
       total_cost_usd_so_far: Number(totalCostUsd.toFixed(4)),
     });
@@ -110,7 +94,7 @@ export async function POST(request) {
     const batchSize  = Math.min(Math.max(parseInt(body.batch_size) || DEFAULT_BATCH, 1), 30);
     const concurrency = Math.min(Math.max(parseInt(body.concurrency) || DEFAULT_CONCURRENCY, 1), 5);
 
-    // ── Step 1: Find pending products (active, in-stock, no related_products) ──
+    // Find pending products
     const all = [];
     const PAGE = 1000;
     let off = 0;
@@ -152,25 +136,30 @@ export async function POST(request) {
 
     const batch = pending.slice(0, batchSize);
 
-    // ── Step 2: Process batch with concurrency cap ──
-    const baseUrl = getBaseUrl(request);
-
+    // Process batch — call lib directly, NO HTTP fetch
     const results = await runWithConcurrency(batch, concurrency, async (p) => {
-      const res = await fetch(`${baseUrl}/api/products/related/generate-one`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shopify_product_id: p.shopify_product_id }),
-      });
-      const json = await res.json().catch(() => ({ success: false, error: 'Invalid JSON' }));
-      return {
-        shopify_product_id: p.shopify_product_id,
-        title: p.parent_title,
-        success: json.success === true,
-        ai_used: json.ai_used || false,
-        picks_count: json.picks?.length || 0,
-        cost_usd: json.cost_usd || 0,
-        error: json.error || null,
-      };
+      try {
+        const result = await generateRelatedProductsForOne(supabase, p.shopify_product_id);
+        return {
+          shopify_product_id: p.shopify_product_id,
+          title: p.parent_title,
+          success: true,
+          ai_used: result.ai_used,
+          picks_count: result.picks?.length || 0,
+          cost_usd: result.cost_usd || 0,
+          error: null,
+        };
+      } catch (e) {
+        return {
+          shopify_product_id: p.shopify_product_id,
+          title: p.parent_title,
+          success: false,
+          ai_used: false,
+          picks_count: 0,
+          cost_usd: 0,
+          error: e.message,
+        };
+      }
     });
 
     const ok = results.filter(r => r.success).length;
@@ -185,7 +174,7 @@ export async function POST(request) {
       ai_calls: aiCalls,
       remaining: pending.length - batch.length,
       batch_cost_usd: Number(totalCost.toFixed(6)),
-      batch_cost_pkr: Math.round(totalCost * 285),  // approx conversion
+      batch_cost_pkr: Math.round(totalCost * 285),
       duration_ms: Date.now() - startTime,
       results,
     });
