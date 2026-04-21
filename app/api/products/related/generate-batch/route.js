@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { generateRelatedProductsForOne } from '@/lib/related-products';
+import { generateRelatedProductsForOne, loadCandidatePool } from '@/lib/related-products';
 
 // Related Products — batch generator + stats
-// GET  → progress stats
-// POST → process next N products that don't have related_products yet
-// Uses shared lib directly (no internal HTTP fetch — avoids middleware auth issues)
+// v2.1 — loads candidate pool ONCE at batch level (huge speedup)
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_BATCH = 15;
+const DEFAULT_BATCH = 10;       // reduced from 15 — safer under timeout
 const DEFAULT_CONCURRENCY = 3;
 
 async function runWithConcurrency(items, concurrency, fn) {
@@ -91,35 +89,41 @@ export async function POST(request) {
   try {
     const supabase = createServerClient();
     const body = await request.json().catch(() => ({}));
-    const batchSize  = Math.min(Math.max(parseInt(body.batch_size) || DEFAULT_BATCH, 1), 30);
+    const batchSize  = Math.min(Math.max(parseInt(body.batch_size) || DEFAULT_BATCH, 1), 20);
     const concurrency = Math.min(Math.max(parseInt(body.concurrency) || DEFAULT_CONCURRENCY, 1), 5);
 
-    // Find pending products
-    const all = [];
+    // ── Step 1: Load candidate pool ONCE (shared across all products in batch) ──
+    const poolStart = Date.now();
+    const pool = await loadCandidatePool(supabase);
+    const poolMs = Date.now() - poolStart;
+
+    // ── Step 2: Identify pending products from the same pool ──
+    // (Need related_products column — separate quick query)
+    const relRows = [];
     const PAGE = 1000;
     let off = 0;
     while (off < 10000) {
       const { data, error } = await supabase
         .from('products')
-        .select('shopify_product_id, parent_title, related_products, is_active, stock_quantity')
+        .select('shopify_product_id, related_products')
         .not('shopify_product_id', 'is', null)
-        .eq('is_active', true)
-        .gt('stock_quantity', 0)
         .range(off, off + PAGE - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
-      all.push(...data);
+      relRows.push(...data);
       if (data.length < PAGE) break;
       off += PAGE;
     }
 
-    const seen = new Map();
-    for (const r of all) {
-      if (!seen.has(r.shopify_product_id)) seen.set(r.shopify_product_id, r);
+    const relMap = new Map();
+    for (const r of relRows) {
+      if (!relMap.has(r.shopify_product_id)) {
+        relMap.set(r.shopify_product_id, r.related_products);
+      }
     }
 
-    const pending = Array.from(seen.values()).filter(r => {
-      const rp = r.related_products;
+    const pending = pool.filter(p => {
+      const rp = relMap.get(p.shopify_product_id);
       const hasPicks = rp && Array.isArray(rp.picks) && rp.picks.length > 0;
       return !hasPicks;
     });
@@ -136,10 +140,14 @@ export async function POST(request) {
 
     const batch = pending.slice(0, batchSize);
 
-    // Process batch — call lib directly, NO HTTP fetch
+    // ── Step 3: Process batch using shared pool (no per-product candidate fetch) ──
     const results = await runWithConcurrency(batch, concurrency, async (p) => {
       try {
-        const result = await generateRelatedProductsForOne(supabase, p.shopify_product_id);
+        const result = await generateRelatedProductsForOne(
+          supabase,
+          p.shopify_product_id,
+          { preloadedPool: pool }
+        );
         return {
           shopify_product_id: p.shopify_product_id,
           title: p.parent_title,
@@ -175,6 +183,7 @@ export async function POST(request) {
       remaining: pending.length - batch.length,
       batch_cost_usd: Number(totalCost.toFixed(6)),
       batch_cost_pkr: Math.round(totalCost * 285),
+      pool_load_ms: poolMs,
       duration_ms: Date.now() - startTime,
       results,
     });
