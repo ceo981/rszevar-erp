@@ -365,12 +365,17 @@ export default function InventoryPage() {
               <tbody>
                 {view === 'grouped' ? products.map(group => {
                   const isExpanded = expandedGroups.has(group.group_key);
+                  const isSelected = selectedProduct?.id === group.id;
                   const toggleExpand = () => setExpandedGroups(prev => { const next = new Set(prev); if (next.has(group.group_key)) next.delete(group.group_key); else next.add(group.group_key); return next; });
+                  const handleGroupClick = () => {
+                    toggleExpand();
+                    setSelectedProduct(isSelected ? null : group);
+                  };
                   return (
                     <Fragment key={group.group_key}>
-                      <tr onClick={toggleExpand} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: isExpanded ? 'var(--gold-dim)' : 'transparent', transition: 'background 0.1s' }}
-                        onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                        onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent'; }}>
+                      <tr onClick={handleGroupClick} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', background: (isExpanded || isSelected) ? 'var(--gold-dim)' : 'transparent', transition: 'background 0.1s' }}
+                        onMouseEnter={e => { if (!isExpanded && !isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                        onMouseLeave={e => { if (!isExpanded && !isSelected) e.currentTarget.style.background = 'transparent'; }}>
                         <td style={{ padding: '8px 10px' }}>
                           {group.image_url ? <img src={group.image_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
                             : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text3)' }}>📷</div>}
@@ -520,7 +525,7 @@ export default function InventoryPage() {
         <AiEnhanceModal
           product={{
             shopify_product_id: selectedProduct.shopify_product_id,
-            title: selectedProduct.title || selectedProduct.parent_title,
+            title: selectedProduct.parent_title || (selectedProduct.title ? selectedProduct.title.split(' - ')[0] : 'Untitled'),
             parent_title: selectedProduct.parent_title,
             image_url: selectedProduct.image_url,
             category: selectedProduct.category,
