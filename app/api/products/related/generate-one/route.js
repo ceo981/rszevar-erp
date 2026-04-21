@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 // Related Products — single product generator
 // POST { shopify_product_id } → picks 4 best companion products via Claude,
 // stores in products.related_products JSONB.
+// v2: diversity-first candidate selection + max 2 same-category picks
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,15 +21,22 @@ const SYSTEM_PROMPT = `You are a senior jewelry merchandising expert for RS ZEVA
 
 LANGUAGE RULES — output for international desi diaspora + boutique buyers:
 - Sentence structure must be English. Use the loanwords below where they describe specific products, styles, or events — they are part of international desi-English jewelry vocabulary and drive real search traffic.
-- ALLOWED loanwords (use freely, treat as English): kundan, meenakari, polki, mehndi, bridal, jhumka, jhumki, lehenga, dupatta, kameez, baraat, walima, dulhan, shaadi, nikkah, haldi, dholki, rasm.
+- ALLOWED loanwords (use freely, treat as English): kundan, meenakari, polki, mehndi, bridal, jhumka, jhumki, lehenga, dupatta, kameez, baraat, walima, dulhan, shaadi, nikkah, haldi, dholki, rasm, churi, kangans, kara, tikka, maang, jhoomar, bindi, payal, anklet, choker, ranihaar.
 - DO NOT write fully transliterated sentences (e.g. "Yeh dulhan ke liye perfect hai") — keep grammar English, use loanwords as nouns within English sentences. Good: "Pairs naturally with bridal jhumka earrings for a complete shaadi look." Bad: "Dulhan ke liye yeh ek perfect option hai."
 - No Hindi/Urdu function words (yeh, woh, ka, ke, ki, hai, hain, mein, se, ko, etc.).
 
+CATEGORY DIVERSITY RULE (CRITICAL):
+- Among the 4 picks, MAXIMUM 2 may share the same category as the target product.
+- MINIMUM 2 picks MUST be from a DIFFERENT category than the target.
+- Goal: build a complete jewelry look (e.g. for a bangles target → 1-2 bangles + 1 necklace + 1 earring set), NOT 4 redundant items of the same category.
+- The candidates list provides their categories — use this to enforce diversity.
+- This rule overrides aesthetic preferences. If forced to choose, pick a less-perfect cross-category item over a more-perfect same-category duplicate.
+
 SELECTION CRITERIA (in priority order):
-1. Aesthetic harmony — pieces that visually complete a styled look together
+1. Category diversity (above) — non-negotiable
 2. Occasion alignment — bridal with bridal, casual with casual, formal with formal
 3. Color and finish coordination — gold tones together, oxidized silver together
-4. Category complementarity — necklace pairs with earrings/bangles/ring, AVOID duplicate-category pairings (do not pick 4 necklaces for a necklace)
+4. Aesthetic harmony — pieces that visually complete a styled look together
 5. Price compatibility — broadly within range, avoid extreme jumps unless intentional upsell
 
 OUTPUT FORMAT — return ONLY a JSON object, no preamble or explanation outside the JSON:
@@ -46,9 +54,11 @@ RATIONALE QUALITY — avoid these clichés: "elevate", "timeless", "perfect for 
 Pick exactly 4. Use only IDs from the CANDIDATES list provided. Do not invent IDs.`;
 
 function buildUserPrompt(target, candidates) {
-  const lines = candidates.map((c, i) =>
-    `${i + 1}. ID: ${c.shopify_product_id} | "${c.parent_title}" | ${c.category || 'Uncategorized'} | Rs ${c.selling_price || 0} | collections: ${(c.collections || []).map(x => x.handle).join(', ') || 'none'}`
-  ).join('\n');
+  const lines = candidates.map((c, i) => {
+    const isSame = target.category && c.category === target.category;
+    const tag = isSame ? '[SAME-CAT]' : '[CROSS-CAT]';
+    return `${i + 1}. ${tag} ID: ${c.shopify_product_id} | "${c.parent_title}" | category: ${c.category || 'Uncategorized'} | Rs ${c.selling_price || 0} | collections: ${(c.collections || []).map(x => x.handle).join(', ') || 'none'}`;
+  }).join('\n');
 
   return `TARGET PRODUCT:
 - ID: ${target.shopify_product_id}
@@ -60,20 +70,29 @@ function buildUserPrompt(target, candidates) {
 CANDIDATES (${candidates.length} options — pick 4 best):
 ${lines}
 
+REMINDER: Maximum 2 picks may be tagged [SAME-CAT]. At least 2 picks MUST be tagged [CROSS-CAT].
+
 Return JSON only with exactly 4 picks.`;
 }
 
 // Score candidates by relevance to target. Higher = more relevant.
 function scoreCandidate(target, c) {
   let score = 0;
-  // Same category +10
-  if (target.category && c.category === target.category) score += 10;
-  // Collection overlap +5 per shared collection
   const tColls = new Set((target.collections || []).map(x => x.handle));
   const cColls = (c.collections || []).map(x => x.handle);
   const overlap = cColls.filter(h => tColls.has(h)).length;
-  score += overlap * 5;
-  // Price proximity (within 30% = +5, within 60% = +2)
+  const sameCategory = !!(target.category && c.category === target.category);
+
+  // STRONGEST signal: cross-category + shared collection (ideal cross-sell)
+  if (!sameCategory && overlap > 0) score += 20 + (overlap * 5);
+
+  // Same category WITH shared collection (good for stacking, but lower priority)
+  else if (sameCategory && overlap > 0) score += 8 + (overlap * 3);
+
+  // Same category WITHOUT shared collection (weak — stacking fallback only)
+  else if (sameCategory) score += 4;
+
+  // Price proximity bonus
   const tPrice = Number(target.selling_price) || 0;
   const cPrice = Number(c.selling_price) || 0;
   if (tPrice > 0 && cPrice > 0) {
@@ -81,9 +100,58 @@ function scoreCandidate(target, c) {
     if (ratio >= 0.7) score += 5;
     else if (ratio >= 0.4) score += 2;
   }
-  // ABC class match (A products with A products = better cross-sell)
+
+  // ABC class match bonus
   if (target.abc_90d && c.abc_90d === target.abc_90d) score += 3;
+
   return score;
+}
+
+// Diversity-first candidate selection — guarantees a mix of cross-category + same-category
+function selectDiverseCandidates(target, allCandidates) {
+  const tColls = new Set((target.collections || []).map(x => x.handle));
+  const sameCat = (c) => target.category && c.category === target.category;
+  const sharedColl = (c) => (c.collections || []).some(x => tColls.has(x.handle));
+
+  // Tier 1 — IDEAL: cross-category + shared collection
+  const tier1 = allCandidates.filter(c => !sameCat(c) && sharedColl(c));
+  // Tier 2 — same category + shared collection (for stacking option)
+  const tier2 = allCandidates.filter(c => sameCat(c) && sharedColl(c));
+  // Tier 3 — cross-category, no collection signal (fallback for diversity)
+  const tier3 = allCandidates.filter(c => !sameCat(c) && !sharedColl(c));
+  // Tier 4 — same category, no collection signal (last-resort stacking)
+  const tier4 = allCandidates.filter(c => sameCat(c) && !sharedColl(c));
+
+  // Score each tier internally
+  const sortByScore = (arr) =>
+    arr.map(c => ({ ...c, _score: scoreCandidate(target, c) }))
+       .sort((a, b) => b._score - a._score);
+
+  const t1 = sortByScore(tier1);
+  const t2 = sortByScore(tier2);
+  const t3 = sortByScore(tier3);
+  const t4 = sortByScore(tier4);
+
+  // Compose pool — diversity-first quotas:
+  //   12 from tier 1 (cross-cat + shared coll)
+  //   5  from tier 2 (same-cat + shared coll)
+  //   3  from tier 3 (cross-cat fallback)
+  // Then top up to 20 from any remaining tier
+  const composed = [
+    ...t1.slice(0, 12),
+    ...t2.slice(0, 5),
+    ...t3.slice(0, 3),
+  ];
+
+  // Fill remaining slots if pool < 20
+  if (composed.length < 20) {
+    const used = new Set(composed.map(c => c.shopify_product_id));
+    const fillers = [...t1.slice(12), ...t2.slice(5), ...t3.slice(3), ...t4]
+      .filter(c => !used.has(c.shopify_product_id));
+    composed.push(...fillers.slice(0, 20 - composed.length));
+  }
+
+  return composed.slice(0, 20);
 }
 
 export async function POST(request) {
@@ -99,7 +167,7 @@ export async function POST(request) {
 
     const pid = String(shopify_product_id);
 
-    // ── Step 1: Load target product (any variant works — same parent metadata) ──
+    // ── Step 1: Load target product ──
     const { data: targetRow, error: tErr } = await supabase
       .from('products')
       .select('shopify_product_id, parent_title, category, collections, selling_price, abc_90d')
@@ -112,7 +180,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Product not found' }, { status: 404 });
     }
 
-    // ── Step 2: Pull candidates (active, in-stock, exclude self) ──
+    // ── Step 2: Pull candidates (active, in-stock, exclude self, within ±60% price) ──
     const candPriceMin = (targetRow.selling_price || 0) * 0.4;
     const candPriceMax = (targetRow.selling_price || 0) * 1.6;
 
@@ -134,34 +202,23 @@ export async function POST(request) {
       off += PAGE;
     }
 
-    // Dedupe to one row per shopify_product_id (first variant)
+    // Dedupe to one row per parent
     const seen = new Map();
     for (const r of candRows) {
       if (!seen.has(r.shopify_product_id)) seen.set(r.shopify_product_id, r);
     }
-    let candidates = Array.from(seen.values());
+    let allCandidates = Array.from(seen.values());
 
-    // Apply price band filter (skip if target has no price)
+    // Apply price band filter
     if (targetRow.selling_price > 0) {
-      candidates = candidates.filter(c => {
+      allCandidates = allCandidates.filter(c => {
         const p = Number(c.selling_price) || 0;
         return p >= candPriceMin && p <= candPriceMax;
       });
     }
 
-    // Pre-filter: keep only candidates with at least some relevance signal
-    candidates = candidates.filter(c => {
-      if (targetRow.category && c.category === targetRow.category) return true;
-      const tColls = new Set((targetRow.collections || []).map(x => x.handle));
-      const cColls = (c.collections || []).map(x => x.handle);
-      return cColls.some(h => tColls.has(h));
-    });
-
-    // Score and take top 20
-    candidates = candidates
-      .map(c => ({ ...c, _score: scoreCandidate(targetRow, c) }))
-      .sort((a, b) => b._score - a._score)
-      .slice(0, 20);
+    // Diversity-first selection (replaces old simple filter)
+    const candidates = selectDiverseCandidates(targetRow, allCandidates);
 
     // ── Step 3: Decide picks ──
     let picks = [];
@@ -171,10 +228,9 @@ export async function POST(request) {
     if (candidates.length === 0) {
       picks = [];
     } else if (candidates.length <= 4) {
-      // Trivial — just use what we have
       picks = candidates.map(c => ({
         shopify_product_id: c.shopify_product_id,
-        rationale: `Same category and price range — natural pairing for cross-sell.`,
+        rationale: `Same price range and active stock — natural pairing for cross-sell.`,
       }));
     } else {
       // ── Step 4: Claude pick ──
@@ -221,6 +277,35 @@ export async function POST(request) {
           shopify_product_id: String(p.shopify_product_id),
           rationale: String(p.rationale || '').trim(),
         }));
+
+      // Diversity guard — if AI ignored diversity rule and gave >2 same-category,
+      // forcibly swap excess with best cross-category candidate
+      const sameCatCount = picks.filter(p => {
+        const c = candidates.find(x => String(x.shopify_product_id) === p.shopify_product_id);
+        return c && targetRow.category && c.category === targetRow.category;
+      }).length;
+
+      if (sameCatCount > 2) {
+        const pickedIds = new Set(picks.map(p => p.shopify_product_id));
+        const crossCatPool = candidates.filter(c =>
+          targetRow.category &&
+          c.category !== targetRow.category &&
+          !pickedIds.has(String(c.shopify_product_id))
+        );
+        // Replace last same-cat pick(s) with top cross-cat
+        let toReplace = sameCatCount - 2;
+        for (let i = picks.length - 1; i >= 0 && toReplace > 0; i--) {
+          const c = candidates.find(x => String(x.shopify_product_id) === picks[i].shopify_product_id);
+          if (c && targetRow.category && c.category === targetRow.category && crossCatPool.length > 0) {
+            const replacement = crossCatPool.shift();
+            picks[i] = {
+              shopify_product_id: String(replacement.shopify_product_id),
+              rationale: `Different category complement — pairs with the target to build a fuller jewelry look.`,
+            };
+            toReplace--;
+          }
+        }
+      }
     }
 
     // ── Step 5: Enrich with title snapshot for ERP UI ──
@@ -229,7 +314,7 @@ export async function POST(request) {
     if (pickIds.length > 0) {
       const { data: snapRows } = await supabase
         .from('products')
-        .select('shopify_product_id, parent_title, image_url, selling_price')
+        .select('shopify_product_id, parent_title, image_url, selling_price, category')
         .in('shopify_product_id', pickIds);
       for (const s of snapRows || []) {
         if (!snapshots[s.shopify_product_id]) snapshots[s.shopify_product_id] = s;
@@ -240,11 +325,12 @@ export async function POST(request) {
       title_snapshot: snapshots[p.shopify_product_id]?.parent_title || null,
       image_snapshot: snapshots[p.shopify_product_id]?.image_url || null,
       price_snapshot: snapshots[p.shopify_product_id]?.selling_price || null,
+      category_snapshot: snapshots[p.shopify_product_id]?.category || null,
     }));
 
     // ── Step 6: Save to all variants of this parent ──
     const payload = {
-      version: 1,
+      version: 2,
       generated_at: new Date().toISOString(),
       model: aiUsed ? MODEL : 'rule-based',
       candidates_considered: candidates.length,
@@ -267,6 +353,7 @@ export async function POST(request) {
       success: true,
       shopify_product_id: pid,
       target_title: targetRow.parent_title,
+      target_category: targetRow.category,
       ...payload,
     });
   } catch (err) {
