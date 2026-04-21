@@ -94,7 +94,7 @@ export async function POST(request) {
     let shopifyCancelled = false;
     if (order.shopify_order_id && shouldSyncShopify) {
       try {
-        await cancelShopifyOrder(order.shopify_order_id, 'other');
+        await cancelShopifyOrder(order.shopify_order_id, {   reason: 'other',   restock: true,           // ✅ inventory wapas commit   refund: true,            // COD pe no-op; card orders pe safe   notifyCustomer: false,   // WhatsApp se hum bhejte hain   staffNote: reason ? `ERP cancel by ${performer}: ${reason}` : `ERP cancel by ${performer}`, });
         shopifyCancelled = true;
         if (reason) {
           try {
