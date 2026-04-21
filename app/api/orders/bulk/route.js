@@ -124,7 +124,13 @@ async function doCancel(supabase, orderId, reason, performer, performerEmail, sy
   let shopifyCancelled = false;
   if (order.shopify_order_id && syncShopify) {
     try {
-      await cancelShopifyOrder(order.shopify_order_id, {   reason: 'other',   restock: true,   refund: true,   notifyCustomer: false,   staffNote: `ERP bulk cancel${reason ? ': ' + reason : ''}`, });
+await cancelShopifyOrder(order.shopify_order_id, {
+        reason: 'other',
+        restock: true,
+        refund: true,
+        notifyCustomer: false,
+        staffNote: `ERP bulk cancel${reason ? ': ' + reason : ''}`,
+      });
       shopifyCancelled = true;
     } catch (e) {
       shopifyWarning = e.message;
