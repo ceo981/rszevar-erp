@@ -72,7 +72,7 @@ export default function InventoryPage() {
   const [abcStats, setAbcStats] = useState(null);
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState(null);
-  const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);
+  const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);   const [seoFilter, setSeoFilter] = useState('all');
 
   const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
   const revCol = abcWindow === '180d' ? 'revenue_180d' : 'revenue_90d';
@@ -89,6 +89,7 @@ export default function InventoryPage() {
       if (abcFilter !== 'all') params.set('abc', abcFilter);
       params.set('abc_window', abcWindow);
       if (filters.collection !== 'all') params.set('collection', filters.collection);
+      if (seoFilter !== 'all') params.set('seo_tier', seoFilter);
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
       if (data.success) {
@@ -101,7 +102,7 @@ export default function InventoryPage() {
       }
     } catch (e) { console.error('Fetch products error:', e); }
     setLoading(false);
-  }, [page, filters, sortConfig, view, abcFilter, abcWindow]);
+  }, [page, filters, sortConfig, view, abcFilter, abcWindow, seoFilter]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -175,6 +176,21 @@ export default function InventoryPage() {
     const cls = value || 'D';
     const c = getAbcColor(cls);
     return <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 10, fontWeight: 700, background: c.bg, color: c.color, border: `1px solid ${c.border}` }}>{cls}</span>;
+  };
+
+  // SEO Score badge — colored by tier (green/yellow/red/none)
+  const SeoBadge = ({ score, tier }) => {
+    const t = tier || 'none';
+    const styles = {
+      green:  { bg: 'rgba(74,222,128,0.15)',  color: '#4ade80', border: 'rgba(74,222,128,0.4)' },
+      yellow: { bg: 'rgba(251,191,36,0.15)',  color: '#fbbf24', border: 'rgba(251,191,36,0.4)' },
+      red:    { bg: 'rgba(248,113,113,0.15)', color: '#f87171', border: 'rgba(248,113,113,0.4)' },
+      none:   { bg: 'rgba(138,133,128,0.10)', color: 'var(--text3)', border: 'var(--border)' },
+    };
+    const s = styles[t] || styles.none;
+    const label = t === 'none' ? '—' : (score ?? 0);
+    const title = t === 'none' ? 'Not enhanced yet' : `SEO score ${score}/100 (${t})`;
+    return <span title={title} style={{ padding: '2px 8px', borderRadius: 3, fontSize: 10, fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: 'monospace', minWidth: 28, display: 'inline-block', textAlign: 'center' }}>{label}</span>;
   };
 
   return (
@@ -318,10 +334,23 @@ export default function InventoryPage() {
               style={{ padding: '7px 14px', background: filters.stock === sf.value ? 'var(--gold-dim)' : 'transparent', border: `1px solid ${filters.stock === sf.value ? 'var(--gold)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: filters.stock === sf.value ? 'var(--gold)' : 'var(--text2)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{sf.label}</button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+       <div style={{ display: 'flex', gap: 4 }}>
           {[{ value: 'all', label: 'All' }, { value: 'active', label: '✓ Active' }, { value: 'draft', label: '○ Draft' }].map(af => (
             <button key={af.value} onClick={() => { setFilters(f => ({ ...f, active: af.value })); setPage(1); }}
               style={{ padding: '7px 14px', background: filters.active === af.value ? 'var(--green-dim)' : 'transparent', border: `1px solid ${filters.active === af.value ? 'var(--green)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: filters.active === af.value ? 'var(--green)' : 'var(--text2)', fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{af.label}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, marginRight: 4 }}>SEO</span>
+          {[
+            { value: 'all',    label: 'All',     color: 'var(--gold)',  dim: 'var(--gold-dim)' },
+            { value: 'green',  label: '🟢 Green', color: '#4ade80',     dim: 'rgba(74,222,128,0.15)' },
+            { value: 'yellow', label: '🟡 Yellow',color: '#fbbf24',     dim: 'rgba(251,191,36,0.15)' },
+            { value: 'red',    label: '🔴 Red',   color: '#f87171',     dim: 'rgba(248,113,113,0.15)' },
+            { value: 'none',   label: '○ None',   color: 'var(--text3)',dim: 'rgba(138,133,128,0.10)' },
+          ].map(sf => (
+            <button key={sf.value} onClick={() => { setSeoFilter(sf.value); setPage(1); }}
+              style={{ padding: '7px 12px', background: seoFilter === sf.value ? sf.dim : 'transparent', border: `1px solid ${seoFilter === sf.value ? sf.color : 'var(--border)'}`, borderRadius: 'var(--radius)', color: seoFilter === sf.value ? sf.color : 'var(--text2)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{sf.label}</button>
           ))}
         </div>
       </div>
@@ -350,7 +379,8 @@ export default function InventoryPage() {
                     { key: 'sku', label: 'SKU', sortable: true },
                     ...(canViewFinancial ? [{ key: 'selling_price', label: 'Price', sortable: true }] : []),
                     { key: 'stock_quantity', label: 'Stock', sortable: true },
-                    { key: 'abc', label: 'ABC', sortable: false, width: 50 },
+                   { key: 'abc', label: 'ABC', sortable: false, width: 50 },
+                    { key: 'seo_score', label: 'SEO', sortable: true, width: 60 },
                     ...(canViewFinancial ? [{ key: revCol, label: `Rev (${abcWindow})`, sortable: true }] : []),
                     { key: soldCol, label: `Sold`, sortable: true, width: 60 },
                     { key: 'status', label: 'Status', sortable: false },
@@ -394,6 +424,7 @@ export default function InventoryPage() {
                           {group.has_out_of_stock && <span title="Some variants out of stock" style={{ marginLeft: 6, fontSize: 10, color: 'var(--red)' }}>⚠</span>}
                         </td>
                         <td style={{ padding: '10px', color: 'var(--text3)' }}>—</td>
+                        <td style={{ padding: '10px' }}><SeoBadge score={group.variants[0]?.seo_score} tier={group.variants[0]?.seo_tier} /></td>
                         <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
                         <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
                         <td style={{ padding: '10px' }}>
@@ -415,6 +446,7 @@ export default function InventoryPage() {
                               <span style={{ padding: '2px 8px', borderRadius: 4, background: getStockBg(v.stock_quantity || 0), color: getStockColor(v.stock_quantity || 0), fontWeight: 600, fontSize: 11 }}>{v.stock_quantity ?? 0}</span>
                             </td>
                             <td style={{ padding: '6px 10px' }}><AbcBadge value={v[abcCol]} /></td>
+                            <td style={{ padding: '6px 10px' }}><SeoBadge score={v.seo_score} tier={v.seo_tier} /></td>
                             {canViewFinancial && <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{v[revCol] ? `Rs ${Number(v[revCol]).toLocaleString()}` : '—'}</td>}
                             <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 11 }}>{v[soldCol] || 0}</td>
                             <td></td>
@@ -442,6 +474,7 @@ export default function InventoryPage() {
                       <span style={{ padding: '3px 10px', borderRadius: 4, background: getStockBg(product.stock_quantity || 0), color: getStockColor(product.stock_quantity || 0), fontWeight: 600, fontSize: 12 }}>{product.stock_quantity ?? 0}</span>
                     </td>
                     <td style={{ padding: '10px' }}><AbcBadge value={product[abcCol]} /></td>
+                    <td style={{ padding: '10px' }}><SeoBadge score={product.seo_score} tier={product.seo_tier} /></td>
                     {canViewFinancial && <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{product[revCol] ? `Rs ${Number(product[revCol]).toLocaleString()}` : '—'}</td>}
                     <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>{product[soldCol] || 0}</td>
                     <td style={{ padding: '10px' }}>
