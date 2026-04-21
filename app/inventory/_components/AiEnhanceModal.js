@@ -456,7 +456,7 @@ function GeneratingState() {
       alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', textAlign: 'center',
     }}>
       <div style={{ fontSize: 40, animation: 'spin 1.2s linear infinite', marginBottom: 16 }}>⟳</div>
-      <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6 }}>Claude is writing...</div>
+      <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 6 }}>RS ZEVAR AI is writing...</div>
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>Usually 3-6 seconds</div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
