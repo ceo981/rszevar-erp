@@ -3,19 +3,21 @@ import { createServerClient } from '@/lib/supabase';
 import { generateRelatedProductsForOne, loadCandidatePool } from '@/lib/related-products';
 
 // Related Products — batch generator + stats
-// v2.1 — loads candidate pool ONCE at batch level (huge speedup)
+// v2.2 — conservative defaults to stay under Anthropic rate limits
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_BATCH = 10;       // reduced from 15 — safer under timeout
-const DEFAULT_CONCURRENCY = 3;
+const DEFAULT_BATCH = 8;        // reduced from 10
+const DEFAULT_CONCURRENCY = 2;  // reduced from 3
 
 async function runWithConcurrency(items, concurrency, fn) {
   const results = new Array(items.length);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async (_, wi) => {
+    // Stagger worker starts to avoid thundering herd (200ms per worker)
+    await new Promise(r => setTimeout(r, wi * 200));
     while (true) {
       const i = cursor++;
       if (i >= items.length) break;
@@ -89,16 +91,15 @@ export async function POST(request) {
   try {
     const supabase = createServerClient();
     const body = await request.json().catch(() => ({}));
-    const batchSize  = Math.min(Math.max(parseInt(body.batch_size) || DEFAULT_BATCH, 1), 20);
-    const concurrency = Math.min(Math.max(parseInt(body.concurrency) || DEFAULT_CONCURRENCY, 1), 5);
+    const batchSize  = Math.min(Math.max(parseInt(body.batch_size) || DEFAULT_BATCH, 1), 15);
+    const concurrency = Math.min(Math.max(parseInt(body.concurrency) || DEFAULT_CONCURRENCY, 1), 3);
 
-    // ── Step 1: Load candidate pool ONCE (shared across all products in batch) ──
+    // Load pool once for whole batch
     const poolStart = Date.now();
     const pool = await loadCandidatePool(supabase);
     const poolMs = Date.now() - poolStart;
 
-    // ── Step 2: Identify pending products from the same pool ──
-    // (Need related_products column — separate quick query)
+    // Identify pending
     const relRows = [];
     const PAGE = 1000;
     let off = 0;
@@ -140,7 +141,7 @@ export async function POST(request) {
 
     const batch = pending.slice(0, batchSize);
 
-    // ── Step 3: Process batch using shared pool (no per-product candidate fetch) ──
+    // Process with shared pool
     const results = await runWithConcurrency(batch, concurrency, async (p) => {
       try {
         const result = await generateRelatedProductsForOne(
@@ -175,6 +176,13 @@ export async function POST(request) {
     const totalCost = results.reduce((s, r) => s + (r.cost_usd || 0), 0);
     const aiCalls = results.filter(r => r.ai_used).length;
 
+    // Group failure reasons for the log
+    const failureReasons = {};
+    for (const r of results.filter(x => !x.success)) {
+      const key = r.error?.slice(0, 60) || 'unknown';
+      failureReasons[key] = (failureReasons[key] || 0) + 1;
+    }
+
     return NextResponse.json({
       success: true,
       processed: ok,
@@ -185,6 +193,7 @@ export async function POST(request) {
       batch_cost_pkr: Math.round(totalCost * 285),
       pool_load_ms: poolMs,
       duration_ms: Date.now() - startTime,
+      failure_reasons: failureReasons,
       results,
     });
   } catch (err) {
