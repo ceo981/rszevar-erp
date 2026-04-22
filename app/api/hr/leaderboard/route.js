@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { getCurrentUser } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,10 @@ export async function GET(request) {
   const supabase = createServerClient();
   const { searchParams } = new URL(request.url);
   const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
+
+  // ── Role check — non-super_admin gets name + items/orders count only (no Rs amounts)
+  const user = await getCurrentUser();
+  const isSuperAdmin = user?.profile?.role === 'super_admin';
 
   const start = `${month}-01`;
   const [_y, _m] = month.split('-').map(Number);
@@ -81,15 +86,29 @@ export async function GET(request) {
   const bonus1st    = getSetting('leaderboard_bonus_1st', oldBonus);
   const bonus2nd    = getSetting('leaderboard_bonus_2nd', Math.round(oldBonus / 2));
 
+  // ── Build response (strip Rs amounts for non-super_admin — defense in depth) ──
+  // Ranking order is preserved (already sorted by amount server-side), but non-CEO
+  // callers only get items/orders counts in each row. Bonus amounts also hidden.
+  const stripAmount = (row) => {
+    if (!row) return row;
+    const { total_amount, ...rest } = row;
+    return rest;
+  };
+
+  const publicLeaderboard = isSuperAdmin
+    ? leaderboard
+    : leaderboard.map(stripAmount);
+
   return NextResponse.json({
     success: true,
     month,
-    leaderboard,
-    winner:    leaderboard[0] || null,
-    runner_up: leaderboard[1] || null,
-    bonus_amount_1st: bonus1st,
-    bonus_amount_2nd: bonus2nd,
+    is_super_admin: isSuperAdmin, // frontend hint (also double-checked in useUser)
+    leaderboard: publicLeaderboard,
+    winner:    isSuperAdmin ? (leaderboard[0] || null) : stripAmount(leaderboard[0] || null),
+    runner_up: isSuperAdmin ? (leaderboard[1] || null) : stripAmount(leaderboard[1] || null),
+    bonus_amount_1st: isSuperAdmin ? bonus1st : null,
+    bonus_amount_2nd: isSuperAdmin ? bonus2nd : null,
     // Backward compat — old frontends still reading bonus_amount
-    bonus_amount: bonus1st,
+    bonus_amount: isSuperAdmin ? bonus1st : null,
   });
 }
