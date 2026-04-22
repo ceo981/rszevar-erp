@@ -681,6 +681,7 @@ export default function MessagesPage() {
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [filter, setFilter] = useState('all'); // 'all' | 'unread'
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadLabel, setUploadLabel] = useState('');
@@ -962,25 +963,80 @@ export default function MessagesPage() {
             />
           </div>
 
+          {/* Filter tabs: All / Unread (WhatsApp-style) */}
+          {(() => {
+            const unreadCount = conversations.filter(c => (c.unread_count || 0) > 0).length;
+            const tabs = [
+              { id: 'all',    label: 'All',    count: null },
+              { id: 'unread', label: 'Unread', count: unreadCount },
+            ];
+            return (
+              <div style={{
+                display: 'flex', gap: 6, padding: '8px 12px',
+                borderBottom: `1px solid ${border}`, background: '#0f0f0f',
+              }}>
+                {tabs.map(t => {
+                  const active = filter === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setFilter(t.id)}
+                      style={{
+                        background: active ? gold : 'transparent',
+                        color: active ? '#000' : '#aaa',
+                        border: `1px solid ${active ? gold : border}`,
+                        borderRadius: 14, padding: '4px 12px',
+                        fontSize: 12, fontWeight: active ? 700 : 500,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      {t.label}
+                      {t.count != null && t.count > 0 && (
+                        <span style={{
+                          background: active ? '#000' : '#22c55e',
+                          color: active ? gold : '#000',
+                          fontSize: 10, fontWeight: 700,
+                          padding: '1px 6px', borderRadius: 8, minWidth: 16, textAlign: 'center',
+                        }}>{t.count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            {loadingConvs && (
-              <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 12 }}>
-                Loading...
-              </div>
-            )}
-            {!loadingConvs && conversations.length === 0 && (
-              <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 12 }}>
-                {search ? 'No conversations match' : 'No conversations yet'}
-              </div>
-            )}
-            {conversations.map(conv => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isActive={conv.id === selectedId}
-                onClick={() => selectConversation(conv)}
-              />
-            ))}
+            {(() => {
+              const visibleConvs = filter === 'unread'
+                ? conversations.filter(c => (c.unread_count || 0) > 0)
+                : conversations;
+              return (
+                <>
+                  {loadingConvs && (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 12 }}>
+                      Loading...
+                    </div>
+                  )}
+                  {!loadingConvs && visibleConvs.length === 0 && (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 12 }}>
+                      {filter === 'unread'
+                        ? 'No unread conversations 🎉'
+                        : (search ? 'No conversations match' : 'No conversations yet')}
+                    </div>
+                  )}
+                  {visibleConvs.map(conv => (
+                    <ConversationItem
+                      key={conv.id}
+                      conv={conv}
+                      isActive={conv.id === selectedId}
+                      onClick={() => selectConversation(conv)}
+                    />
+                  ))}
+                </>
+              );
+            })()}
           </div>
         </div>
 
