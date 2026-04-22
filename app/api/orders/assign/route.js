@@ -20,6 +20,112 @@ import { updateShopifyOrderTags } from '@/lib/shopify';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+// ═════════════════════════════════════════════════════════════════════════════
+// SHARED HELPERS — used by set_packer (scan-time credit) + action:'packed' (safety net)
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Compute items_packed + items_amount with 3-tier fallback:
+//   1) order_items table (primary)
+//   2) shopify_raw.line_items (for orders without backfill)
+//   3) orders.total_amount (always-populated from Shopify sync)
+async function computePackingCredits(supabase, order_id) {
+  const { data: orderItems } = await supabase
+    .from('order_items')
+    .select('quantity, total_price, unit_price')
+    .eq('order_id', order_id);
+
+  let totalItems = (orderItems || []).reduce(
+    (s, i) => s + (parseInt(i.quantity) || 1),
+    0,
+  );
+
+  let totalAmount = (orderItems || []).reduce((s, i) => {
+    const tp = parseFloat(i.total_price);
+    if (!isNaN(tp) && tp > 0) return s + tp;
+    const up = parseFloat(i.unit_price) || 0;
+    const qty = parseInt(i.quantity) || 1;
+    return s + up * qty;
+  }, 0);
+
+  // Tier 2: shopify_raw fallback
+  if (totalItems === 0 || totalAmount === 0) {
+    const { data: ordRaw } = await supabase
+      .from('orders')
+      .select('shopify_raw')
+      .eq('id', order_id)
+      .maybeSingle();
+    const rawItems = ordRaw?.shopify_raw?.line_items || [];
+    if (totalItems === 0) {
+      totalItems = rawItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+    }
+    if (totalAmount === 0) {
+      totalAmount = rawItems.reduce((s, i) => {
+        const price = parseFloat(i.price) || 0;
+        const qty = parseInt(i.quantity) || 1;
+        return s + price * qty;
+      }, 0);
+    }
+  }
+
+  // Tier 3: orders.total_amount final fallback
+  if (totalAmount === 0) {
+    const { data: ordTotal } = await supabase
+      .from('orders')
+      .select('total_amount')
+      .eq('id', order_id)
+      .maybeSingle();
+    totalAmount = parseFloat(ordTotal?.total_amount) || 0;
+  }
+
+  if (totalItems === 0) totalItems = 1;
+  totalAmount = Math.round(totalAmount * 100) / 100;
+
+  return { totalItems, totalAmount };
+}
+
+// Write packing_log row(s). Handles solo AND team packs.
+// Returns: { rowsInserted, totalItems, totalAmount }
+async function writePackingLogRows(supabase, { order_id, isPackingTeam, solo_employee_id, completed_at, notes }) {
+  const { totalItems, totalAmount } = await computePackingCredits(supabase, order_id);
+
+  if (isPackingTeam) {
+    const { data: team } = await supabase
+      .from('employees')
+      .select('id, name')
+      .eq('status', 'active')
+      .eq('role', 'Packing Team');
+
+    const teamCount = (team || []).length || 1;
+    const amountPerPerson = Math.round((totalAmount / teamCount) * 100) / 100;
+
+    const logs = (team || []).map(emp => ({
+      order_id,
+      employee_id: emp.id,
+      items_packed: totalItems, // full credit per member
+      items_amount: amountPerPerson,
+      completed_at,
+      notes: notes || 'Packing Team (shared)',
+    }));
+
+    if (logs.length > 0) {
+      await supabase.from('packing_log').insert(logs);
+    }
+    return { rowsInserted: logs.length, totalItems, totalAmount };
+  }
+
+  await supabase.from('packing_log').insert({
+    order_id,
+    employee_id: solo_employee_id,
+    items_packed: totalItems,
+    items_amount: totalAmount,
+    completed_at,
+    notes: notes || '',
+  });
+  return { rowsInserted: 1, totalItems, totalAmount };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+
 // ─── GET — packing staff list OR current assignment for order ─────────────
 export async function GET(request) {
   const supabase = createServerClient();
@@ -97,7 +203,12 @@ export async function POST(request) {
         // Only revert status if currently on_packing — use canTransition as safety
         if (ord.status === 'on_packing') {
           const gate = canTransition('on_packing', 'confirmed', 'manual');
-          if (gate.allowed) updatePayload.status = 'confirmed';
+          if (gate.allowed) {
+            updatePayload.status = 'confirmed';
+            // Pack is being undone — remove scan-time packing_log credit too.
+            // (If already at packed/dispatched/delivered, credit is earned — leave it.)
+            await supabase.from('packing_log').delete().eq('order_id', order_id);
+          }
         }
         await supabase.from('orders').update(updatePayload).eq('id', order_id);
 
@@ -190,6 +301,19 @@ export async function POST(request) {
         ignoreDuplicates: false,
       });
 
+      // ── Write packing_log (credit at scan time, not wait for Mark Packed) ──
+      // Re-assignment safety: delete previous rows for this order before insert.
+      // This ensures only the CURRENT packer gets credit (handles A→B reassignment).
+      await supabase.from('packing_log').delete().eq('order_id', order_id);
+
+      const packingLogWritten = await writePackingLogRows(supabase, {
+        order_id,
+        isPackingTeam: assigned_to === 'packing_team',
+        solo_employee_id: empId,
+        completed_at: nowIso,
+        notes: assigned_to === 'packing_team' ? 'Packing Team (shared) [scan-credit]' : '[scan-credit]',
+      });
+
       // ── Promote confirmed → on_packing (was missing before) ──
       let statusPromoted = false;
       if (ord.status === 'confirmed') {
@@ -207,8 +331,8 @@ export async function POST(request) {
         order_id,
         action: 'packer_set',
         notes: statusPromoted
-          ? `Packed by: ${empName} (status → on_packing)`
-          : `Packed by: ${empName}`,
+          ? `Packed by: ${empName} (status → on_packing, ${packingLogWritten.rowsInserted} log row(s), Rs ${packingLogWritten.totalAmount.toLocaleString()})`
+          : `Packed by: ${empName} (${packingLogWritten.rowsInserted} log row(s), Rs ${packingLogWritten.totalAmount.toLocaleString()})`,
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: nowIso,
@@ -218,6 +342,8 @@ export async function POST(request) {
         success: true,
         packed_by: empName,
         status_promoted: statusPromoted,
+        packing_log_rows: packingLogWritten.rowsInserted,
+        items_amount: packingLogWritten.totalAmount,
       });
     }
 
@@ -261,30 +387,49 @@ export async function POST(request) {
       }
 
       const isPackingTeam = assignment.notes === 'packing_team' || !assignment.assigned_to;
-
-      // Compute leaderboard credits
-      const { data: orderItems } = await supabase
-        .from('order_items')
-        .select('quantity, total_price, unit_price')
-        .eq('order_id', order_id);
-
-      let totalItems = (orderItems || []).reduce(
-        (s, i) => s + (parseInt(i.quantity) || 1),
-        0,
-      );
-      if (totalItems === 0) totalItems = 1;
-
-      let totalAmount = (orderItems || []).reduce((s, i) => {
-        const tp = parseFloat(i.total_price);
-        if (!isNaN(tp) && tp > 0) return s + tp;
-        const up = parseFloat(i.unit_price) || 0;
-        const qty = parseInt(i.quantity) || 1;
-        return s + up * qty;
-      }, 0);
-      totalAmount = Math.round(totalAmount * 100) / 100;
-
       const nowIso = new Date().toISOString();
 
+      // ── Dedup check: if set_packer already wrote packing_log, skip re-insert ──
+      // (set_packer writes at scan time; this is the safety-net path for edge cases)
+      const { count: existingLogCount } = await supabase
+        .from('packing_log')
+        .select('*', { count: 'exact', head: true })
+        .eq('order_id', order_id);
+
+      let totalItems = 0;
+      let totalAmount = 0;
+      let logsInserted = 0;
+
+      if ((existingLogCount || 0) > 0) {
+        // packing_log already has row(s) — credit is preserved. Compute totals for response only.
+        const { data: existingRows } = await supabase
+          .from('packing_log')
+          .select('items_packed, items_amount')
+          .eq('order_id', order_id);
+        // For solo: 1 row = full totals. For team: rows share, so aggregate and de-divide.
+        if (isPackingTeam && (existingRows || []).length > 1) {
+          totalItems = existingRows[0].items_packed || 0; // full credit per member
+          totalAmount = (existingRows || []).reduce((s, r) => s + (parseFloat(r.items_amount) || 0), 0);
+        } else {
+          totalItems = (existingRows || []).reduce((s, r) => s + (parseInt(r.items_packed) || 0), 0);
+          totalAmount = (existingRows || []).reduce((s, r) => s + (parseFloat(r.items_amount) || 0), 0);
+        }
+        totalAmount = Math.round(totalAmount * 100) / 100;
+      } else {
+        // No packing_log rows — this is a legacy path (set_packer didn't write). Write now.
+        const written = await writePackingLogRows(supabase, {
+          order_id,
+          isPackingTeam,
+          solo_employee_id: assignment.assigned_to,
+          completed_at: nowIso,
+          notes: isPackingTeam ? 'Packing Team (shared)' : '',
+        });
+        totalItems = written.totalItems;
+        totalAmount = written.totalAmount;
+        logsInserted = written.rowsInserted;
+      }
+
+      // Status updates (always run regardless of dedup)
       await supabase
         .from('orders')
         .update({ status: 'packed', updated_at: nowIso })
@@ -295,49 +440,18 @@ export async function POST(request) {
         .update({ status: 'packed', completed_at: nowIso })
         .eq('id', assignment.id);
 
-      // ── Leaderboard entries ──
-      if (isPackingTeam) {
-        const { data: team } = await supabase
-          .from('employees')
-          .select('id, name')
-          .eq('status', 'active')
-          .eq('role', 'Packing Team');
-
-        const teamCount = (team || []).length || 1;
-        const itemsPerPerson = totalItems; // full credit per member
-        const amountPerPerson = Math.round((totalAmount / teamCount) * 100) / 100;
-
-        const logs = (team || []).map(emp => ({
-          order_id,
-          employee_id: emp.id,
-          items_packed: itemsPerPerson,
-          items_amount: amountPerPerson,
-          completed_at: nowIso,
-          notes: 'Packing Team (shared)',
-        }));
-
-        if (logs.length > 0) {
-          await supabase.from('packing_log').insert(logs);
-        }
-      } else {
-        await supabase.from('packing_log').insert({
-          order_id,
-          employee_id: assignment.assigned_to,
-          items_packed: totalItems,
-          items_amount: totalAmount,
-          completed_at: nowIso,
-          notes: '',
-        });
-      }
-
       const { data: empData } = assignment.assigned_to
         ? await supabase.from('employees').select('name').eq('id', assignment.assigned_to).single()
         : { data: null };
 
+      const logNote = (existingLogCount || 0) > 0
+        ? `Packed — ${totalItems} items (Rs. ${totalAmount.toLocaleString()}) by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'} [credit from scan]`
+        : `Packed — ${totalItems} items (Rs. ${totalAmount.toLocaleString()}) by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'} [credit written here — legacy path]`;
+
       await supabase.from('order_activity_log').insert({
         order_id,
         action: 'packed',
-        notes: `Packed — ${totalItems} items (Rs. ${totalAmount.toLocaleString()}) by ${isPackingTeam ? 'Packing Team' : empData?.name || 'Unknown'}`,
+        notes: logNote,
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: nowIso,
@@ -348,6 +462,8 @@ export async function POST(request) {
         items_packed: totalItems,
         items_amount: totalAmount,
         is_team: isPackingTeam,
+        credit_from_scan: (existingLogCount || 0) > 0,
+        logs_inserted: logsInserted,
       });
     }
 
