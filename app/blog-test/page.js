@@ -1,20 +1,18 @@
 'use client';
 
 /**
- * /blog-test — Temporary test page for Phase 2 verification
- * Super simple form-based UI to test blog generation without Postman.
- * This will be replaced by proper /blog UI in Phase 3.
+ * /blog-test — v3 with link validation + image preview + catalog stats
  */
 
 import { useState } from 'react';
 
 export default function BlogTestPage() {
   const [formData, setFormData] = useState({
-    topic: 'Kundan vs Polki vs Meenakari: A Retailer\'s Identification Guide',
-    keyword: 'kundan polki meenakari difference',
+    topic: 'Kundan vs Zircon vs Turkish Jewelry: A Buyer\'s Complete Guide',
+    keyword: 'kundan vs zircon vs turkish jewelry',
     article_type: 'guide',
-    word_count_target: 2000,
-    notes: 'Focus on how boutique retailers can educate customers. Include visual distinguishing features, price ranges in PKR, and which occasions each style suits best.',
+    word_count_target: 1800,
+    notes: 'Compare the three jewelry styles that RS ZEVAR specializes in. Include identification tips, occasion suitability, price ranges in PKR, and care instructions. Target both boutique retailers and end customers.',
   });
 
   const [loading, setLoading] = useState(false);
@@ -42,7 +40,6 @@ export default function BlogTestPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-
       const data = await response.json();
       clearInterval(timer);
 
@@ -63,7 +60,6 @@ export default function BlogTestPage() {
     if (!result?.post?.id) return;
     setPushLoading(true);
     setPushResult(null);
-
     try {
       const response = await fetch('/api/blog/push-to-shopify', {
         method: 'POST',
@@ -86,41 +82,30 @@ export default function BlogTestPage() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 24, fontFamily: 'system-ui' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-        🧪 Blog Generation Test
+        🧪 Blog Generation Test <span style={{ fontSize: 14, color: '#059669', fontWeight: 500 }}>v3 — Smart Linking</span>
       </h1>
       <p style={{ color: '#666', marginBottom: 24, fontSize: 14 }}>
-        Phase 2 verification page. Fill form, generate article, review, then push to Shopify Journal (draft).
+        Now uses REAL collection slugs + bestseller products from Supabase catalog. No more fake URLs.
       </p>
 
       <div style={{ background: '#f5f5f5', padding: 20, borderRadius: 8, marginBottom: 24 }}>
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Topic *</label>
-          <textarea
-            style={inputStyle}
-            rows={2}
-            value={formData.topic}
-            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-          />
+          <textarea style={inputStyle} rows={2} value={formData.topic}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })} />
         </div>
 
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Target Keyword *</label>
-          <input
-            style={inputStyle}
-            type="text"
-            value={formData.keyword}
-            onChange={(e) => setFormData({ ...formData, keyword: e.target.value })}
-          />
+          <input style={inputStyle} type="text" value={formData.keyword}
+            onChange={(e) => setFormData({ ...formData, keyword: e.target.value })} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={labelStyle}>Article Type</label>
-            <select
-              style={inputStyle}
-              value={formData.article_type}
-              onChange={(e) => setFormData({ ...formData, article_type: e.target.value })}
-            >
+            <select style={inputStyle} value={formData.article_type}
+              onChange={(e) => setFormData({ ...formData, article_type: e.target.value })}>
               <option value="guide">Guide</option>
               <option value="listicle">Listicle</option>
               <option value="case_study">Case Study</option>
@@ -130,44 +115,28 @@ export default function BlogTestPage() {
           </div>
           <div>
             <label style={labelStyle}>Word Count Target</label>
-            <input
-              style={inputStyle}
-              type="number"
-              value={formData.word_count_target}
-              onChange={(e) => setFormData({ ...formData, word_count_target: parseInt(e.target.value) })}
-            />
+            <input style={inputStyle} type="number" value={formData.word_count_target}
+              onChange={(e) => setFormData({ ...formData, word_count_target: parseInt(e.target.value) })} />
           </div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
           <label style={labelStyle}>Notes (optional)</label>
-          <textarea
-            style={inputStyle}
-            rows={3}
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          />
+          <textarea style={inputStyle} rows={3} value={formData.notes}
+            onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
         </div>
 
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
+        <button onClick={handleGenerate} disabled={loading}
           style={{
-            background: loading ? '#999' : '#000',
-            color: 'white',
-            padding: '10px 20px',
-            border: 'none',
-            borderRadius: 6,
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? `Generating... ${elapsedTime}s` : '🚀 Generate Article'}
+            background: loading ? '#999' : '#000', color: 'white',
+            padding: '10px 20px', border: 'none', borderRadius: 6,
+            fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+          }}>
+          {loading ? `Generating... ${elapsedTime}s` : '🚀 Generate Article (Smart Links)'}
         </button>
         {loading && (
           <p style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
-            Claude Sonnet 4.6 likh raha hai... typically 30-60 seconds lagte hain.
+            Fetching catalog → Claude Sonnet 4.6 writing → 40-100s typical
           </p>
         )}
       </div>
@@ -181,7 +150,7 @@ export default function BlogTestPage() {
 
       {result?.success && (
         <div style={{ background: '#efe', border: '1px solid #8f8', padding: 16, borderRadius: 8, marginBottom: 16 }}>
-          <strong style={{ color: '#060' }}>✅ Article Generated Successfully</strong>
+          <strong style={{ color: '#060' }}>✅ Article Generated</strong>
 
           <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, fontSize: 13 }}>
             <Metric label="Word Count" value={result.metadata.word_count} />
@@ -191,6 +160,44 @@ export default function BlogTestPage() {
             <Metric label="Cost (USD)" value={`$${result.metadata.cost_usd}`} />
             <Metric label="Cost (PKR)" value={`Rs ${result.metadata.cost_pkr}`} />
           </div>
+
+          {result.catalog_used && (
+            <div style={{ marginTop: 12, padding: 10, background: '#eff6ff', borderRadius: 6, fontSize: 13 }}>
+              <strong>📚 Catalog used:</strong> {result.catalog_used.collections} collections, {result.catalog_used.products} bestseller products
+            </div>
+          )}
+
+          {result.link_validation && (
+            <div style={{
+              marginTop: 12, padding: 12,
+              background: result.link_validation.all_valid ? '#d1fae5' : '#fee2e2',
+              border: result.link_validation.all_valid ? '1px solid #10b981' : '1px solid #ef4444',
+              borderRadius: 6, fontSize: 13,
+            }}>
+              <strong>
+                {result.link_validation.all_valid ? '🔗 ✅ All Links Valid!' : '⚠️ Some Invalid Links Detected'}
+              </strong>
+              <p style={{ margin: '6px 0 4px 0' }}>
+                Valid: {result.link_validation.valid_links.length} | Invalid: {result.link_validation.invalid_links.length} | Total: {result.link_validation.total}
+              </p>
+              {result.link_validation.valid_links.length > 0 && (
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 12 }}>Show valid links</summary>
+                  <ul style={{ fontSize: 12, marginTop: 4, paddingLeft: 20 }}>
+                    {result.link_validation.valid_links.map((l, i) => <li key={i}>{l}</li>)}
+                  </ul>
+                </details>
+              )}
+              {result.link_validation.invalid_links.length > 0 && (
+                <details open style={{ marginTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: 12, color: '#991b1b' }}>⚠️ Invalid links (will 404!)</summary>
+                  <ul style={{ fontSize: 12, marginTop: 4, paddingLeft: 20, color: '#991b1b' }}>
+                    {result.link_validation.invalid_links.map((l, i) => <li key={i}>{l}</li>)}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
 
           <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #ccc' }} />
 
@@ -215,10 +222,8 @@ export default function BlogTestPage() {
             <summary style={{ cursor: 'pointer', fontWeight: 600, fontSize: 14 }}>
               📖 Read Full Article Body (click to expand)
             </summary>
-            <div
-              style={{ background: 'white', padding: 20, borderRadius: 6, marginTop: 8, lineHeight: 1.6 }}
-              dangerouslySetInnerHTML={{ __html: result.post.body_html }}
-            />
+            <div style={{ background: 'white', padding: 20, borderRadius: 6, marginTop: 8, lineHeight: 1.6 }}
+              dangerouslySetInnerHTML={{ __html: result.post.body_html }} />
           </details>
 
           <details style={{ marginTop: 12 }}>
@@ -237,25 +242,20 @@ export default function BlogTestPage() {
 
           <div style={{ marginTop: 20, padding: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6 }}>
             <p style={{ margin: 0, fontSize: 13, color: '#92400e' }}>
-              <strong>Next step:</strong> If quality is good, push this draft to Shopify Journal blog.
-              Shopify pe DRAFT mein jayega — publish manually karna hoga.
+              <strong>Next step:</strong> {result.link_validation?.all_valid
+                ? 'All links valid! Safe to push.'
+                : '⚠️ Fix invalid links before pushing (regenerate or edit manually).'}
             </p>
-            <button
-              onClick={handlePushToShopify}
+            <button onClick={handlePushToShopify}
               disabled={pushLoading || result.post.status === 'pushed'}
               style={{
                 marginTop: 10,
-                background: pushLoading ? '#999' : '#059669',
-                color: 'white',
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: 6,
-                fontSize: 13,
-                fontWeight: 600,
+                background: pushLoading ? '#999' : (result.link_validation?.all_valid ? '#059669' : '#f59e0b'),
+                color: 'white', padding: '8px 16px', border: 'none', borderRadius: 6,
+                fontSize: 13, fontWeight: 600,
                 cursor: pushLoading ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {pushLoading ? 'Pushing to Shopify...' : '📤 Push to Shopify (as draft)'}
+              }}>
+              {pushLoading ? 'Pushing...' : '📤 Push to Shopify (as draft)'}
             </button>
           </div>
         </div>
@@ -280,7 +280,7 @@ export default function BlogTestPage() {
               </a>
             </p>
             <p style={{ margin: '4px 0' }}>
-              <strong>Public URL (once published):</strong>{' '}
+              <strong>Public URL:</strong>{' '}
               <a href={pushResult.shopify.public_url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb' }}>
                 {pushResult.shopify.public_url}
               </a>
@@ -302,20 +302,11 @@ function Metric({ label, value }) {
 }
 
 const labelStyle = {
-  display: 'block',
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#333',
-  marginBottom: 4,
-  textTransform: 'uppercase',
+  display: 'block', fontSize: 12, fontWeight: 600, color: '#333',
+  marginBottom: 4, textTransform: 'uppercase',
 };
 
 const inputStyle = {
-  width: '100%',
-  padding: 8,
-  border: '1px solid #ccc',
-  borderRadius: 4,
-  fontSize: 14,
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
+  width: '100%', padding: 8, border: '1px solid #ccc', borderRadius: 4,
+  fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box',
 };
