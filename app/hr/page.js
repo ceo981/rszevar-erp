@@ -904,9 +904,8 @@ function LeaderboardTab() {
 
   const bonusForRank = (i) => i === 0 ? bonus1st : i === 1 ? bonus2nd : 0;
 
-  // ── Drill-down fetch — super_admin only, cached per (employee, month) ──
+  // ── Drill-down fetch — available to all authenticated users; API strips aggregate Rs for non-CEO ──
   async function toggleExpand(empId) {
-    if (!isSuperAdmin) return;
     if (expandedEmp === empId) { setExpandedEmp(null); return; }
     setExpandedEmp(empId);
     const cacheKey = `${empId}_${month}`;
@@ -925,10 +924,10 @@ function LeaderboardTab() {
     }
   }
 
-  // Table columns — conditional on role
+  // Table columns — everyone gets expand caret + basic cols. CEO also gets Amount + Bonus.
   const columns = isSuperAdmin
     ? ['', 'Rank', 'Employee', 'Amount (Rs)', 'Items', 'Orders', 'Bonus']
-    : ['Rank', 'Employee', 'Items', 'Orders'];
+    : ['', 'Rank', 'Employee', 'Items', 'Orders'];
 
   return (
     <div>
@@ -1015,19 +1014,17 @@ function LeaderboardTab() {
                   return (
                     <Fragment key={row.employee_id}>
                       <tr
-                        onClick={isSuperAdmin ? () => toggleExpand(row.employee_id) : undefined}
+                        onClick={() => toggleExpand(row.employee_id)}
                         style={{
                           borderBottom: isExpanded ? 'none' : '1px solid #1e293b',
                           background: isExpanded ? '#c9a96e0f' : rowBg,
-                          cursor: isSuperAdmin ? 'pointer' : 'default',
+                          cursor: 'pointer',
                           transition: 'background 0.15s',
                         }}
                       >
-                        {isSuperAdmin && (
-                          <td style={{ padding: '12px 12px', color: '#94a3b8', fontSize: 14, width: 30, textAlign: 'center' }}>
-                            {isExpanded ? '▼' : '▶'}
-                          </td>
-                        )}
+                        <td style={{ padding: '12px 12px', color: '#94a3b8', fontSize: 14, width: 30, textAlign: 'center' }}>
+                          {isExpanded ? '▼' : '▶'}
+                        </td>
                         <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 600, color: nameColor }}>{row.name}</div>
@@ -1047,8 +1044,8 @@ function LeaderboardTab() {
                         )}
                       </tr>
 
-                      {/* Drill-down row (super_admin only) */}
-                      {isSuperAdmin && isExpanded && (
+                      {/* Drill-down row (available to all — API strips aggregate Rs for non-CEO) */}
+                      {isExpanded && (
                         <tr style={{ borderBottom: '1px solid #1e293b', background: '#0b1220' }}>
                           <td colSpan={columns.length} style={{ padding: '0 16px 16px 16px' }}>
                             <EmployeeOrdersDetail
@@ -1065,9 +1062,11 @@ function LeaderboardTab() {
               </tbody>
             </table>
           </div>
-          {isSuperAdmin && (
-            <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi). Row pe click kar ke us employee ke orders + ZEVAR-XXXXXX drill-down dekh sakte ho.</p>
-          )}
+          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>
+            {isSuperAdmin
+              ? '* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi). Row pe click kar ke us employee ke orders + ZEVAR-XXXXXX drill-down dekh sakte ho.'
+              : '* Row pe click kar ke us employee ke packed orders dekh sakte ho — har order pe click se order detail page khulega.'}
+          </p>
         </div>
       )}
     </div>
@@ -1095,13 +1094,15 @@ function EmployeeOrdersDetail({ employeeName, month, drill }) {
 
   return (
     <div style={{ padding: '12px 0 4px' }}>
-      {/* Summary strip */}
+      {/* Summary strip — aggregate Rs hidden for non-super_admin (API returns null) */}
       <div style={{ display: 'flex', gap: 16, padding: '10px 14px', background: '#1e293b', borderRadius: 8, marginBottom: 10, flexWrap: 'wrap', fontSize: 13 }}>
         <span style={{ color: '#94a3b8' }}><strong style={{ color: '#e2e8f0' }}>{employeeName}</strong> — {month}</span>
         <span style={{ color: '#475569' }}>·</span>
         <span style={{ color: '#94a3b8' }}>Orders: <strong style={{ color: '#e2e8f0' }}>{totals.total_orders}</strong></span>
         <span style={{ color: '#94a3b8' }}>Items: <strong style={{ color: '#e2e8f0' }}>{totals.total_items}</strong></span>
-        <span style={{ color: '#94a3b8' }}>Amount: <strong style={{ color: '#22c55e' }}>Rs. {Number(totals.total_amount || 0).toLocaleString()}</strong></span>
+        {totals.total_amount != null && (
+          <span style={{ color: '#94a3b8' }}>Amount: <strong style={{ color: '#22c55e' }}>Rs. {Number(totals.total_amount).toLocaleString()}</strong></span>
+        )}
       </div>
 
       {orders.length === 0 ? (
