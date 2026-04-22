@@ -1,17 +1,10 @@
 /**
  * POST /api/blog/generate
  *
- * Generates a blog post using Claude Sonnet 4.6 and saves it as a draft.
- * Returns the created blog_post record with full article content.
+ * Generates a blog post using Claude Sonnet 4.6 (streaming) and saves as draft.
  *
- * Request body:
- * {
- *   topic: string (required),
- *   keyword: string (required),
- *   article_type: 'guide' | 'listicle' | 'case_study' | 'news' | 'pillar',
- *   word_count_target: number (default 1800),
- *   notes: string (optional)
- * }
+ * UPDATED: maxDuration increased to 300 for Pro plan buffer.
+ * If on Hobby plan (60s max), streaming still helps because chunks reset the clock.
  */
 
 import { NextResponse } from 'next/server';
@@ -21,7 +14,7 @@ import { generateUniqueSlug } from '../../../../lib/blog/slug-generator';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300; // 5 min — plenty of buffer. Pro plan honors this; Hobby caps at 60 but streaming still works.
 
 export async function POST(request) {
   try {
@@ -43,14 +36,14 @@ export async function POST(request) {
       );
     }
 
-    // Auth check — use service role for server-side operations
+    // Service role client for DB writes
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { persistSession: false } }
     );
 
-    // Get user from auth cookie/header (using anon client for user context)
+    // Get user from auth header (optional)
     const authHeader = request.headers.get('authorization');
     let userId = null;
     if (authHeader?.startsWith('Bearer ')) {
@@ -63,24 +56,24 @@ export async function POST(request) {
       userId = userData?.user?.id || null;
     }
 
-    // Generate article via Claude
-    console.log('[/api/blog/generate] Starting generation:', { topic, keyword, article_type });
+    // Generate article via Claude (STREAMING)
+    console.log('[/api/blog/generate] Starting streaming generation:', { topic, keyword, article_type });
 
     const result = await generateBlogPost({
       topic: topic.trim(),
       keyword: keyword.trim(),
       article_type: article_type || 'guide',
-      word_count_target: word_count_target || 1800,
+      word_count_target: word_count_target || 1500, // Reduced default 1800 -> 1500 for speed
       notes: notes || '',
     });
 
     if (!result.success) {
-      // Log failure to blog_generation_log
+      // Log failure
       await supabase.from('blog_generation_log').insert({
         input_topic: topic.trim(),
         input_keyword: keyword.trim(),
         input_article_type: article_type || 'guide',
-        input_word_count_target: word_count_target || 1800,
+        input_word_count_target: word_count_target || 1500,
         input_notes: notes || null,
         ai_model: result.metadata.ai_model,
         duration_ms: result.metadata.duration_ms,
@@ -139,13 +132,13 @@ export async function POST(request) {
       );
     }
 
-    // Log successful generation
+    // Log success
     await supabase.from('blog_generation_log').insert({
       blog_post_id: insertedPost.id,
       input_topic: topic.trim(),
       input_keyword: keyword.trim(),
       input_article_type: article_type || 'guide',
-      input_word_count_target: word_count_target || 1800,
+      input_word_count_target: word_count_target || 1500,
       input_notes: notes || null,
       ai_model: metadata.ai_model,
       input_tokens: metadata.input_tokens,
