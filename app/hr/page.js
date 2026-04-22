@@ -1,5 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
+import Link from 'next/link';
+import { useUser } from '@/context/UserContext';
 
 const TABS = [
   { id: 'attendance',  label: '📅 Attendance',  },
@@ -870,14 +872,20 @@ function SalaryTab({ employees }) {
 // ─────────────────────────────────────────────
 // LEADERBOARD TAB — Amount-Priority Ranking
 // ─────────────────────────────────────────────
-// Primary metric: total amount (Rs) of items packed
-// Secondary: total items count (shown for context)
+// Primary metric: total amount (Rs) of items packed  — hidden from non-super_admin
+// Secondary: total items count (shown for context) — visible to all
 // Top 2 earn bonuses: 1st = leaderboard_bonus_1st, 2nd = leaderboard_bonus_2nd
+// Super admin bhi expand kar ke per-employee order list (ZEVAR-XXXXXX clickable) dekh sakte hain
 // ─────────────────────────────────────────────
 function LeaderboardTab() {
+  const { isSuperAdmin } = useUser();
   const [month, setMonth] = useState(thisMonth());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Drill-down state — sirf super_admin use karta hai
+  const [expandedEmp, setExpandedEmp] = useState(null); // employee_id jo expand hai
+  const [empOrdersCache, setEmpOrdersCache] = useState({}); // { `${emp_id}_${month}`: {orders, totals, loading, error} }
 
   useEffect(() => {
     setLoading(true);
@@ -885,6 +893,8 @@ function LeaderboardTab() {
       .then(r => r.json())
       .then(d => { if (d.success) setData(d); })
       .finally(() => setLoading(false));
+    // Month change → clear expand state (cache to rakhte hain for back-nav)
+    setExpandedEmp(null);
   }, [month]);
 
   const medals = ['🥇', '🥈', '🥉'];
@@ -894,11 +904,37 @@ function LeaderboardTab() {
 
   const bonusForRank = (i) => i === 0 ? bonus1st : i === 1 ? bonus2nd : 0;
 
+  // ── Drill-down fetch — super_admin only, cached per (employee, month) ──
+  async function toggleExpand(empId) {
+    if (!isSuperAdmin) return;
+    if (expandedEmp === empId) { setExpandedEmp(null); return; }
+    setExpandedEmp(empId);
+    const cacheKey = `${empId}_${month}`;
+    if (empOrdersCache[cacheKey]) return; // already fetched
+    setEmpOrdersCache(prev => ({ ...prev, [cacheKey]: { loading: true } }));
+    try {
+      const r = await fetch(`/api/hr/leaderboard/employee-orders?employee_id=${empId}&month=${month}`);
+      const d = await r.json();
+      if (d.success) {
+        setEmpOrdersCache(prev => ({ ...prev, [cacheKey]: { orders: d.orders, totals: d.totals, employee: d.employee } }));
+      } else {
+        setEmpOrdersCache(prev => ({ ...prev, [cacheKey]: { error: d.error || 'Load failed' } }));
+      }
+    } catch (e) {
+      setEmpOrdersCache(prev => ({ ...prev, [cacheKey]: { error: e.message } }));
+    }
+  }
+
+  // Table columns — conditional on role
+  const columns = isSuperAdmin
+    ? ['', 'Rank', 'Employee', 'Amount (Rs)', 'Items', 'Orders', 'Bonus']
+    : ['Rank', 'Employee', 'Items', 'Orders'];
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
-        {data && (
+        {data && isSuperAdmin && (
           <span style={{ color: '#94a3b8', fontSize: 14 }}>
             Bonuses: <strong style={{ color: '#c9a96e' }}>1st Rs. {Number(bonus1st).toLocaleString()}</strong>
             <span style={{ color: '#475569', margin: '0 6px' }}>·</span>
@@ -920,10 +956,17 @@ function LeaderboardTab() {
                   <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>1st — Winner</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#c9a96e', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.winner.name}</div>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>
-                    <strong style={{ color: '#22c55e' }}>Rs. {Number(data.winner.total_amount || 0).toLocaleString()}</strong>
-                    <span style={{ color: '#475569' }}> · {data.winner.total_items} items · {data.winner.total_orders} orders</span>
+                    {isSuperAdmin && (
+                      <>
+                        <strong style={{ color: '#22c55e' }}>Rs. {Number(data.winner.total_amount || 0).toLocaleString()}</strong>
+                        <span style={{ color: '#475569' }}> · </span>
+                      </>
+                    )}
+                    <span style={{ color: isSuperAdmin ? '#475569' : '#94a3b8' }}>{data.winner.total_items} items · {data.winner.total_orders} orders</span>
                   </div>
-                  <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus1st).toLocaleString()} Bonus (salary mein auto-add)</div>
+                  {isSuperAdmin && (
+                    <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus1st).toLocaleString()} Bonus (salary mein auto-add)</div>
+                  )}
                 </div>
               </div>
             )}
@@ -934,10 +977,17 @@ function LeaderboardTab() {
                   <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>2nd — Runner-up</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.runner_up.name}</div>
                   <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 2 }}>
-                    <strong style={{ color: '#22c55e' }}>Rs. {Number(data.runner_up.total_amount || 0).toLocaleString()}</strong>
-                    <span style={{ color: '#475569' }}> · {data.runner_up.total_items} items · {data.runner_up.total_orders} orders</span>
+                    {isSuperAdmin && (
+                      <>
+                        <strong style={{ color: '#22c55e' }}>Rs. {Number(data.runner_up.total_amount || 0).toLocaleString()}</strong>
+                        <span style={{ color: '#475569' }}> · </span>
+                      </>
+                    )}
+                    <span style={{ color: isSuperAdmin ? '#475569' : '#94a3b8' }}>{data.runner_up.total_items} items · {data.runner_up.total_orders} orders</span>
                   </div>
-                  <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus2nd).toLocaleString()} Bonus (salary mein auto-add)</div>
+                  {isSuperAdmin && (
+                    <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus2nd).toLocaleString()} Bonus (salary mein auto-add)</div>
+                  )}
                 </div>
               </div>
             )}
@@ -948,8 +998,8 @@ function LeaderboardTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155' }}>
-                  {['Rank', 'Employee', 'Amount (Rs)', 'Items', 'Orders', 'Bonus'].map(h => (
-                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  {columns.map(h => (
+                    <th key={h || 'expand'} style={{ padding: '12px 16px', textAlign: 'left', color: '#94a3b8', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: h === '' ? 30 : undefined }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -958,28 +1008,138 @@ function LeaderboardTab() {
                   const bonus = bonusForRank(i);
                   const rowBg = i === 0 ? '#c9a96e11' : i === 1 ? '#94a3b80f' : 'transparent';
                   const nameColor = i === 0 ? '#c9a96e' : i === 1 ? '#cbd5e1' : '#e2e8f0';
+                  const isExpanded = expandedEmp === row.employee_id;
+                  const cacheKey = `${row.employee_id}_${month}`;
+                  const drillData = empOrdersCache[cacheKey];
+
                   return (
-                    <tr key={row.employee_id} style={{ borderBottom: '1px solid #1e293b', background: rowBg }}>
-                      <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ fontWeight: 600, color: nameColor }}>{row.name}</div>
-                        <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>
-                        Rs. {Number(row.total_amount || 0).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 14 }}>{row.total_items}</td>
-                      <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
-                      <td style={{ padding: '12px 16px', color: bonus > 0 ? '#22c55e' : '#475569', fontWeight: bonus > 0 ? 700 : 400 }}>
-                        {bonus > 0 ? `Rs. ${Number(bonus).toLocaleString()} ${i === 0 ? '🏆' : '🥈'}` : '—'}
-                      </td>
-                    </tr>
+                    <Fragment key={row.employee_id}>
+                      <tr
+                        onClick={isSuperAdmin ? () => toggleExpand(row.employee_id) : undefined}
+                        style={{
+                          borderBottom: isExpanded ? 'none' : '1px solid #1e293b',
+                          background: isExpanded ? '#c9a96e0f' : rowBg,
+                          cursor: isSuperAdmin ? 'pointer' : 'default',
+                          transition: 'background 0.15s',
+                        }}
+                      >
+                        {isSuperAdmin && (
+                          <td style={{ padding: '12px 12px', color: '#94a3b8', fontSize: 14, width: 30, textAlign: 'center' }}>
+                            {isExpanded ? '▼' : '▶'}
+                          </td>
+                        )}
+                        <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 600, color: nameColor }}>{row.name}</div>
+                          <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
+                        </td>
+                        {isSuperAdmin && (
+                          <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>
+                            Rs. {Number(row.total_amount || 0).toLocaleString()}
+                          </td>
+                        )}
+                        <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 14 }}>{row.total_items}</td>
+                        <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
+                        {isSuperAdmin && (
+                          <td style={{ padding: '12px 16px', color: bonus > 0 ? '#22c55e' : '#475569', fontWeight: bonus > 0 ? 700 : 400 }}>
+                            {bonus > 0 ? `Rs. ${Number(bonus).toLocaleString()} ${i === 0 ? '🏆' : '🥈'}` : '—'}
+                          </td>
+                        )}
+                      </tr>
+
+                      {/* Drill-down row (super_admin only) */}
+                      {isSuperAdmin && isExpanded && (
+                        <tr style={{ borderBottom: '1px solid #1e293b', background: '#0b1220' }}>
+                          <td colSpan={columns.length} style={{ padding: '0 16px 16px 16px' }}>
+                            <EmployeeOrdersDetail
+                              employeeName={row.name}
+                              month={month}
+                              drill={drillData}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi)</p>
+          {isSuperAdmin && (
+            <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi). Row pe click kar ke us employee ke orders + ZEVAR-XXXXXX drill-down dekh sakte ho.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// EMPLOYEE ORDERS DRILL-DOWN (super_admin only)
+// ─────────────────────────────────────────────
+// Renders a compact orders table under the expanded leaderboard row.
+// Each ZEVAR-XXXXXX links to /orders/[id] (existing order detail page).
+function EmployeeOrdersDetail({ employeeName, month, drill }) {
+  if (!drill) return <div style={{ padding: 14, color: '#94a3b8', fontSize: 13 }}>Loading...</div>;
+  if (drill.loading) return <div style={{ padding: 14, color: '#94a3b8', fontSize: 13 }}>Orders load ho rahe hain...</div>;
+  if (drill.error) return <div style={{ padding: 14, color: '#ef4444', fontSize: 13 }}>❌ {drill.error}</div>;
+
+  const orders = drill.orders || [];
+  const totals = drill.totals || { total_orders: 0, total_items: 0, total_amount: 0 };
+
+  const statusColors = {
+    pending: '#94a3b8', confirmed: '#3b82f6', packed: '#c9a96e',
+    dispatched: '#8b5cf6', delivered: '#22c55e', returned: '#f59e0b',
+    rto: '#f97316', cancelled: '#ef4444',
+  };
+
+  return (
+    <div style={{ padding: '12px 0 4px' }}>
+      {/* Summary strip */}
+      <div style={{ display: 'flex', gap: 16, padding: '10px 14px', background: '#1e293b', borderRadius: 8, marginBottom: 10, flexWrap: 'wrap', fontSize: 13 }}>
+        <span style={{ color: '#94a3b8' }}><strong style={{ color: '#e2e8f0' }}>{employeeName}</strong> — {month}</span>
+        <span style={{ color: '#475569' }}>·</span>
+        <span style={{ color: '#94a3b8' }}>Orders: <strong style={{ color: '#e2e8f0' }}>{totals.total_orders}</strong></span>
+        <span style={{ color: '#94a3b8' }}>Items: <strong style={{ color: '#e2e8f0' }}>{totals.total_items}</strong></span>
+        <span style={{ color: '#94a3b8' }}>Amount: <strong style={{ color: '#22c55e' }}>Rs. {Number(totals.total_amount || 0).toLocaleString()}</strong></span>
+      </div>
+
+      {orders.length === 0 ? (
+        <div style={{ color: '#475569', fontSize: 13, padding: '10px 14px' }}>Is month mein koi order pack nahi hua</div>
+      ) : (
+        <div style={{ background: '#111a2b', borderRadius: 8, overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #1e293b' }}>
+                {['Order', 'Customer', 'Status', 'Items', 'Amount', 'Date'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map(o => {
+                const dt = o.completed_at ? new Date(o.completed_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + new Date(o.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                const statusColor = statusColors[o.status] || '#94a3b8';
+                return (
+                  <tr key={`${o.order_id}-${o.completed_at}`} style={{ borderBottom: '1px solid #1e293b' }}>
+                    <td style={{ padding: '10px 14px' }}>
+                      <Link href={`/orders/${o.order_id}`} style={{ color: '#c9a96e', textDecoration: 'none', fontWeight: 600, fontFamily: 'monospace' }}>
+                        {o.order_number}
+                      </Link>
+                      {o.is_shared && <span style={{ marginLeft: 6, fontSize: 10, color: '#64748b', background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>SHARED</span>}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#cbd5e1', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customer_name}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ color: statusColor, fontSize: 11, textTransform: 'uppercase', fontWeight: 600 }}>{o.status || '—'}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px', color: '#94a3b8' }}>{o.items_packed}</td>
+                    <td style={{ padding: '10px 14px', color: '#22c55e', fontWeight: 600 }}>Rs. {Number(o.items_amount || 0).toLocaleString()}</td>
+                    <td style={{ padding: '10px 14px', color: '#64748b', fontSize: 11 }}>{dt}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
