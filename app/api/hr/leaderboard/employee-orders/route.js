@@ -3,7 +3,11 @@
 //
 // Returns list of orders that a given employee packed in the given month,
 // along with ZEVAR-XXXXXX order_number, customer name, status, and amount.
-// Super_admin only (ye CEO ke liye hai — amount + order details dono sensitive)
+//
+// Access model:
+//   • Any authenticated user can view (so Operations Manager can drill down too)
+//   • Per-order amounts visible to all (order total is not sensitive by itself)
+//   • Aggregate `totals.total_amount` stripped for non-super_admin (packer earnings privacy)
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabase';
@@ -13,14 +17,15 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
-  // ── Auth check — super_admin only ──
+  // ── Auth: any signed-in user can access; amount aggregate still gated ──
   const user = await getCurrentUser();
-  if (!user || user.profile?.role !== 'super_admin') {
+  if (!user) {
     return NextResponse.json(
-      { success: false, error: 'Only super admin can view employee order details' },
-      { status: 403 }
+      { success: false, error: 'Authentication required' },
+      { status: 401 }
     );
   }
+  const isSuperAdmin = user.profile?.role === 'super_admin';
 
   const { searchParams } = new URL(request.url);
   const employee_id = searchParams.get('employee_id');
@@ -106,11 +111,19 @@ export async function GET(request) {
 
   totals.total_amount = Math.round(totals.total_amount * 100) / 100;
 
+  // ── Defense-in-depth: hide aggregate packer earnings from non-super_admin ──
+  // Per-order items_amount stays on each row (order-level data is OK to show).
+  // Aggregate total_amount (packer's total earning for the month) is stripped.
+  const publicTotals = isSuperAdmin
+    ? totals
+    : { total_orders: totals.total_orders, total_items: totals.total_items, total_amount: null };
+
   return NextResponse.json({
     success: true,
+    is_super_admin: isSuperAdmin,
     employee: emp || { id: Number(employee_id), name: 'Unknown', role: '' },
     month,
     orders,
-    totals,
+    totals: publicTotals,
   });
 }
