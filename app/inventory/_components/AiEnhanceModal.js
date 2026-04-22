@@ -61,6 +61,12 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
   const [descEditMode, setDescEditMode] = useState(false);
   const [activeTags, setActiveTags] = useState([]);
   const [activeFaqs, setActiveFaqs] = useState([]);
+  // Metafield editable state (Phase 1.3)
+  const [activeOccasions, setActiveOccasions] = useState([]);
+  const [activeSetContents, setActiveSetContents] = useState([]);
+  const [activeStoneTypes, setActiveStoneTypes] = useState([]);
+  const [activeMaterial, setActiveMaterial] = useState('');
+  const [activeColorFinish, setActiveColorFinish] = useState('');
 
   // ── Push field selection ──
   const [fieldsToPush, setFieldsToPush] = useState({
@@ -72,6 +78,12 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
     tags: true,
     alt_texts: true,
     faqs: true,
+    // Product metafields (Phase 1.3 — structured data for filtering + smart collections)
+    mf_occasion: true,
+    mf_set_contents: true,
+    mf_stone_type: true,
+    mf_material: true,
+    mf_color_finish: true,
   });
 
   // ── Push result ──
@@ -91,6 +103,12 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
       setDescOverride(generated.description_html || '');
       setActiveTags(generated.tags || []);
       setActiveFaqs(generated.faqs || []);
+      // Metafields
+      setActiveOccasions(Array.isArray(generated.occasions_list) ? generated.occasions_list : []);
+      setActiveSetContents(Array.isArray(generated.set_contents_list) ? generated.set_contents_list : []);
+      setActiveStoneTypes(Array.isArray(generated.stone_types_list) ? generated.stone_types_list : []);
+      setActiveMaterial(typeof generated.material === 'string' ? generated.material : '');
+      setActiveColorFinish(typeof generated.color_finish === 'string' ? generated.color_finish : '');
     }
   }, [generated]);
 
@@ -154,6 +172,12 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
               ? (selectedTitleIdx === -1 ? (product.title || product.parent_title) : titleOverride)
               : null,
             description_override: descEditMode ? descOverride : null,
+            // Metafield overrides (pushed only if respective mf_* checkbox is on)
+            mf_occasion_override: activeOccasions,
+            mf_set_contents_override: activeSetContents,
+            mf_stone_type_override: activeStoneTypes,
+            mf_material_override: activeMaterial,
+            mf_color_finish_override: activeColorFinish,
           },
         }),
       });
@@ -373,6 +397,16 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
                 setActiveTags={setActiveTags}
                 activeFaqs={activeFaqs}
                 setActiveFaqs={setActiveFaqs}
+                activeOccasions={activeOccasions}
+                setActiveOccasions={setActiveOccasions}
+                activeSetContents={activeSetContents}
+                setActiveSetContents={setActiveSetContents}
+                activeStoneTypes={activeStoneTypes}
+                setActiveStoneTypes={setActiveStoneTypes}
+                activeMaterial={activeMaterial}
+                setActiveMaterial={setActiveMaterial}
+                activeColorFinish={activeColorFinish}
+                setActiveColorFinish={setActiveColorFinish}
                 fieldsToPush={fieldsToPush}
                 setFieldsToPush={setFieldsToPush}
               />
@@ -463,11 +497,17 @@ function GeneratingState() {
   );
 }
 
-// ─── The main output display with all 9 sections ───
+// ─── The main output display with all sections (9 core + 5 metafields) ───
 function OutputView({
   generated, selectedTitleIdx, setSelectedTitleIdx, titleOverride, setTitleOverride,
   currentTitle, descOverride, setDescOverride, descEditMode, setDescEditMode,
-  activeTags, setActiveTags, activeFaqs, setActiveFaqs, fieldsToPush, setFieldsToPush,
+  activeTags, setActiveTags, activeFaqs, setActiveFaqs,
+  activeOccasions, setActiveOccasions,
+  activeSetContents, setActiveSetContents,
+  activeStoneTypes, setActiveStoneTypes,
+  activeMaterial, setActiveMaterial,
+  activeColorFinish, setActiveColorFinish,
+  fieldsToPush, setFieldsToPush,
 }) {
   const toggleField = (k) => setFieldsToPush(f => ({ ...f, [k]: !f[k] }));
 
@@ -624,6 +664,130 @@ function OutputView({
           ))}
         </div>
       </Section>
+
+      {/* ══════════════════════════════════════════════
+           PRODUCT METAFIELDS (Phase 1.3)
+           Used for smart collections + filtering
+         ══════════════════════════════════════════════ */}
+
+      {/* ── Occasion (list) ── */}
+      <Section title={`Occasion (${activeOccasions.length})`} icon="🎭" pushKey="mf_occasion"
+        fieldsToPush={fieldsToPush} toggleField={toggleField}
+        warning="Powers smart collections: e.g. auto-populated 'Bridal Jewelry' page">
+        <ChipsEditor values={activeOccasions} setValues={setActiveOccasions} chipColor="purple" placeholder="e.g. Bridal" />
+      </Section>
+
+      {/* ── Set Contents (list) ── */}
+      <Section title={`Set Contents (${activeSetContents.length})`} icon="💎" pushKey="mf_set_contents"
+        fieldsToPush={fieldsToPush} toggleField={toggleField}
+        warning="What's inside this product (necklace + earrings + tikka, etc.)">
+        <ChipsEditor values={activeSetContents} setValues={setActiveSetContents} chipColor="blue" placeholder="e.g. Necklace" />
+      </Section>
+
+      {/* ── Stone Type (list) ── */}
+      <Section title={`Stone Type (${activeStoneTypes.length})`} icon="✨" pushKey="mf_stone_type"
+        fieldsToPush={fieldsToPush} toggleField={toggleField}
+        warning="Kundan / Polki / Zircon / Meenakari — drives 'Kundan Jewelry' smart collection">
+        <ChipsEditor values={activeStoneTypes} setValues={setActiveStoneTypes} chipColor="rose" placeholder="e.g. Kundan" />
+      </Section>
+
+      {/* ── Material (single) ── */}
+      <Section title="Material" icon="🔗" pushKey="mf_material"
+        fieldsToPush={fieldsToPush} toggleField={toggleField}>
+        <input value={activeMaterial} onChange={e => setActiveMaterial(e.target.value)}
+          placeholder="e.g. Gold-plated brass with enamel"
+          style={{
+            width: '100%', padding: '8px 10px', boxSizing: 'border-box',
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13,
+            fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+          {activeMaterial.length}/60 chars
+        </div>
+      </Section>
+
+      {/* ── Color & Finish (single) ── */}
+      <Section title="Color & Finish" icon="🎨" pushKey="mf_color_finish"
+        fieldsToPush={fieldsToPush} toggleField={toggleField}>
+        <input value={activeColorFinish} onChange={e => setActiveColorFinish(e.target.value)}
+          placeholder="e.g. Antique gold with green highlights"
+          style={{
+            width: '100%', padding: '8px 10px', boxSizing: 'border-box',
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 13,
+            fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+          {activeColorFinish.length}/60 chars
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+// ─── Chip editor for list-type metafields (add new value + remove existing) ───
+function ChipsEditor({ values, setValues, chipColor = 'gold', placeholder }) {
+  const [input, setInput] = useState('');
+  const palette = {
+    gold:   { bg: 'var(--gold-dim)',         text: 'var(--gold)',         border: 'rgba(245,158,11,0.25)' },
+    purple: { bg: 'rgba(139,92,246,0.12)',   text: '#a78bfa',             border: 'rgba(139,92,246,0.3)' },
+    blue:   { bg: 'rgba(59,130,246,0.12)',   text: '#60a5fa',             border: 'rgba(59,130,246,0.3)' },
+    rose:   { bg: 'rgba(244,63,94,0.12)',    text: '#fb7185',             border: 'rgba(244,63,94,0.3)' },
+  };
+  const c = palette[chipColor] || palette.gold;
+
+  const addChip = () => {
+    const v = input.trim();
+    if (!v) return;
+    if (values.includes(v)) { setInput(''); return; }
+    setValues([...values, v]);
+    setInput('');
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+        {values.map((v, i) => (
+          <span key={i} style={{
+            padding: '3px 10px', fontSize: 11,
+            background: c.bg, color: c.text,
+            border: `1px solid ${c.border}`, borderRadius: 12,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+          }}>
+            {v}
+            <button onClick={() => setValues(values.filter((_, j) => j !== i))}
+              style={{
+                background: 'none', border: 'none', color: c.text,
+                cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0,
+              }}>×</button>
+          </span>
+        ))}
+        {values.length === 0 && (
+          <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>
+            No values — add below or uncheck "Push to Shopify"
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addChip(); } }}
+          placeholder={placeholder}
+          style={{
+            flex: 1, padding: '6px 10px', boxSizing: 'border-box',
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)', fontSize: 12,
+            fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        <button onClick={addChip} style={{
+          padding: '6px 12px', fontSize: 12,
+          background: 'var(--bg)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', color: 'var(--text2)', cursor: 'pointer',
+        }}>+ Add</button>
+      </div>
     </div>
   );
 }
