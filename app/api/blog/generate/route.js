@@ -1,49 +1,43 @@
 /**
- * POST /api/blog/generate
+ * POST /api/blog/generate — v3 with SMART LINKING
  *
- * Generates a blog post using Claude Sonnet 4.6 (streaming) and saves as draft.
- *
- * UPDATED: maxDuration increased to 300 for Pro plan buffer.
- * If on Hobby plan (60s max), streaming still helps because chunks reset the clock.
+ * Flow:
+ * 1. Receive topic + keyword from user
+ * 2. Fetch REAL catalog (collections + A-class products) from Supabase
+ * 3. Pass catalog to Claude prompt (AI uses only verified URLs)
+ * 4. Validate generated URLs against catalog (safety check)
+ * 5. Save article with products_mentioned tracking
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateBlogPost } from '../../../../lib/blog/claude-client';
 import { generateUniqueSlug } from '../../../../lib/blog/slug-generator';
+import { getCatalogContextForPrompt } from '../../../../lib/blog/catalog-fetcher';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 min — plenty of buffer. Pro plan honors this; Hobby caps at 60 but streaming still works.
+export const maxDuration = 300;
 
 export async function POST(request) {
   try {
-    // Parse request
     const body = await request.json();
     const { topic, keyword, article_type, word_count_target, notes } = body;
 
-    // Validate input
     if (!topic || typeof topic !== 'string' || topic.trim().length < 10) {
-      return NextResponse.json(
-        { error: 'Topic is required (min 10 characters)' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Topic is required (min 10 characters)' }, { status: 400 });
     }
     if (!keyword || typeof keyword !== 'string' || keyword.trim().length < 3) {
-      return NextResponse.json(
-        { error: 'Target keyword is required (min 3 characters)' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Target keyword is required (min 3 characters)' }, { status: 400 });
     }
 
-    // Service role client for DB writes
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { persistSession: false } }
     );
 
-    // Get user from auth header (optional)
+    // Get user from auth
     const authHeader = request.headers.get('authorization');
     let userId = null;
     if (authHeader?.startsWith('Bearer ')) {
@@ -56,19 +50,33 @@ export async function POST(request) {
       userId = userData?.user?.id || null;
     }
 
-    // Generate article via Claude (STREAMING)
+    // ========================================================================
+    // NEW: Fetch catalog context before generation
+    // ========================================================================
+    console.log('[/api/blog/generate] Fetching catalog context...');
+    const topicHint = `${topic} ${keyword}`;
+    const catalog = await getCatalogContextForPrompt({
+      topicHint,
+      maxCollections: 40,
+      maxProducts: 15,
+    });
+    console.log(
+      `[/api/blog/generate] Catalog loaded: ${catalog.collectionsCount} collections, ${catalog.productsCount} products`
+    );
+
+    // Generate via Claude with catalog injection
     console.log('[/api/blog/generate] Starting streaming generation:', { topic, keyword, article_type });
 
     const result = await generateBlogPost({
       topic: topic.trim(),
       keyword: keyword.trim(),
       article_type: article_type || 'guide',
-      word_count_target: word_count_target || 1500, // Reduced default 1800 -> 1500 for speed
+      word_count_target: word_count_target || 1500,
       notes: notes || '',
+      catalog, // ← NEW: pass catalog to Claude
     });
 
     if (!result.success) {
-      // Log failure
       await supabase.from('blog_generation_log').insert({
         input_topic: topic.trim(),
         input_keyword: keyword.trim(),
@@ -81,14 +89,16 @@ export async function POST(request) {
         error_message: result.error,
         triggered_by: userId,
       });
-
-      return NextResponse.json(
-        { error: 'Article generation failed', details: result.error },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Article generation failed', details: result.error }, { status: 500 });
     }
 
     const { article, metadata } = result;
+
+    // ========================================================================
+    // NEW: Validate generated URLs against catalog (safety check)
+    // ========================================================================
+    const linkValidation = validateArticleLinks(article.body_html, catalog);
+    console.log('[/api/blog/generate] Link validation:', linkValidation);
 
     // Generate unique slug
     const slug = await generateUniqueSlug(article.title, async (candidateSlug) => {
@@ -132,7 +142,6 @@ export async function POST(request) {
       );
     }
 
-    // Log success
     await supabase.from('blog_generation_log').insert({
       blog_post_id: insertedPost.id,
       input_topic: topic.trim(),
@@ -166,12 +175,75 @@ export async function POST(request) {
         cost_pkr: metadata.cost_pkr,
         duration_ms: metadata.duration_ms,
       },
+      link_validation: linkValidation, // NEW: report which links are valid
+      catalog_used: {
+        collections: catalog.collectionsCount,
+        products: catalog.productsCount,
+      },
     });
   } catch (error) {
     console.error('[/api/blog/generate] Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
+}
+
+/**
+ * Validate that all /collections/ and /products/ links in article
+ * actually exist in the catalog we provided to AI
+ */
+function validateArticleLinks(bodyHtml, catalog) {
+  if (!bodyHtml) return { valid_links: [], invalid_links: [], total: 0 };
+
+  const allLinks = [];
+  const linkRegex = /href=["']https?:\/\/(?:www\.)?rszevar\.com(\/[^"']*)["']/gi;
+  let match;
+  while ((match = linkRegex.exec(bodyHtml)) !== null) {
+    allLinks.push(match[1]);
+  }
+
+  const validCollectionHandles = new Set((catalog.rawCollections || []).map((c) => c.handle));
+  const validProductHandles = new Set((catalog.rawProducts || []).map((p) => p.handle));
+  const allowedStaticPaths = ['/', '/pages/wholesale', '/pages/about', '/collections'];
+
+  const valid = [];
+  const invalid = [];
+
+  for (const path of allLinks) {
+    const cleanPath = path.split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
+
+    if (allowedStaticPaths.includes(cleanPath)) {
+      valid.push(path);
+      continue;
+    }
+
+    if (cleanPath.startsWith('/collections/')) {
+      const handle = cleanPath.replace('/collections/', '');
+      if (validCollectionHandles.has(handle)) {
+        valid.push(path);
+      } else {
+        invalid.push(path);
+      }
+      continue;
+    }
+
+    if (cleanPath.startsWith('/products/')) {
+      const handle = cleanPath.replace('/products/', '');
+      if (validProductHandles.has(handle)) {
+        valid.push(path);
+      } else {
+        invalid.push(path);
+      }
+      continue;
+    }
+
+    // Other paths (blogs, etc.) — accept as valid for now
+    valid.push(path);
+  }
+
+  return {
+    valid_links: valid,
+    invalid_links: invalid,
+    total: allLinks.length,
+    all_valid: invalid.length === 0,
+  };
 }
