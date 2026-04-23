@@ -1,780 +1,328 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 
-const COURIERS = ['PostEx', 'Kangaroo', 'Leopards'];
-const STATUSES = ['booked', 'in_transit', 'delivered', 'rto', 'manual'];
-
-const STATUS_CONFIG = {
-  booked:     { label: 'Booked',     color: '#c9a96e', bg: '#2a2010' },
-  in_transit: { label: 'In Transit', color: '#4a9eff', bg: '#101e3a' },
-  delivered:  { label: 'Delivered',  color: '#4caf79', bg: '#0d2a1e' },
-  rto:        { label: 'RTO',        color: '#e84444', bg: '#3a1010' },
-  manual:     { label: 'Manual',     color: '#888',    bg: '#1e1e1e' },
+const gold = '#c9a96e';
+const card = '#141414';
+const border = '#222';
+const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
+const timeAgo = iso => {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const d = Math.floor(diff / 86400000);
+  if (d === 0) return 'Today';
+  if (d === 1) return 'Yesterday';
+  if (d < 30) return `${d}d ago`;
+  if (d < 365) return `${Math.floor(d/30)}mo ago`;
+  return `${Math.floor(d/365)}y ago`;
 };
 
-const COURIER_COLOR = {
-  PostEx:   { color: '#4caf79', bg: '#0d2a1e' },
-  Kangaroo: { color: '#9b7fe8', bg: '#1e0d3a' },
-  Leopards: { color: '#e87d44', bg: '#3a1e0d' },
+const STATUS_COLORS = {
+  delivered: { color: '#22c55e', bg: '#22c55e22', label: 'Delivered' },
+  pending:   { color: '#fb923c', bg: '#fb923c22', label: 'Pending' },
+  rto:       { color: '#ef4444', bg: '#ef444422', label: 'RTO' },
+  returned:  { color: '#ef4444', bg: '#ef444422', label: 'Returned' },
+  dispatched:{ color: '#a855f7', bg: '#a855f722', label: 'Dispatched' },
+  cancelled: { color: '#555',    bg: '#55555522', label: 'Cancelled' },
+  confirmed: { color: '#3b82f6', bg: '#3b82f622', label: 'Confirmed' },
 };
 
-function fmt(n) {
-  if (!n && n !== 0) return '—';
-  return 'Rs. ' + parseFloat(n).toLocaleString('en-PK', { maximumFractionDigits: 0 });
-}
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-const inputStyle = {
-  width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a',
-  borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13,
-  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-};
-const btnStyle = {
-  background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8,
-  padding: '8px 16px', color: '#c9a96e', fontSize: 13, cursor: 'pointer',
-  fontFamily: 'inherit', fontWeight: 600,
-};
-const labelStyle = {
-  display: 'block', fontSize: 11, color: '#555', marginBottom: 5,
-  fontFamily: 'monospace', letterSpacing: 0.5,
-};
-const tdStyle = { padding: '11px 14px', fontSize: 13, color: '#888', verticalAlign: 'middle' };
-
-// ── OVERVIEW TAB ──────────────────────────────────────────────
-function OverviewTab({ summary, byCourier, loading }) {
-  if (loading) return <div style={{ color: '#555', textAlign: 'center', padding: 60 }}>Loading...</div>;
-  const s = summary || {};
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Top stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 14 }}>
-        {[
-          { label: 'Total Bookings', value: s.total_bookings || 0, icon: '📦', color: '#ddd' },
-          { label: 'Booked Today', value: s.booked_today || 0, icon: '🆕', color: '#c9a96e' },
-          { label: 'In Transit', value: s.in_transit || 0, icon: '🚚', color: '#4a9eff' },
-          { label: 'Delivered', value: s.delivered || 0, icon: '✅', color: '#4caf79' },
-          { label: 'RTO', value: s.rto || 0, icon: '↩️', color: '#e84444' },
-          { label: 'RTO Rate', value: (s.rto_rate || 0) + '%', icon: '📊', color: s.rto_rate > 15 ? '#e84444' : '#4caf79' },
-        ].map(c => (
-          <div key={c.label} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 }}>{c.label}</span>
-              <span style={{ fontSize: 18 }}>{c.icon}</span>
-            </div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: c.color }}>{c.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Per courier breakdown */}
-      <div>
-        <div style={{ fontSize: 12, color: '#555', marginBottom: 14, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 }}>Courier Breakdown</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {COURIERS.map(c => {
-            const d = byCourier?.[c] || {};
-            const deliveryRate = d.total ? Math.round((d.delivered / d.total) * 100) : 0;
-            const rtoRate = d.total ? Math.round((d.rto / d.total) * 100) : 0;
-            const cc = COURIER_COLOR[c];
-            return (
-              <div key={c} style={{ background: '#111', border: `1px solid ${cc.color}22`, borderRadius: 12, padding: '18px 20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                  <span style={{ background: cc.bg, color: cc.color, padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>{c}</span>
-                  <span style={{ fontSize: 12, color: '#555' }}>{d.total || 0} total</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
-                  {[
-                    { l: 'Booked', v: d.booked || 0, c: '#c9a96e' },
-                    { l: 'Transit', v: d.in_transit || 0, c: '#4a9eff' },
-                    { l: 'Delivered', v: d.delivered || 0, c: '#4caf79' },
-                    { l: 'RTO', v: d.rto || 0, c: '#e84444' },
-                  ].map(s => (
-                    <div key={s.l}>
-                      <div style={{ fontSize: 10, color: '#444', marginBottom: 3 }}>{s.l}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</div>
-                    </div>
-                  ))}
-                </div>
-                {/* Progress */}
-                <div style={{ background: '#1e1e1e', borderRadius: 4, height: 6, overflow: 'hidden', display: 'flex' }}>
-                  <div style={{ width: `${deliveryRate}%`, background: '#4caf79', height: '100%' }} />
-                  <div style={{ width: `${rtoRate}%`, background: '#e84444', height: '100%' }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: '#444' }}>
-                  <span style={{ color: '#4caf79' }}>{deliveryRate}% delivered</span>
-                  <span style={{ color: '#e84444' }}>{rtoRate}% RTO</span>
-                </div>
-                <div style={{ marginTop: 10, fontSize: 12, color: '#555' }}>
-                  COD: <span style={{ color: '#c9a96e' }}>{d.cod_total ? 'Rs. ' + Math.round(d.cod_total / 1000) + 'K' : '—'}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── BOOK NEW SHIPMENT TAB ─────────────────────────────────────
-function BookTab({ onBooked }) {
-  const [form, setForm] = useState({
-    courier_name: 'PostEx',
-    order_name: '',
-    customer_name: '',
-    customer_phone: '',
-    city: '',
-    address: '',
-    cod_amount: '',
-    weight: '0.5',
-    pieces: '1',
-    note: '',
-  });
-  const [pendingOrders, setPendingOrders] = useState([]);
-  const [booking, setBooking] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
+// ── Customer Detail Drawer ────────────────────────────────────
+function CustomerDrawer({ customer, onClose, onRefresh }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [blacklistReason, setBlacklistReason] = useState('');
+  const [showBlacklistForm, setShowBlacklistForm] = useState(false);
+  const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    // Load pending/confirmed orders to quick-fill
-    fetch('/api/orders?status=confirmed&limit=50')
+    fetch(`/api/customers?id=${customer.phone}`)
       .then(r => r.json())
-      .then(d => setPendingOrders(d.orders || []))
-      .catch(() => {});
-  }, []);
+      .then(d => { setDetail(d); setLoading(false); });
+  }, [customer.phone]);
 
-  const fillFromOrder = (order) => {
-    setForm(f => ({
-      ...f,
-      order_name: order.name || '',
-      order_id: order.id || '',
-      customer_name: order.customer_name || '',
-      customer_phone: order.customer_phone || '',
-      city: order.shipping_city || '',
-      address: order.shipping_address || '',
-      cod_amount: order.total_price || '',
-    }));
-  };
-
-  const book = async () => {
-    if (!form.customer_name || !form.city || !form.cod_amount) {
-      setError('Customer name, city aur COD amount required hai');
-      return;
-    }
-    setBooking(true);
-    setError('');
-    setResult(null);
-
-    const res = await fetch('/api/courier/book', {
+  const blacklist = async () => {
+    const r = await fetch('/api/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ action: 'blacklist', phone: customer.phone, name: customer.name, reason: blacklistReason }),
     });
-    const data = await res.json();
-    setBooking(false);
+    const d = await r.json();
+    if (d.success) { setMsg('⛔ Customer blacklisted'); onRefresh(); setShowBlacklistForm(false); }
+  };
 
-    if (data.success) {
-      setResult(data);
-      setForm(f => ({ ...f, order_name: '', customer_name: '', customer_phone: '', city: '', address: '', cod_amount: '', note: '' }));
-      onBooked?.();
-    } else {
-      setError(data.error || 'Booking failed');
-    }
+  const unblacklist = async () => {
+    await fetch('/api/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unblacklist', phone: customer.phone }),
+    });
+    setMsg('✅ Removed from blacklist');
+    onRefresh();
   };
 
   return (
-    <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-      {/* Form */}
-      <div style={{ flex: 1, minWidth: 320 }}>
-        <div style={{ background: '#111', border: '1px solid #c9a96e33', borderRadius: 12, padding: 24 }}>
-          <div style={{ fontSize: 14, color: '#c9a96e', fontWeight: 700, marginBottom: 20 }}>📦 New Shipment</div>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' }}>
+      <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />
+      <div style={{ width: 460, background: '#0f0f0f', borderLeft: `1px solid ${border}`, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: customer.is_blacklisted ? '#ef4444' : '#fff' }}>
+              {customer.is_blacklisted && '⛔ '}{customer.name}
+            </div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{customer.phone} · {customer.city}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+              {customer.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
+              {customer.is_repeat && !customer.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#3b82f622', color: '#3b82f6' }}>🔄 Repeat</span>}
+              {customer.is_blacklisted && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#ef444422', color: '#ef4444' }}>⛔ Blacklisted</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
 
-          {/* Courier selector */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {COURIERS.map(c => (
-              <button key={c} onClick={() => setForm(f => ({ ...f, courier_name: c }))}
-                style={{
-                  flex: 1, padding: '8px 4px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                  background: form.courier_name === c ? COURIER_COLOR[c].bg : '#1a1a1a',
-                  border: `1px solid ${form.courier_name === c ? COURIER_COLOR[c].color : '#2a2a2a'}`,
-                  color: form.courier_name === c ? COURIER_COLOR[c].color : '#555',
-                }}>
-                {c}
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, borderBottom: `1px solid ${border}` }}>
+          {[
+            { label: 'Total Orders', value: customer.orders, color: '#fff' },
+            { label: 'Total Spend', value: fmt(customer.total_spend), color: gold },
+            { label: 'Delivered', value: customer.delivered, color: '#22c55e' },
+            { label: 'RTO', value: customer.rto, color: '#ef4444' },
+            { label: 'Delivery Rate', value: customer.delivery_rate + '%', color: '#3b82f6' },
+            { label: 'Last Order', value: timeAgo(customer.last_order), color: '#888' },
+          ].map(s => (
+            <div key={s.label} style={{ padding: '14px 16px', borderBottom: `1px solid ${border}` }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: s.color }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: '20px 24px', flex: 1 }}>
+          {/* Blacklist actions */}
+          <div style={{ marginBottom: 20 }}>
+            {customer.is_blacklisted ? (
+              <button onClick={unblacklist} style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                ✅ Remove from Blacklist
               </button>
-            ))}
+            ) : (
+              <div>
+                {!showBlacklistForm ? (
+                  <button onClick={() => setShowBlacklistForm(true)} style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ⛔ Blacklist Customer
+                  </button>
+                ) : (
+                  <div style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '14px' }}>
+                    <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>Blacklist karne ki wajah:</div>
+                    <input value={blacklistReason} onChange={e => setBlacklistReason(e.target.value)}
+                      placeholder="e.g. COD refuse kiya, fake order..." style={{ width: '100%', background: '#0a0a0a', border: `1px solid #330000`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 12, boxSizing: 'border-box', marginBottom: 8 }} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={blacklist} style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Confirm Blacklist</button>
+                      <button onClick={() => setShowBlacklistForm(false)} style={{ background: 'none', border: `1px solid ${border}`, color: '#555', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {msg && <div style={{ marginTop: 8, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={labelStyle}>Order # (optional)</label>
-              <input placeholder="ZEVAR-116925" value={form.order_name} onChange={e => setForm(f => ({ ...f, order_name: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Customer Name *</label>
-              <input placeholder="Ahmed Khan" value={form.customer_name} onChange={e => setForm(f => ({ ...f, customer_name: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Phone *</label>
-              <input placeholder="03001234567" value={form.customer_phone} onChange={e => setForm(f => ({ ...f, customer_phone: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>City *</label>
-              <input placeholder="Lahore" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>COD Amount *</label>
-              <input type="number" placeholder="0" value={form.cod_amount} onChange={e => setForm(f => ({ ...f, cod_amount: e.target.value }))} style={inputStyle} />
-            </div>
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={labelStyle}>Address</label>
-              <input placeholder="House #, Street, Area" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Weight (kg)</label>
-              <input type="number" step="0.1" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <label style={labelStyle}>Pieces</label>
-              <input type="number" value={form.pieces} onChange={e => setForm(f => ({ ...f, pieces: e.target.value }))} style={inputStyle} />
-            </div>
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={labelStyle}>Note</label>
-              <input placeholder="Special instructions..." value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} style={inputStyle} />
-            </div>
-          </div>
+          {/* Order history */}
+          {loading ? (
+            <div style={{ color: '#444', textAlign: 'center', padding: 30 }}>Loading...</div>
+          ) : (
+            <>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: '#888' }}>Order History ({detail?.orders?.length || 0})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(detail?.orders || []).map((o, i) => {
+                  const sc = STATUS_COLORS[o.status] || STATUS_COLORS.pending;
+                  return (
+                    <div key={i} style={{ background: card, border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: gold, fontWeight: 600 }}>{o.order_number || o.shopify_order_name || '#'+o.id}</div>
+                        <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{timeAgo(o.created_at)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{fmt(o.total_amount)}</div>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.color }}>{sc.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-          {error && <div style={{ marginTop: 14, background: '#3a1010', border: '1px solid #e8444433', borderRadius: 8, padding: '10px 14px', color: '#e84444', fontSize: 13 }}>❌ {error}</div>}
-
-          <button onClick={book} disabled={booking}
-            style={{ ...btnStyle, marginTop: 16, width: '100%', background: booking ? '#1a1a1a' : '#c9a96e', color: booking ? '#555' : '#000', padding: '11px', fontSize: 14 }}>
-            {booking ? '⏳ Booking...' : `🚀 Book with ${form.courier_name}`}
-          </button>
-
-          {result && (
-            <div style={{ marginTop: 14, background: '#0d2a1e', border: '1px solid #4caf7944', borderRadius: 10, padding: 16 }}>
-              <div style={{ color: '#4caf79', fontWeight: 700, marginBottom: 8 }}>✅ Booking Successful!</div>
-              {result.tracking_number && <div style={{ fontSize: 13, color: '#aaa' }}>Tracking #: <span style={{ color: '#c9a96e', fontFamily: 'monospace' }}>{result.tracking_number}</span></div>}
-              {result.api_error && <div style={{ fontSize: 12, color: '#e87d44', marginTop: 6 }}>⚠️ API note: {result.api_error} — saved as manual booking</div>}
-            </div>
+              {/* Complaints */}
+              {(detail?.complaints || []).length > 0 && (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 13, margin: '16px 0 10px', color: '#ef4444' }}>Complaints ({detail.complaints.length})</div>
+                  {detail.complaints.map((c, i) => (
+                    <div key={i} style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', marginBottom: 6, fontSize: 12 }}>
+                      <div style={{ color: '#f87171', fontWeight: 600 }}>{c.category}</div>
+                      <div style={{ color: '#888', marginTop: 2 }}>{c.description}</div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
-
-      {/* Confirmed orders quick fill */}
-      {pendingOrders.length > 0 && (
-        <div style={{ width: 300, flexShrink: 0 }}>
-          <div style={{ fontSize: 12, color: '#555', marginBottom: 10, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Quick Fill — Confirmed Orders
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 500, overflowY: 'auto' }}>
-            {pendingOrders.map(o => (
-              <div key={o.id} onClick={() => fillFromOrder(o)}
-                style={{ background: '#111', border: '1px solid #222', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ color: '#c9a96e', fontSize: 13, fontWeight: 600 }}>{o.name}</span>
-                  <span style={{ color: '#4caf79', fontSize: 12 }}>Rs. {o.total_price}</span>
-                </div>
-                <div style={{ fontSize: 12, color: '#666' }}>{o.customer_name}</div>
-                <div style={{ fontSize: 11, color: '#444' }}>{o.shipping_city}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// ── BOOKINGS LIST TAB ─────────────────────────────────────────
-function BookingsTab({ refreshKey }) {
-  const [bookings, setBookings] = useState([]);
+// ── Main Customers Page ───────────────────────────────────────
+export default function CustomersPage() {
+  const [customers, setCustomers] = useState([]);
+  const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(true);
-  const [courier, setCourier] = useState('');
-  const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
-  const [tracking, setTracking] = useState({ id: null, loading: false, result: null });
+  const [filter, setFilter] = useState('all');
+  const [selected, setSelected] = useState(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const p = new URLSearchParams();
-    if (courier) p.set('courier', courier);
-    if (status) p.set('status', status);
-    if (search) p.set('search', search);
-    p.set('limit', '50');
-    const res = await fetch(`/api/courier/bookings?${p}`);
-    const d = await res.json();
-    setBookings(d.bookings || []);
+    const params = new URLSearchParams({ page, filter });
+    if (search) params.append('search', search);
+    const r = await fetch(`/api/customers?${params}`);
+    const d = await r.json();
+    setCustomers(d.customers || []);
+    setSummary(d.summary || {});
+    setTotal(d.total || 0);
     setLoading(false);
-  }, [courier, status, search]);
+  }, [page, filter, search]);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => { load(); }, [load]);
 
-  const trackShipment = async (booking) => {
-    if (!booking.tracking_number) return;
-    setTracking({ id: booking.id, loading: true, result: null });
-    const res = await fetch(`/api/courier/track?tracking=${booking.tracking_number}&courier=${booking.courier_name}&id=${booking.id}`);
-    const d = await res.json();
-    setTracking({ id: booking.id, loading: false, result: d });
-    if (d.success) load();
-  };
-
-  const updateStatus = async (id, newStatus) => {
-    await fetch('/api/courier/bookings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: newStatus }),
-    });
-    load();
-  };
+  const filters = [
+    { id: 'all', label: 'All', count: summary.total },
+    { id: 'repeat', label: '🔄 Repeat', count: summary.repeat },
+    { id: 'vip', label: '⭐ VIP (3+ orders)', count: summary.vip },
+    { id: 'rto', label: '↩️ Had RTO', count: summary.rto_customers },
+    { id: 'blacklist', label: '⛔ Blacklisted', count: summary.blacklisted },
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <input
-          placeholder="Search order, tracking, customer..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          style={{ ...inputStyle, width: 280 }}
-        />
-        <select value={courier} onChange={e => setCourier(e.target.value)}
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 8, padding: '8px 12px', color: '#888', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="">All Couriers</option>
-          {COURIERS.map(c => <option key={c}>{c}</option>)}
-        </select>
-        <select value={status} onChange={e => setStatus(e.target.value)}
-          style={{ background: '#111', border: '1px solid #222', borderRadius: 8, padding: '8px 12px', color: '#888', fontSize: 13, fontFamily: 'inherit' }}>
-          <option value="">All Status</option>
-          {STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s]?.label}</option>)}
-        </select>
-        <span style={{ fontSize: 13, color: '#555', alignSelf: 'center', marginLeft: 'auto' }}>{bookings.length} bookings</span>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
+      {selected && <CustomerDrawer customer={selected} onClose={() => setSelected(null)} onRefresh={load} />}
+
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Customers</h2>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>{summary.total || 0} unique customers · from order history</p>
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-              {['Date', 'Order', 'Courier', 'Tracking', 'Customer', 'City', 'COD', 'Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#444' }}>Loading...</td></tr>
-            ) : bookings.length === 0 ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: '#444' }}>No bookings found</td></tr>
-            ) : bookings.map(b => {
-              const sc = STATUS_CONFIG[b.status] || STATUS_CONFIG.manual;
-              const cc = COURIER_COLOR[b.courier_name] || {};
-              return (
-                <tr key={b.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
-                  <td style={tdStyle}>{fmtDate(b.created_at)}</td>
-                  <td style={{ ...tdStyle, color: '#c9a96e', fontWeight: 600 }}>{b.order_name || '—'}</td>
-                  <td style={tdStyle}>
-                    <span style={{ background: cc.bg, color: cc.color, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>{b.courier_name}</span>
+      {/* Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Total Customers', value: summary.total || 0, color: '#fff' },
+          { label: 'Repeat Buyers', value: summary.repeat || 0, color: '#3b82f6' },
+          { label: 'VIP (3+ orders)', value: summary.vip || 0, color: gold },
+          { label: 'Had RTO', value: summary.rto_customers || 0, color: '#ef4444' },
+          { label: 'Blacklisted', value: summary.blacklisted || 0, color: '#ef4444' },
+        ].map(s => (
+          <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
+            <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters + Search */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {filters.map(f => (
+          <button key={f.id} onClick={() => { setFilter(f.id); setPage(1); }}
+            style={{ padding: '7px 14px', background: filter === f.id ? '#1e1e1e' : 'transparent', border: `1px solid ${filter === f.id ? '#333' : border}`, borderRadius: 8, fontSize: 12, color: filter === f.id ? gold : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+            {f.label} {f.count !== undefined && <span style={{ opacity: 0.6 }}>({f.count || 0})</span>}
+          </button>
+        ))}
+      </div>
+      <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, phone, city..."
+        style={{ width: '100%', maxWidth: 380, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
+
+      {/* Table — mobile pe cards dikhte hain (CSS .mobile-card-table) */}
+      <div className="mobile-card-table" style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${border}` }}>
+                {['Customer', 'Phone', 'City', 'Orders', 'Total Spend', 'Delivered', 'RTO', 'Last Order', 'Tag'].map(h => (
+                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, background: '#0a0a0a' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>}
+              {!loading && customers.length === 0 && <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No customers found</td></tr>}
+              {customers.map((c, i) => (
+                <tr key={i} onClick={() => setSelected(c)} style={{ borderBottom: '1px solid #1a1a1a', cursor: 'pointer', background: c.is_blacklisted ? '#1a000088' : 'transparent' }}>
+                  <td style={{ padding: '11px 14px', color: c.is_blacklisted ? '#ef4444' : '#fff', fontWeight: 500 }}>
+                    {c.is_blacklisted && '⛔ '}{c.name}
                   </td>
-                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: '#666' }}>{b.tracking_number || '—'}</td>
-                  <td style={tdStyle}>
-                    <div style={{ color: '#ccc', fontSize: 13 }}>{b.customer_name}</div>
-                    <div style={{ color: '#555', fontSize: 11 }}>{b.customer_phone}</div>
-                  </td>
-                  <td style={tdStyle}>{b.city}</td>
-                  <td style={{ ...tdStyle, color: '#4caf79', fontWeight: 600 }}>{fmt(b.cod_amount)}</td>
-                  <td style={tdStyle}>
-                    <span style={{ background: sc.bg, color: sc.color, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{sc.label}</span>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {b.tracking_number && (
-                        <button onClick={() => trackShipment(b)}
-                          disabled={tracking.id === b.id && tracking.loading}
-                          style={{ background: '#101e3a', border: '1px solid #4a9eff33', borderRadius: 6, padding: '4px 8px', color: '#4a9eff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          {tracking.id === b.id && tracking.loading ? '...' : '📍 Track'}
-                        </button>
-                      )}
-                      <select onChange={e => { if (e.target.value) updateStatus(b.id, e.target.value); }}
-                        defaultValue=""
-                        style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '4px 6px', color: '#666', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        <option value="">Update</option>
-                        {STATUSES.map(s => <option key={s} value={s}>{STATUS_CONFIG[s]?.label}</option>)}
-                      </select>
-                    </div>
-                    {tracking.id === b.id && tracking.result && (
-                      <div style={{ marginTop: 6, fontSize: 11, color: tracking.result.success ? '#4caf79' : '#e84444' }}>
-                        {tracking.result.success ? `✅ ${tracking.result.normalized_status}` : `❌ ${tracking.result.error}`}
-                      </div>
-                    )}
+                  <td style={{ padding: '11px 14px', color: '#666', fontSize: 12 }}>{c.phone}</td>
+                  <td style={{ padding: '11px 14px', color: '#888' }}>{c.city || '—'}</td>
+                  <td style={{ padding: '11px 14px', color: '#fff', fontWeight: 600 }}>{c.orders}</td>
+                  <td style={{ padding: '11px 14px', color: gold, fontWeight: 600 }}>{fmt(c.total_spend)}</td>
+                  <td style={{ padding: '11px 14px', color: '#22c55e' }}>{c.delivered}</td>
+                  <td style={{ padding: '11px 14px', color: c.rto > 0 ? '#ef4444' : '#555' }}>{c.rto}</td>
+                  <td style={{ padding: '11px 14px', color: '#555', fontSize: 12 }}>{timeAgo(c.last_order)}</td>
+                  <td style={{ padding: '11px 14px' }}>
+                    {c.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
+                    {c.is_repeat && !c.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#3b82f622', color: '#3b82f6' }}>🔄 Repeat</span>}
+                    {c.is_blacklisted && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#ef444422', color: '#ef4444' }}>⛔</span>}
+                    {!c.is_vip && !c.is_repeat && !c.is_blacklisted && <span style={{ color: '#333', fontSize: 11 }}>New</span>}
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ── RTO TAB ───────────────────────────────────────────────────
-function RTOTab() {
-  const [rtos, setRtos] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/courier/bookings?status=rto&limit=100')
-      .then(r => r.json())
-      .then(d => { setRtos(d.bookings || []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const totalRTOValue = rtos.reduce((s, r) => s + parseFloat(r.cod_amount || 0), 0);
-
-  const byCourier = COURIERS.reduce((acc, c) => {
-    acc[c] = rtos.filter(r => r.courier_name === c);
-    return acc;
-  }, {});
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* RTO Summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
-        <div style={{ background: '#111', border: '1px solid #e8444422', borderRadius: 12, padding: '16px 20px' }}>
-          <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Total RTOs</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#e84444' }}>{rtos.length}</div>
-        </div>
-        <div style={{ background: '#111', border: '1px solid #e8444422', borderRadius: 12, padding: '16px 20px' }}>
-          <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>RTO Value</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: '#e84444' }}>{fmt(totalRTOValue)}</div>
-        </div>
-        {COURIERS.map(c => (
-          <div key={c} style={{ background: '#111', border: '1px solid #222', borderRadius: 12, padding: '16px 20px' }}>
-            <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{c} RTOs</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: COURIER_COLOR[c]?.color }}>{byCourier[c]?.length || 0}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* RTO List */}
-      <div style={{ background: '#111', border: '1px solid #222', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-              {['Date', 'Order', 'Courier', 'Tracking', 'Customer', 'City', 'COD Lost'].map(h => (
-                <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#444' }}>Loading...</td></tr>
-            ) : rtos.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#444' }}>No RTOs — great job! 🎉</td></tr>
-            ) : rtos.map(r => (
-              <tr key={r.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
-                <td style={tdStyle}>{fmtDate(r.created_at)}</td>
-                <td style={{ ...tdStyle, color: '#c9a96e', fontWeight: 600 }}>{r.order_name || '—'}</td>
-                <td style={tdStyle}>
-                  <span style={{ background: COURIER_COLOR[r.courier_name]?.bg, color: COURIER_COLOR[r.courier_name]?.color, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{r.courier_name}</span>
-                </td>
-                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, color: '#666' }}>{r.tracking_number || '—'}</td>
-                <td style={tdStyle}>{r.customer_name}</td>
-                <td style={tdStyle}>{r.city}</td>
-                <td style={{ ...tdStyle, color: '#e84444', fontWeight: 600 }}>{fmt(r.cod_amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ── SETTLEMENTS TAB ───────────────────────────────────────────
-function SettlementsTab() {
-  const gold = '#c9a96e';
-  const border = '#222';
-  const card = '#111';
-
-  const [courier, setCourier] = useState('Leopards');
-  const [file, setFile] = useState(null);
-  const [referenceNo, setReferenceNo] = useState('');
-  const [settledAt, setSettledAt] = useState(new Date().toISOString().split('T')[0]);
-  const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState(null);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-
-  const COURIERS = [
-    { id: 'Leopards', label: '🐆 Leopards', format: 'PDF / XLS', accept: '.pdf,.xls,.xlsx' },
-    { id: 'Kangaroo', label: '🦘 Kangaroo', format: 'XLSX', accept: '.xlsx,.xls' },
-    { id: 'PostEx',   label: '📦 PostEx',   format: 'CSV', accept: '.csv' },
-  ];
-
-  const selectedCourier = COURIERS.find(c => c.id === courier);
-
-  const reset = () => { setFile(null); setPreview(null); setResult(null); setError(''); };
-
-  const handlePreview = async () => {
-    if (!file) { setError('File select karo pehle'); return; }
-    setLoading(true); setError(''); setPreview(null); setResult(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('courier', courier);
-      fd.append('reference_no', referenceNo);
-      fd.append('settled_at', settledAt);
-      fd.append('apply', 'false');
-      const r = await fetch('/api/courier/settlements/upload', { method: 'POST', body: fd });
-      const d = await r.json();
-      if (d.success) setPreview(d);
-      else setError(d.error || 'Parse error');
-    } catch (e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const handleApply = async () => {
-    if (!file || !preview) return;
-    setLoading(true); setError('');
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('courier', courier);
-      fd.append('reference_no', referenceNo);
-      fd.append('settled_at', settledAt);
-      fd.append('apply', 'true');
-      const r = await fetch('/api/courier/settlements/upload', { method: 'POST', body: fd });
-      const d = await r.json();
-      if (d.success) {
-        setResult(d);
-        setPreview(null);
-        // Orders page ko signal do ke refresh kare
-        window.dispatchEvent(new CustomEvent('settlementApplied', { detail: d }));
-      } else setError(d.error || 'Apply error');
-    } catch (e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const inpStyle = { background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
-
-  return (
-    <div style={{ maxWidth: 700 }}>
-      <div style={{ fontSize: 14, color: '#555', marginBottom: 24 }}>
-        Settlement file upload karo — system automatically orders paid mark karega aur returns ko RTO mark karega.
-      </div>
-
-      {/* Success Result */}
-      {result && (
-        <div style={{ background: '#001a0a', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', marginBottom: 12 }}>✅ Settlement Applied!</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
-            {[
-              ['💰 Paid Marked', result.orders_paid, '#22c55e'],
-              ['↩️ RTO Marked', result.orders_rto, '#ef4444'],
-              ['⏭ Already Paid', result.already_paid, '#888'],
-              ['🔍 Not Found', result.not_found, '#f59e0b'],
-              ['⏩ Skipped (0-amt)', result.skipped, '#555'],
-              ['📋 Total Parsed', result.total_parsed, gold],
-            ].map(([label, val, color]) => (
-              <div key={label} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
-                <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color }}>{val}</div>
-              </div>
-            ))}
-          </div>
-          {result.meta?.totalDeliveryCharges > 0 && (
-            <div style={{ fontSize: 12, color: '#555', borderTop: `1px solid ${border}`, paddingTop: 10 }}>
-              📦 Total Delivery Charges: <span style={{ color: '#f59e0b' }}>Rs {Number(result.meta.totalDeliveryCharges).toLocaleString()}</span>
-              {result.meta.totalWHT > 0 && <> &nbsp;·&nbsp; Taxes (WHT+GST): <span style={{ color: '#ef4444' }}>Rs {Number(result.meta.totalWHT + (result.meta.totalGST || 0)).toLocaleString()}</span></>}
-            </div>
-          )}
-          <button onClick={reset} style={{ marginTop: 14, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-            🔄 Nai File Upload Karo
-          </button>
+            </tbody>
+          </table>
         </div>
-      )}
 
-      {/* Upload Form */}
-      {!result && (
-        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: gold, marginBottom: 16 }}>📁 Settlement File Upload</div>
-
-          {/* Courier selector */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Courier</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {COURIERS.map(c => (
-                <button key={c.id} onClick={() => { setCourier(c.id); reset(); }} style={{
-                  flex: 1, padding: '10px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
-                  background: courier === c.id ? gold + '22' : '#0a0a0a',
-                  border: `1px solid ${courier === c.id ? gold : border}`,
-                  color: courier === c.id ? gold : '#555',
-                }}>
-                  {c.label}
-                  <div style={{ fontSize: 10, fontWeight: 400, color: courier === c.id ? gold + 'aa' : '#333', marginTop: 2 }}>{c.format}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* File input */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              File ({selectedCourier?.format})
-            </div>
-            <input
-              type="file"
-              accept={selectedCourier?.accept}
-              onChange={e => { setFile(e.target.files[0] || null); setPreview(null); setResult(null); setError(''); }}
-              style={{ ...inpStyle, width: '100%', cursor: 'pointer' }}
-            />
-            {file && <div style={{ fontSize: 11, color: '#22c55e', marginTop: 6 }}>✓ {file.name}</div>}
-          </div>
-
-          {/* Reference + Date */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-            <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reference No (optional)</div>
-              <input value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
-                placeholder="e.g. CPR-LDHDY348060"
-                style={{ ...inpStyle, width: '100%' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Settlement Date</div>
-              <input type="date" value={settledAt} onChange={e => setSettledAt(e.target.value)}
-                style={{ ...inpStyle, width: '100%' }} />
-            </div>
-          </div>
-
-          {error && (
-            <div style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
-              ❌ {error}
-            </div>
-          )}
-
-          {/* Preview */}
-          {preview && (
-            <div style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: gold, marginBottom: 12 }}>📋 Preview — Apply se pehle check karo</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-                {[
-                  ['💰 Paid Markenge', preview.to_mark_paid, '#22c55e'],
-                  ['↩️ RTO Markenge', preview.to_mark_rto, '#ef4444'],
-                  ['⏭ Already Paid', preview.already_paid, '#888'],
-                  ['🔍 Not Found', preview.not_found, '#f59e0b'],
-                  ['⏩ Skip (0-amt)', preview.skipped, '#555'],
-                  ['📋 Total', preview.total_parsed, gold],
-                ].map(([label, val, color]) => (
-                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: '#111', borderRadius: 7, border: `1px solid ${border}` }}>
-                    <div style={{ fontSize: 9, color: '#555', marginBottom: 3 }}>{label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color }}>{val}</div>
+        {/* ─── MOBILE CARD VIEW — customers ─────────────────────────── */}
+        <div className="mobile-card-view">
+          {loading && <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>Loading...</div>}
+          {!loading && customers.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>No customers found</div>}
+          {customers.map((c, i) => (
+            <div
+              key={i}
+              onClick={() => setSelected(c)}
+              className="mobile-card-row"
+              style={{ background: c.is_blacklisted ? 'rgba(239,68,68,0.08)' : 'var(--bg-card)' }}
+            >
+              <div className="mobile-card-row-header">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: c.is_blacklisted ? '#ef4444' : '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.is_blacklisted && '⛔ '}{c.name}
                   </div>
-                ))}
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                    {c.phone} {c.city && `· ${c.city}`}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ color: gold, fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{fmt(c.total_spend)}</div>
+                  <div style={{ fontSize: 10, color: '#555' }}>{timeAgo(c.last_order)}</div>
+                </div>
               </div>
-              {preview.sample_paid?.length > 0 && (
-                <div style={{ fontSize: 11, color: '#22c55e99', marginBottom: 4 }}>
-                  Paid sample: {preview.sample_paid.join(', ')}
-                </div>
-              )}
-              {preview.sample_rto?.length > 0 && (
-                <div style={{ fontSize: 11, color: '#ef444499', marginBottom: 4 }}>
-                  RTO sample: {preview.sample_rto.join(', ')}
-                </div>
-              )}
-              {preview.sample_not_found?.length > 0 && (
-                <div style={{ fontSize: 11, color: '#f59e0b99' }}>
-                  Not found: {preview.sample_not_found.join(', ')}
-                </div>
-              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 11 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, background: '#1a1a1a', color: '#fff' }}>{c.orders} orders</span>
+                <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#22c55e' }}>✓ {c.delivered}</span>
+                {c.rto > 0 && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>RTO {c.rto}</span>}
+                {c.is_vip && <span style={{ padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
+                {c.is_repeat && !c.is_vip && <span style={{ padding: '2px 8px', borderRadius: 4, background: '#3b82f622', color: '#3b82f6' }}>🔄 Repeat</span>}
+              </div>
             </div>
-          )}
-
-          {/* Buttons */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            {!preview ? (
-              <button onClick={handlePreview} disabled={!file || loading} style={{
-                flex: 1, background: file ? gold + '22' : '#0a0a0a', border: `1px solid ${file ? gold : border}`,
-                color: file ? gold : '#555', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 700,
-                cursor: file && !loading ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
-              }}>
-                {loading ? '⟳ Parsing...' : '🔍 Preview'}
-              </button>
-            ) : (
-              <>
-                <button onClick={() => setPreview(null)} disabled={loading} style={{
-                  flex: 1, background: '#0a0a0a', border: `1px solid ${border}`, color: '#888',
-                  borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-                }}>
-                  ✕ Wapas
-                </button>
-                <button onClick={handleApply} disabled={loading} style={{
-                  flex: 2, background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e',
-                  borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 700,
-                  cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                }}>
-                  {loading ? '⟳ Applying...' : `✅ Apply — ${preview.to_mark_paid} Paid + ${preview.to_mark_rto} RTO`}
-                </button>
-              </>
-            )}
+          ))}
+        </div>
+        {/* Pagination */}
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#555' }}>{total} customers</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: page===1?'#333':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: page===1?'not-allowed':'pointer' }}>← Prev</button>
+            <span style={{ fontSize: 12, color: '#555', padding: '5px 10px' }}>Page {page}</span>
+            <button onClick={() => setPage(p => p+1)} disabled={customers.length < 30} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: customers.length<30?'#333':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: customers.length<30?'not-allowed':'pointer' }}>Next →</button>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ── MAIN PAGE ─────────────────────────────────────────────────
-export default function CourierPage() {
-  const [tab, setTab] = useState('overview');
-  const [summary, setSummary] = useState(null);
-  const [byCourier, setByCourier] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const loadSummary = useCallback(() => {
-    fetch('/api/courier')
-      .then(r => r.json())
-      .then(d => { setSummary(d.summary); setByCourier(d.by_courier); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { loadSummary(); }, [loadSummary, refreshKey]);
-
-  const TABS = [
-    { id: 'overview', label: '📊 Overview' },
-    { id: 'book', label: '📦 Book Shipment' },
-    { id: 'bookings', label: '📋 All Bookings' },
-    { id: 'rto', label: '↩️ RTO' },
-  ];
-
-  return (
-    <div style={{ padding: '24px 32px', maxWidth: 1300, fontFamily: "'Söhne', 'Helvetica Neue', sans-serif" }}>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#eee', letterSpacing: -0.5, marginBottom: 4 }}>Courier Management</div>
-        <div style={{ fontSize: 13, color: '#555' }}>PostEx · Kangaroo · Leopards — booking, tracking & RTO</div>
       </div>
-
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#111', borderRadius: 10, padding: 4, width: 'fit-content', border: '1px solid #1e1e1e' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            background: tab === t.id ? '#1e1e1e' : 'transparent',
-            border: `1px solid ${tab === t.id ? '#2a2a2a' : 'transparent'}`,
-            borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
-            fontSize: 13, color: tab === t.id ? '#c9a96e' : '#555',
-            fontWeight: tab === t.id ? 600 : 400, fontFamily: 'inherit',
-          }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'overview'    && <OverviewTab summary={summary} byCourier={byCourier} loading={loading} />}
-      {tab === 'book'        && <BookTab onBooked={() => setRefreshKey(k => k + 1)} />}
-      {tab === 'bookings'    && <BookingsTab refreshKey={refreshKey} />}
-      {tab === 'rto'         && <RTOTab />}
     </div>
   );
 }
