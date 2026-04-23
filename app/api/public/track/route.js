@@ -1,17 +1,11 @@
 // ============================================================================
-// RS ZEVAR ERP — Public Order Tracking Endpoint
+// RS ZEVAR ERP — Public Order Tracking Endpoint (v2 — limit 10 orders)
 // ============================================================================
-// Path: app/api/public/track/route.js  (CREATE this new file)
+// Path: app/api/public/track/route.js  (REPLACE existing file)
 //
-// PUBLIC endpoint — no auth required. Called from rszevar.com/pages/track-order
-// Accepts order number OR phone number.
-// Returns: RS Zevar internal status + live Leopards courier status.
-//
-// Security:
-//   - Rate limited 20 req/hour per IP (in-memory, resets on cold start)
-//   - CORS restricted to rszevar.com + www.rszevar.com
-//   - Only exposes non-sensitive fields (no amounts, no products, no email)
-//   - Phone matches only return last 5 orders for that phone
+// Change from v1: .limit(10) instead of .limit(5) so customers with more
+// order history can see more results. Shopify page now shows them as a
+// collapsible list.
 // ============================================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -39,10 +33,10 @@ export async function OPTIONS(request) {
   return new Response(null, { status: 204, headers: corsHeaders(origin) });
 }
 
-// ─── Rate Limiting (in-memory, per IP) ─────────────────────────────────────
+// ─── Rate Limiting ─────────────────────────────────────────────────────────
 const rateMap = new Map();
 const RATE_LIMIT = 20;
-const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_WINDOW_MS = 60 * 60 * 1000;
 
 function rateLimitCheck(ip) {
   const now = Date.now();
@@ -65,9 +59,8 @@ function buildTrackingUrl(courier, tracking) {
   return map[courier] || null;
 }
 
-// ─── RS ZEVAR Timeline Builder ─────────────────────────────────────────────
+// ─── Timeline ──────────────────────────────────────────────────────────────
 function buildRsZevarTimeline(order) {
-  // Walk-in orders: simple single-step
   if (order.is_walkin) {
     return [{
       step: 'walkin',
@@ -78,11 +71,10 @@ function buildRsZevarTimeline(order) {
     }];
   }
 
-  // Cancelled orders: show cancellation
   if (order.status === 'cancelled') {
     return [
-      { step: 'received',  label: 'Order Received',  done: true,  date: order.created_at },
-      { step: 'cancelled', label: 'Order Cancelled', done: true,  date: order.updated_at, is_error: true },
+      { step: 'received',  label: 'Order Received',  done: true, date: order.created_at },
+      { step: 'cancelled', label: 'Order Cancelled', done: true, date: order.updated_at, is_error: true },
     ];
   }
 
@@ -91,39 +83,18 @@ function buildRsZevarTimeline(order) {
   const isDelivered  = order.status === 'delivered';
 
   return [
-    {
-      step: 'received',
-      label: 'Order Received',
-      done: true,
-      date: order.created_at,
-    },
-    {
-      step: 'confirmed',
-      label: 'Order Confirmed',
-      done: isConfirmed,
-      date: order.confirmed_at || (isConfirmed ? order.updated_at : null),
-    },
-    {
-      step: 'dispatched',
-      label: 'Dispatched to Courier',
-      done: isDispatched,
-      date: order.dispatched_at || (isDispatched ? order.updated_at : null),
-    },
-    {
-      step: 'delivered',
-      label: 'Delivered',
-      done: isDelivered,
-      date: isDelivered ? order.updated_at : null,
-    },
+    { step: 'received',   label: 'Order Received',     done: true,         date: order.created_at },
+    { step: 'confirmed',  label: 'Order Confirmed',    done: isConfirmed,  date: order.confirmed_at  || (isConfirmed  ? order.updated_at : null) },
+    { step: 'dispatched', label: 'Dispatched to Courier', done: isDispatched, date: order.dispatched_at || (isDispatched ? order.updated_at : null) },
+    { step: 'delivered',  label: 'Delivered',          done: isDelivered,  date: isDelivered ? order.updated_at : null },
   ];
 }
 
-// ─── Main POST Handler ─────────────────────────────────────────────────────
+// ─── Main POST ─────────────────────────────────────────────────────────────
 export async function POST(request) {
   const origin = request.headers.get('origin') || '';
   const baseHeaders = { ...corsHeaders(origin), 'Content-Type': 'application/json' };
 
-  // Rate limit
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
              request.headers.get('x-real-ip') || 'unknown';
 
@@ -134,7 +105,6 @@ export async function POST(request) {
     );
   }
 
-  // Parse body
   let body;
   try {
     body = await request.json();
@@ -153,18 +123,14 @@ export async function POST(request) {
     );
   }
 
-  // Supabase client (service role — public endpoint server-side, bypasses RLS)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  // Detect: is this a phone number or an order number?
-  // Phone = 10+ digits (allow +92, 92, 03 prefixes)
   const digitsOnly = identifier.replace(/\D/g, '');
   const isPhone = digitsOnly.length >= 10;
 
-  // Build query
   let query = supabase
     .from('orders')
     .select(`
@@ -184,14 +150,12 @@ export async function POST(request) {
       is_wholesale
     `)
     .order('created_at', { ascending: false })
-    .limit(5);
+    .limit(10); // ← bumped from 5
 
   if (isPhone) {
-    // Match last 10 digits of phone as substring
     const last10 = digitsOnly.slice(-10);
     query = query.ilike('customer_phone', `%${last10}%`);
   } else {
-    // Order number match — try common formats
     const raw     = identifier;
     const cleaned = identifier.replace(/^#/, '').trim();
     const variants = Array.from(new Set([raw, cleaned, `#${cleaned}`]));
@@ -218,13 +182,11 @@ export async function POST(request) {
     );
   }
 
-  // For each order: build timeline + fetch live courier status if in transit
+  // Live fetch only for dispatched Leopards orders
   const results = await Promise.all(orders.map(async (order) => {
     const rszevarTimeline = buildRsZevarTimeline(order);
     let courierStatus = null;
 
-    // Live fetch ONLY for dispatched orders with a Leopards tracking number.
-    // Delivered / pending / other couriers → use DB data (no point calling API).
     const shouldFetchLive =
       order.tracking_number &&
       order.dispatched_courier === 'Leopards' &&
@@ -248,14 +210,12 @@ export async function POST(request) {
         }
       } catch (e) {
         console.error('[public/track] Leopards live fetch failed:', e.message);
-        // Fall through to DB fallback below
       }
     }
 
-    // Fallback for: non-Leopards couriers, delivered orders, API errors
     if (!courierStatus && order.tracking_number) {
       let displayStatus = null;
-      if (order.status === 'delivered')  displayStatus = 'Delivered';
+      if (order.status === 'delivered')      displayStatus = 'Delivered';
       else if (order.status === 'dispatched') displayStatus = 'In Transit';
 
       courierStatus = {
@@ -268,7 +228,6 @@ export async function POST(request) {
       };
     }
 
-    // Response shape — deliberately NO customer_phone, no amounts, no products
     return {
       order_number: order.order_number,
       rszevar_status: order.status,
