@@ -35,9 +35,11 @@ export default function UsersPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    loadUsers();
+    // Only super admins can view the team roster. Everyone else sees the
+    // access-denied screen (see render guard below).
+    if (isSuperAdmin) loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isSuperAdmin]);
 
   async function loadUsers() {
     setLoading(true);
@@ -153,6 +155,32 @@ export default function UsersPage() {
       showToast('Error: ' + e.message, 'error');
     }
     setBusyId(null);
+  }
+
+  // ── Access guard: only super admin can see this page ──
+  // Non-super-admins might reach /users via direct URL or stale bookmark.
+  // Show a clear denied state rather than the roster.
+  if (me && !isSuperAdmin) {
+    return (
+      <div style={{ padding: '80px 24px', maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+        <h1 style={{
+          fontFamily: "'Cormorant Garamond', serif",
+          fontSize: 26, color: 'var(--gold)', marginBottom: 10,
+        }}>Access Denied</h1>
+        <p style={{ color: 'var(--text2)', fontSize: 13, lineHeight: 1.7 }}>
+          Ye page sirf super admin ke liye hai. User management aur team roster
+          ke liye Abdul Rehman (CEO) se rabta karein.
+        </p>
+        <a href="/orders" style={{
+          display: 'inline-block', marginTop: 20,
+          background: 'transparent', border: '1px solid var(--gold)',
+          color: 'var(--gold)', padding: '8px 18px',
+          borderRadius: 'var(--radius)', fontSize: 12, textDecoration: 'none',
+          fontFamily: 'inherit', letterSpacing: 0.5,
+        }}>← Go to Orders</a>
+      </div>
+    );
   }
 
   return (
