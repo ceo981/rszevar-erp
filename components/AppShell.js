@@ -373,6 +373,20 @@ function AuthenticatedShell({ pathname, router, children }) {
     router.refresh();
   }
 
+  // Shared-login helper — save selection to localStorage + state.
+  // MUST be declared BEFORE any early return, otherwise hooks-order mismatches.
+  const setActiveUser = useCallback((next) => {
+    setActiveUserState(next);
+    if (typeof window !== 'undefined' && user?.id) {
+      const key = `rszevar_active_user:${user.id}`;
+      if (next?.id) {
+        window.localStorage.setItem(key, JSON.stringify({ id: next.id, name: next.name }));
+      } else {
+        window.localStorage.removeItem(key);
+      }
+    }
+  }, [user?.id]);
+
   if (authLoading) {
     return (
       <div style={{
@@ -385,19 +399,6 @@ function AuthenticatedShell({ pathname, router, children }) {
 
   const activeId = getActiveModuleId(pathname);
   const activeMod = MODULES.find(m => m.id === activeId);
-
-  // Shared-login helper — save selection to localStorage + state
-  const setActiveUser = useCallback((next) => {
-    setActiveUserState(next);
-    if (typeof window !== 'undefined' && user?.id) {
-      const key = `rszevar_active_user:${user.id}`;
-      if (next?.id) {
-        window.localStorage.setItem(key, JSON.stringify({ id: next.id, name: next.name }));
-      } else {
-        window.localStorage.removeItem(key);
-      }
-    }
-  }, [user?.id]);
 
   // Single source of truth for "who performed this action"
   const performer = activeUser?.name || profile?.full_name || user?.email || 'Staff';
