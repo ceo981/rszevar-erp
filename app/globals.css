@@ -173,6 +173,17 @@ body {
     min-width: 680px !important; /* Forces scroll on narrow phones */
   }
 
+  /* Tables directly inside overflow:hidden containers (jaise Accounts page ke
+     S.section) — tables ko block bana kar horizontal scroll allow karo.
+     `nowrap` cells ke saath `white-space: nowrap` on rows = controlled scroll. */
+  div[style*="overflow: hidden"] > table,
+  div[style*="overflow:hidden"] > table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+  }
+
   /* Table wrappers — add momentum scroll */
   div[style*="overflow-x: auto"],
   div[style*="overflowX"] {
@@ -298,6 +309,16 @@ body {
   div[style*="minmax(300px"] {
     grid-template-columns: 1fr !important;
     gap: 8px !important;
+  }
+
+  /* Form field grids — repeat(3, 1fr) / repeat(4, 1fr) → single column on mobile
+     (3+ cols packed on mobile = unusable tiny inputs). 2-col grids rakhe hain
+     because chhote widgets jaise toggles, short inputs mostly fit in 2-col. */
+  div[style*="grid-template-columns: repeat(3, 1fr)"],
+  div[style*="grid-template-columns: repeat(4, 1fr)"],
+  div[style*="grid-template-columns: repeat(5, 1fr)"] {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
   }
 
   /* ── 9. FLEX LAYOUTS — wrap with sane gap on mobile ─────────────────── */
