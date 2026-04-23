@@ -1,464 +1,1248 @@
 'use client';
-
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
+import OrderDrawer from './_components/OrderDrawer';
 
-const ROLE_LABELS = {
-  super_admin: 'Super Admin',
-  admin: 'Admin',
-  manager: 'Operations Manager',
-  inventory_manager: 'Inventory Manager',
-  dispatcher: 'Dispatcher',
-  customer_support: 'Customer Support',
-  wholesale_manager: 'Wholesale Manager',
-  packing_staff: 'Packing Staff',
+const gold = '#c9a96e';
+const card = '#141414';
+const border = '#222';
+
+const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
+const timeAgo = iso => {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 };
 
-const ALL_ROLES = Object.keys(ROLE_LABELS);
+const STATUS_CONFIG = {
+  pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
+  confirmed:  { label: 'Confirmed',  color: '#3b82f6', bg: '#3b82f622' },
+  on_packing: { label: 'On Packing', color: '#f59e0b', bg: '#f59e0b22' },
+  processing: { label: 'Processing', color: gold,      bg: gold + '22' },
+  packed:     { label: 'Packed',     color: '#06b6d4', bg: '#06b6d422' },
+  dispatched: { label: 'Dispatched', color: '#a855f7', bg: '#a855f722' },
+  in_transit: { label: 'In Transit', color: '#8b5cf6', bg: '#8b5cf622' },
+  delivered:  { label: 'Delivered',  color: '#22c55e', bg: '#22c55e22' },
+  returned:   { label: 'Returned',   color: '#f59e0b', bg: '#f59e0b22' },
+  rto:        { label: 'RTO',        color: '#ef4444', bg: '#ef444422' },
+  cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
+  attempted:  { label: 'Attempted',  color: '#f97316', bg: '#f9731622' },
+  hold:       { label: 'Hold',       color: '#64748b', bg: '#64748b22' },
+};
 
-export default function UsersPage() {
-  const { profile: me, isSuperAdmin } = useUser();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState(null);
-  const [toast, setToast] = useState(null);
+const PAYMENT_CONFIG = {
+  unpaid:   { label: 'Unpaid',   color: '#f87171', bg: '#f8717122' },
+  paid:     { label: 'Paid',     color: '#22c55e', bg: '#22c55e22' },
+  refunded: { label: 'Refunded', color: '#fbbf24', bg: '#fbbf2422' },
+};
 
-  // Edit Name modal state
-  const [editingUser, setEditingUser] = useState(null);
-  const [editNameInput, setEditNameInput] = useState('');
+function DraftOrderModal({ onClose, onCreated }) {
+  const [form, setForm] = useState({
+    customer_name: '', customer_phone: '', customer_address: '', customer_city: '', note: '', source: 'WhatsApp',
+  });
+  const [items, setItems] = useState([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState('');
 
-  // Delete confirm state
-  const [deletingUser, setDeletingUser] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const searchProducts = async (q) => {
+    if (!q || q.length < 2) { setSearchResults([]); return; }
+    setSearching(true);
+    const r = await fetch(`/api/products?search=${encodeURIComponent(q)}&view=flat&limit=10`);
+    const d = await r.json();
+    setSearchResults(d.products || []);
+    setSearching(false);
+  };
 
-  // Shared login config modal state
-  const [sharingUser, setSharingUser] = useState(null);
-  const [sharedFlag, setSharedFlag] = useState(false);
-  const [sharedIds, setSharedIds] = useState([]);
-  const [employeesList, setEmployeesList] = useState([]);
+  const addItem = (product) => {
+    const existing = items.find(i => i.shopify_variant_id === product.shopify_variant_id);
+    if (existing) {
+      setItems(items.map(i => i.shopify_variant_id === product.shopify_variant_id ? { ...i, quantity: i.quantity + 1 } : i));
+    } else {
+      setItems([...items, { ...product, quantity: 1, price: product.selling_price }]);
+    }
+    setProductSearch('');
+    setSearchResults([]);
+  };
 
-  const supabase = createClient();
+  const create = async () => {
+    if (!form.customer_name || !form.customer_phone) { setMsg('❌ Name aur phone zaroori hai'); return; }
+    if (items.length === 0) { setMsg('❌ Kam az kam 1 product add karo'); return; }
+    setCreating(true);
+    try {
+      const r = await fetch('/api/orders/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, line_items: items }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        // Shopify draft order directly open karo — wahan se shipping, discount, create order
+        const shopifyDraftUrl = `https://rszevar.myshopify.com/admin/draft_orders/${d.draft_order_id}`;
+        window.open(shopifyDraftUrl, '_blank');
+        onCreated?.();
+        onClose();
+      } else setMsg('❌ ' + d.error);
+    } catch(e) { setMsg('❌ ' + e.message); }
+    setCreating(false);
+  };
+
+  const inpStyle = { width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 540, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#a855f7' }}>+ Draft Order (WhatsApp)</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          {[['Customer Name *', 'customer_name'], ['Phone *', 'customer_phone'], ['City', 'customer_city']].map(([lbl, key]) => (
+            <div key={key}>
+              <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>{lbl}</div>
+              <input value={form[key]} onChange={e => setForm(f => ({...f, [key]: e.target.value}))} style={inpStyle} />
+            </div>
+          ))}
+          <div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Source</div>
+            <select value={form.source} onChange={e => setForm(f => ({...f, source: e.target.value}))} style={inpStyle}>
+              {['WhatsApp', 'Facebook', 'Instagram', 'Walk-in', 'Phone Call'].map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Address</div>
+          <input value={form.customer_address} onChange={e => setForm(f => ({...f, customer_address: e.target.value}))} style={inpStyle} />
+        </div>
+
+        {/* Product Search */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Products Add Karo</div>
+          <div style={{ position: 'relative' }}>
+            <input value={productSearch}
+              onChange={e => { setProductSearch(e.target.value); searchProducts(e.target.value); }}
+              placeholder="SKU ya naam se search karo..."
+              style={{ ...inpStyle, borderColor: '#a855f7' }} />
+            {(searchResults.length > 0 || searching) && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 7, zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
+                {searching ? <div style={{ padding: 10, color: '#555', fontSize: 12 }}>Searching...</div> :
+                  searchResults.map(p => (
+                    <div key={p.id} onClick={() => addItem(p)}
+                      style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: `1px solid #222`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#252525'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <div>
+                        <div style={{ fontSize: 12, color: '#e2e8f0' }}>{p.title}</div>
+                        <div style={{ fontSize: 10, color: '#555' }}>{p.sku}</div>
+                      </div>
+                      <div style={{ color: gold, fontSize: 12, fontWeight: 600 }}>Rs {(p.selling_price || 0).toLocaleString()}</div>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Items list */}
+        {items.length > 0 && (
+          <div style={{ marginBottom: 12, background: '#111', borderRadius: 8, padding: 10 }}>
+            {items.map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < items.length - 1 ? `1px solid #222` : 'none' }}>
+                <div style={{ flex: 1, fontSize: 12, color: '#e2e8f0' }}>{item.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="number" min="1" value={item.quantity}
+                    onChange={e => setItems(items.map((it, j) => j === i ? {...it, quantity: parseInt(e.target.value) || 1} : it))}
+                    style={{ width: 50, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 12, textAlign: 'center' }} />
+                  <div style={{ color: gold, fontSize: 12, width: 80, textAlign: 'right' }}>Rs {((item.price || 0) * item.quantity).toLocaleString()}</div>
+                  <button onClick={() => setItems(items.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                </div>
+              </div>
+            ))}
+            <div style={{ textAlign: 'right', marginTop: 8, fontWeight: 700, color: gold }}>
+              Total: Rs {items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0).toLocaleString()}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Note (optional)</div>
+          <input value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} placeholder="Customer ne kya kaha..." style={inpStyle} />
+        </div>
+
+        {msg && <div style={{ marginBottom: 10, fontSize: 13, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
+        <button onClick={create} disabled={creating}
+          style={{ width: '100%', background: '#a855f7', color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          {creating ? 'Creating...' : '🚀 Shopify Draft Order Create Karo'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function PaymentBadge({ payment_status }) {
+  const cfg = PAYMENT_CONFIG[payment_status] || PAYMENT_CONFIG.unpaid;
+  return (
+    <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+      {cfg.label}
+    </span>
+  );
+}
+
+// ─── Filter Dropdown ──────────────────────────────────────────
+// Single dropdown with sections. Picks ONE filter at a time.
+// Filter object: { type, value } e.g. { type: 'status', value: 'delivered' }
+function FilterDropdown({ current, onChange, globalCounts }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const gc = globalCounts || {};
 
   useEffect(() => {
-    loadUsers();
-    loadEmployees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  async function loadEmployees() {
-    const { data } = await supabase
-      .from('employees')
-      .select('id, name, role, status')
-      .order('name', { ascending: true });
-    setEmployeesList(data || []);
+  const sections = [
+    {
+      label: 'Status',
+      items: [
+        { type: 'status', value: 'pending',    label: 'Pending',      color: '#888',    count: gc.pending },
+        { type: 'status', value: 'confirmed',  label: 'Confirmed',    color: '#3b82f6', count: gc.confirmed },
+        { type: 'status', value: 'on_packing', label: 'On Packing',   color: '#f59e0b', count: gc.on_packing },
+        { type: 'status', value: 'packed',     label: 'Packed',       color: '#06b6d4', count: gc.packed },
+        { type: 'status', value: 'dispatched', label: 'Dispatched',   color: '#a855f7', count: gc.dispatched },
+        { type: 'status', value: 'delivered',  label: 'Delivered',    color: '#22c55e', count: gc.delivered },
+        { type: 'status', value: 'attempted',  label: '📞 Attempted', color: '#f97316', count: gc.attempted },
+        { type: 'status', value: 'hold',       label: '⏸ Hold',      color: '#64748b', count: gc.hold },
+        { type: 'status', value: 'rto',        label: 'RTO',          color: '#ef4444', count: gc.rto },
+        { type: 'status', value: 'cancelled',  label: 'Cancelled',    color: '#ef4444', count: gc.cancelled },
+      ],
+    },
+    {
+      label: 'Type',
+      items: [
+        { type: 'type', value: 'wholesale', label: '🏢 Wholesale', color: '#8b5cf6', count: gc.wholesale },
+        { type: 'type', value: 'international', label: '🌍 International', color: '#06b6d4', count: gc.international },
+        { type: 'type', value: 'walkin', label: '🚶 Walk-in', color: '#f59e0b', count: gc.walkin },
+      ],
+    },
+    {
+      label: 'Courier',
+      items: [
+        { type: 'courier', value: 'Leopards', label: '🐆 Leopards', color: '#a855f7', count: gc.leopards },
+        { type: 'courier', value: 'PostEx', label: '📦 PostEx', color: '#22d3ee', count: gc.postex },
+        { type: 'courier', value: 'Kangaroo', label: '🦘 Kangaroo', color: '#f59e0b', count: gc.kangaroo },
+        { type: 'courier', value: 'Other', label: '❓ Other / Unknown', color: '#888' },
+      ],
+    },
+    {
+      label: 'Payment',
+      items: [
+        { type: 'payment', value: 'paid',     label: '💰 Paid',     color: '#22c55e', count: gc.paid },
+        { type: 'payment', value: 'unpaid',   label: '⏳ Unpaid',   color: '#f87171', count: gc.unpaid },
+        { type: 'payment', value: 'refunded', label: '↩️ Refunded', color: '#fbbf24' },
+      ],
+    },
+  ];
+
+  // Derive display label
+  let displayLabel = 'All Orders';
+  let displayColor = '#888';
+  if (current.type) {
+    for (const s of sections) {
+      const found = s.items.find(i => i.type === current.type && i.value === current.value);
+      if (found) {
+        displayLabel = found.label;
+        displayColor = found.color;
+        break;
+      }
+    }
   }
 
-  async function loadUsers() {
+  const pick = (item) => {
+    onChange({ type: item.type, value: item.value });
+    setOpen(false);
+  };
+
+  const clear = () => {
+    onChange({ type: null, value: null });
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: card,
+          border: `1px solid ${current.type ? displayColor : border}`,
+          color: current.type ? displayColor : '#fff',
+          borderRadius: 8,
+          padding: '9px 16px',
+          fontSize: 13,
+          fontWeight: current.type ? 600 : 400,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          minWidth: 180,
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: 1, textAlign: 'left' }}>{displayLabel}</span>
+        <span style={{ fontSize: 10, color: '#555' }}>▼</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 6px)',
+          left: 0,
+          minWidth: 260,
+          background: '#0a0a0a',
+          border: `1px solid ${border}`,
+          borderRadius: 10,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+          zIndex: 100,
+          maxHeight: 480,
+          overflowY: 'auto',
+        }}>
+          {/* All / Clear */}
+          <button
+            onClick={clear}
+            style={{
+              width: '100%',
+              background: !current.type ? '#1a1a1a' : 'transparent',
+              border: 'none',
+              color: !current.type ? gold : '#ccc',
+              padding: '11px 16px',
+              fontSize: 13,
+              fontWeight: !current.type ? 600 : 400,
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontFamily: 'inherit',
+              borderBottom: `1px solid ${border}`,
+            }}
+          >
+            {current.type ? '✕ Clear filter' : '✓ All Orders'}
+          </button>
+
+          {sections.map(section => (
+            <div key={section.label}>
+              <div style={{
+                padding: '10px 16px 6px',
+                fontSize: 10,
+                color: '#555',
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                fontWeight: 600,
+                background: '#050505',
+              }}>
+                {section.label}
+              </div>
+              {section.items.map(item => {
+                const active = current.type === item.type && current.value === item.value;
+                return (
+                  <button
+                    key={`${item.type}-${item.value}`}
+                    onClick={() => pick(item)}
+                    style={{
+                      width: '100%',
+                      background: active ? '#1a1a1a' : 'transparent',
+                      border: 'none',
+                      borderLeft: active ? `3px solid ${item.color}` : '3px solid transparent',
+                      color: active ? item.color : '#ccc',
+                      padding: '10px 16px',
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#111'; }}
+                    onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span>{item.label}</span>
+                    {typeof item.count === 'number' && (
+                      <span style={{
+                        fontSize: 11,
+                        color: active ? item.color : '#555',
+                        background: active ? item.color + '22' : '#1a1a1a',
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        fontWeight: 600,
+                        minWidth: 24,
+                        textAlign: 'center',
+                      }}>
+                        {item.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// OrderDrawer now lives in ./_components/OrderDrawer.js (shared with /orders/[id])
+
+function BulkCancelModal({ count, onClose, onConfirm, running }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ef4444' }}>
+          ✕ Cancel {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Reason sab orders pe lagegi. Shopify pe bhi cancel hoga. Dispatched/Delivered orders skip honge.
+        </p>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Cancel reason (required)..."
+          rows={3}
+          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12, resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={running || !reason.trim()}
+            style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !reason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !reason.trim()) ? 0.5 : 1 }}>
+            {running ? 'Cancelling…' : `Cancel ${count} order${count > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkStatusModal({ count, onClose, onConfirm, running }) {
+  const [newStatus, setNewStatus] = useState('');
+  const [notes, setNotes] = useState('');
+  // FIX: exclude cancelled (use action=cancel instead) and in_transit/processing
+  // (in_transit not in DB enum; processing barely used). 'dispatched' allowed —
+  // legitimate for Shopify-booked orders bulk status flip.
+  const BULK_ALLOWED = ['pending', 'confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'returned', 'rto', 'attempted', 'hold'];
+  const options = BULK_ALLOWED
+    .filter(val => STATUS_CONFIG[val])
+    .map(val => ({ value: val, label: STATUS_CONFIG[val].label, color: STATUS_CONFIG[val].color }));
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 480 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: gold }}>
+          ⚙ Change status — {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Select new status. Jo order pehle se same status pe hai, skip hoga.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 14 }}>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setNewStatus(opt.value)}
+              style={{
+                background: newStatus === opt.value ? opt.color + '22' : '#1a1a1a',
+                border: newStatus === opt.value ? `1px solid ${opt.color}` : `1px solid ${border}`,
+                color: newStatus === opt.value ? opt.color : '#aaa',
+                borderRadius: 6,
+                padding: '8px 10px',
+                fontSize: 12,
+                fontWeight: newStatus === opt.value ? 600 : 400,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                textAlign: 'center',
+              }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <input
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Notes (optional)"
+          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm({ status: newStatus, notes })}
+            disabled={running || !newStatus}
+            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !newStatus) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !newStatus) ? 0.5 : 1 }}>
+            {running ? 'Updating…' : 'Apply to all'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkAssignModal({ count, onClose, onConfirm, running }) {
+  const [employees, setEmployees] = useState([]);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/orders/assign')
+      .then(r => r.json())
+      .then(d => { setEmployees(d.employees || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 440 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>
+          👤 Assign packer — {count} order{count > 1 ? 's' : ''}
+        </h3>
+        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+          Sirf Confirmed / On Packing orders pe lagega. Baaki skip honge.
+        </p>
+
+        {loading ? (
+          <p style={{ color: '#555', fontSize: 13, marginTop: 14 }}>Loading employees…</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: 320, overflowY: 'auto' }}>
+            <button
+              onClick={() => setAssignedTo('packing_team')}
+              style={{
+                background: assignedTo === 'packing_team' ? '#f59e0b22' : '#1a1a1a',
+                border: assignedTo === 'packing_team' ? `1px solid #f59e0b` : `1px solid ${border}`,
+                color: assignedTo === 'packing_team' ? '#f59e0b' : '#ccc',
+                borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+              }}>
+              🤝 Packing Team (shared credit)
+            </button>
+            {employees.map(emp => (
+              <button
+                key={emp.id}
+                onClick={() => setAssignedTo(String(emp.id))}
+                style={{
+                  background: assignedTo === String(emp.id) ? '#f59e0b22' : '#1a1a1a',
+                  border: assignedTo === String(emp.id) ? `1px solid #f59e0b` : `1px solid ${border}`,
+                  color: assignedTo === String(emp.id) ? '#f59e0b' : '#ccc',
+                  borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                }}>
+                {emp.name} <span style={{ color: '#555', fontSize: 11 }}>· {emp.designation || emp.role}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose} disabled={running}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Back
+          </button>
+          <button
+            onClick={() => onConfirm({ assigned_to: assignedTo })}
+            disabled={running || !assignedTo}
+            style={{ background: '#f59e0b', border: `1px solid #f59e0b`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !assignedTo) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !assignedTo) ? 0.5 : 1 }}>
+            {running ? 'Assigning…' : `Assign ${count} order${count > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BulkResultModal({ result, onClose }) {
+  if (!result) return null;
+  const { summary, results } = result;
+  const failures = results.filter(r => !r.success);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
+          {summary.failed === 0 ? '✓ All done' : `⚠ Partial — ${summary.succeeded}/${summary.total} succeeded`}
+        </h3>
+        <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 13 }}>
+          <span style={{ color: '#22c55e' }}>✓ {summary.succeeded} succeeded</span>
+          {summary.failed > 0 && <span style={{ color: '#ef4444' }}>✕ {summary.failed} failed</span>}
+        </div>
+        {failures.length > 0 && (
+          <div style={{ marginTop: 14, flex: 1, overflowY: 'auto', background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 6, padding: 10 }}>
+            <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Failed orders</div>
+            {failures.map(f => (
+              <div key={f.order_id} style={{ fontSize: 12, color: '#ccc', padding: '4px 0', borderBottom: '1px solid #222' }}>
+                <span style={{ color: gold, fontWeight: 600 }}>Order #{f.order_id}</span>
+                <span style={{ color: '#ef4444', marginLeft: 8 }}>— {f.error}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button onClick={onClose}
+            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Orders Page ─────────────────────────────────────────
+export default function OrdersPage() {
+  const { profile } = useUser();
+  const performer = profile?.full_name || profile?.email || 'Staff';
+  const { userEmail } = useUser();
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [globalCounts, setGlobalCounts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // debounced version used by API
+  const [filter, setFilter] = useState({ type: null, value: null }); // unified filter
+  const [selected, setSelected] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showDraft, setShowDraft] = useState(false);
+  // FIX: cleaning state + button removed — /api/orders/cleanup endpoint doesn't exist (404)
+  const [syncMsg, setSyncMsg] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
+  const PER_PAGE = 50;
+
+  // ── Bulk selection state ──
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkModal, setBulkModal] = useState(null); // 'cancel' | 'status' | 'assign' | null
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+
+  // ── Debounce search typing ──
+  // User har keystroke pe API hit na ho. 350ms ruk ke fire hoti hai query.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ── Request cancellation + sequence guard ──
+  // Race condition fix: fast typing ke saath parallel API calls aate the, aur
+  // late-arriving response UI ko overwrite kar deti thi. Ab pehle wali request
+  // abort ho jaati hai, aur safety ke liye requestId se bhi guard hai.
+  const abortRef = useRef(null);
+  const requestIdRef = useRef(0);
+
+  const load = useCallback(async () => {
+    // Cancel any in-flight request — late response ab UI overwrite nahi karegi
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error) setUsers(data || []);
-    setLoading(false);
-  }
-
-  function showToast(msg, kind = 'info') {
-    setToast({ msg, kind });
-    setTimeout(() => setToast(null), 3000);
-  }
-
-  async function updateRole(id, role) {
-    setBusyId(id);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role, updated_at: new Date().toISOString() })
-      .eq('id', id);
-
-    if (error) {
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role } : u)));
-      showToast('Role updated');
-    }
-    setBusyId(null);
-  }
-
-  async function toggleActive(u) {
-    setBusyId(u.id);
-    const newActive = !u.is_active;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: newActive, updated_at: new Date().toISOString() })
-      .eq('id', u.id);
-
-    if (error) {
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      setUsers((prev) =>
-        prev.map((x) => (x.id === u.id ? { ...x, is_active: newActive } : x))
-      );
-      showToast(newActive ? 'Activated' : 'Deactivated');
-    }
-    setBusyId(null);
-  }
-
-  // ─── Edit Name ─────────────────────────────────────────────────
-  function openEditName(u) {
-    setEditingUser(u);
-    setEditNameInput(u.full_name || '');
-  }
-
-  async function saveEditName() {
-    if (!editingUser || !editNameInput.trim()) return;
-    setBusyId(editingUser.id);
     try {
-      const r = await fetch('/api/users/update-name', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: editingUser.id, full_name: editNameInput.trim() }),
-      });
+      const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (filter.type && filter.value) params.append(filter.type, filter.value);
+      const r = await fetch(`/api/orders?${params}`, { signal: controller.signal });
       const d = await r.json();
-      if (d.success) {
-        setUsers((prev) => prev.map((x) => (x.id === editingUser.id ? { ...x, full_name: d.full_name } : x)));
-        showToast('Naam update ho gaya');
-        setEditingUser(null);
-        setEditNameInput('');
+
+      // Guard: agar naya request fire ho chuka hai to is purani response ko ignore karo
+      if (requestId !== requestIdRef.current) return;
+
+      const newOrders = d.orders || [];
+      if (page === 1) {
+        setOrders(newOrders);
       } else {
-        showToast('Error: ' + (d.error || 'Update failed'), 'error');
+        setOrders(prev => [...prev, ...newOrders]);
       }
+      setHasMore(newOrders.length === PER_PAGE);
+      if (d.stats) setStats(d.stats);
+      if (d.global_counts) setGlobalCounts(d.global_counts);
     } catch (e) {
-      showToast('Error: ' + e.message, 'error');
+      if (e.name === 'AbortError') return; // expected — naya request le chuka
     }
-    setBusyId(null);
-  }
+    // Sirf latest request hi loading state ko off karegi
+    if (requestId === requestIdRef.current) setLoading(false);
+  }, [page, debouncedSearch, filter]);
 
-  // ─── Delete User ───────────────────────────────────────────────
-  function openDelete(u) {
-    setDeletingUser(u);
-    setDeleteConfirm('');
-  }
+  useEffect(() => { load(); }, [load]);
 
-  async function confirmDelete() {
-    if (!deletingUser) return;
-    const requiredName = deletingUser.full_name || deletingUser.email || '';
-    if (deleteConfirm.trim() !== requiredName.trim()) {
-      showToast('Confirmation text match nahi hua', 'error');
-      return;
-    }
-    setBusyId(deletingUser.id);
-    try {
-      const r = await fetch('/api/users/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: deletingUser.id }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        setUsers((prev) => prev.filter((x) => x.id !== deletingUser.id));
-        showToast(`${requiredName} delete ho gaya`);
-        setDeletingUser(null);
-        setDeleteConfirm('');
+  // FIX: keep the currently-open drawer order in sync with the latest `orders`
+  // data after a refresh. Previously `onRefresh` was using closure-stale orders,
+  // so the drawer showed pre-action data (old status, old items) after a refresh.
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = orders.find(o => o.id === selected.id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+  }, [orders, selected]);
+
+  // Background auto-sync — page load pe silently Leopards + Kangaroo dono sync
+  useEffect(() => {
+    const backgroundSync = async () => {
+      try {
+        await Promise.allSettled([
+          fetch('/api/courier/leopards/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/leopards/sync-payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/kangaroo/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+        ]);
+        // load() removed — background sync ke baad list reload nahi karni
+        // Warna search karte waqt scroll/results reset ho jate the
+      } catch (e) {
+        console.log('[auto-sync] background sync error:', e.message);
+      }
+    };
+    backgroundSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Sirf page load pe ek baar
+  useEffect(() => {
+    const handler = (e) => {
+      const orderData = e.detail;
+      if (orderData) setSelected(orderData);
+    };
+    window.addEventListener('openOrder', handler);
+    return () => window.removeEventListener('openOrder', handler);
+  }, []);
+
+  // Settlement upload hone ke baad foran orders refresh ho
+  useEffect(() => {
+    const handler = () => { load(); };
+    window.addEventListener('settlementApplied', handler);
+    return () => window.removeEventListener('settlementApplied', handler);
+  }, [load]);
+
+  useEffect(() => {
+    fetch('/api/shopify/sync')
+      .then(r => r.json())
+      .then(d => { if (d.last_synced) setLastSync(d.last_synced); })
+      .catch(() => {});
+  }, []);
+
+  const showMsg = (type, text, ms = 8000) => {
+    setSyncMsg({ type, text });
+    setTimeout(() => setSyncMsg(null), ms);
+  };
+
+  // ── Bulk selection helpers ──
+  const pageOrderIds = orders.map(o => o.id);
+  const allSelectedOnPage = pageOrderIds.length > 0 && pageOrderIds.every(id => selectedIds.has(id));
+  const someSelectedOnPage = pageOrderIds.some(id => selectedIds.has(id)) && !allSelectedOnPage;
+
+  const toggleOne = (id, e) => {
+    e?.stopPropagation();
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllOnPage = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelectedOnPage) {
+        pageOrderIds.forEach(id => next.delete(id));
       } else {
-        showToast('Error: ' + (d.error || 'Delete failed'), 'error');
+        pageOrderIds.forEach(id => next.add(id));
       }
-    } catch (e) {
-      showToast('Error: ' + e.message, 'error');
-    }
-    setBusyId(null);
-  }
+      return next;
+    });
+  };
 
-  // ─── Shared Login Config ──────────────────────────────────────
-  function openSharingConfig(u) {
-    setSharingUser(u);
-    setSharedFlag(!!u.is_shared_login);
-    setSharedIds(Array.isArray(u.shared_staff_ids) ? u.shared_staff_ids : []);
-  }
+  const clearSelection = () => setSelectedIds(new Set());
 
-  function toggleSharedEmployeeId(empId) {
-    setSharedIds(prev => prev.includes(empId) ? prev.filter(x => x !== empId) : [...prev, empId]);
-  }
-
-  async function saveSharingConfig() {
-    if (!sharingUser) return;
-    setBusyId(sharingUser.id);
+  // ── Bulk action runner ──
+  const runBulk = async (payload) => {
+    setBulkRunning(true);
     try {
-      const r = await fetch('/api/users/update-shared', {
+      const r = await fetch('/api/orders/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: sharingUser.id,
-          is_shared_login: sharedFlag,
-          shared_staff_ids: sharedFlag ? sharedIds : [],
+          ...payload,
+          order_ids: Array.from(selectedIds),
+          performed_by: performer,
+          performed_by_email: userEmail,
         }),
       });
       const d = await r.json();
-      if (d.success) {
-        setUsers(prev => prev.map(x => x.id === sharingUser.id
-          ? { ...x, is_shared_login: sharedFlag, shared_staff_ids: sharedFlag ? sharedIds : [] }
-          : x));
-        showToast('Sharing config saved');
-        setSharingUser(null);
+      if (!d.success) {
+        showMsg('error', d.error || 'Bulk action failed');
+        setBulkRunning(false);
+        return;
+      }
+
+      setBulkResult(d);
+      const { summary } = d;
+      if (summary.failed === 0) {
+        showMsg('success', `✓ ${summary.succeeded} order${summary.succeeded > 1 ? 's' : ''} updated`);
       } else {
-        showToast('Error: ' + (d.error || 'Save failed'), 'error');
+        showMsg('error', `${summary.succeeded} succeeded, ${summary.failed} failed — details check karo`);
+      }
+      clearSelection();
+      setBulkModal(null);
+      load();
+    } catch (e) {
+      showMsg('error', e.message);
+    }
+    setBulkRunning(false);
+  };
+
+  const handleBulkConfirm = () => {
+    if (!window.confirm(`${selectedIds.size} order${selectedIds.size > 1 ? 's' : ''} confirm karne hain?\n\n(Sirf pending/processing/attempted/hold orders confirm honge)`)) return;
+    runBulk({ action: 'confirm' });
+  };
+
+  const syncFromShopify = async () => {
+    setSyncing(true);
+    setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), 3 * 60 * 1000);
+
+    try {
+      const r = await fetch('/api/shopify/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        signal: abortController.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      const d = await r.json();
+
+      if (d.success) {
+        setSyncMsg({
+          type: 'success',
+          text: d.synced > 0
+            ? `✓ ${d.synced} orders synced from Shopify`
+            : '✓ Already up to date — no new orders',
+        });
+        setLastSync(new Date().toISOString());
+        await load();
+      } else {
+        setSyncMsg({ type: 'error', text: `✗ ${d.error || 'Sync failed'}` });
       }
     } catch (e) {
-      showToast('Error: ' + e.message, 'error');
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        setSyncMsg({ type: 'error', text: '✗ Sync timed out after 3 minutes.' });
+      } else {
+        setSyncMsg({ type: 'error', text: `✗ ${e.message}` });
+      }
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 6000);
     }
-    setBusyId(null);
-  }
+  };
+
+  const cleanUndefinedOrders = null; // removed — endpoint /api/orders/cleanup doesn't exist
+
+  const c = stats || {};
+  const anySyncing = syncing;
 
   return (
-    <div style={{ padding: 24 }}>
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 24,
-            right: 24,
-            background: toast.kind === 'error' ? 'var(--red-dim)' : 'var(--bg-card)',
-            border: `1px solid ${toast.kind === 'error' ? 'var(--red)' : 'var(--gold)'}`,
-            color: toast.kind === 'error' ? 'var(--red)' : 'var(--text)',
-            padding: '10px 16px',
-            borderRadius: 'var(--radius)',
+    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
+      {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
+      {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => load()} performer={performer} />}
+
+      {/* Bulk action modals */}
+      {bulkModal === 'cancel' && (
+        <BulkCancelModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={(reason) => runBulk({ action: 'cancel', reason })}
+        />
+      )}
+      {bulkModal === 'status' && (
+        <BulkStatusModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={({ status, notes }) => runBulk({ action: 'status', status, notes })}
+        />
+      )}
+      {bulkModal === 'assign' && (
+        <BulkAssignModal
+          count={selectedIds.size}
+          running={bulkRunning}
+          onClose={() => setBulkModal(null)}
+          onConfirm={({ assigned_to }) => runBulk({ action: 'assign', assigned_to })}
+        />
+      )}
+      {bulkResult && (
+        <BulkResultModal result={bulkResult} onClose={() => setBulkResult(null)} />
+      )}
+
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Orders</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
+            Confirm, dispatch, and manage all orders
+            {lastSync && (
+              <span style={{ marginLeft: 10, color: '#666' }}>
+                · Last sync: {new Date(lastSync).toLocaleString('en-PK', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
+              </span>
+            )}
+          </p>
+        </div>
+        {syncMsg && (
+          <div style={{
+            padding: '8px 14px',
+            borderRadius: 8,
             fontSize: 12,
-            zIndex: 10000,
-            boxShadow: 'var(--shadow)',
+            maxWidth: 600,
+            background:
+              syncMsg.type === 'success' ? 'rgba(74,222,128,0.12)' :
+              syncMsg.type === 'error' ? 'rgba(248,113,113,0.12)' :
+              'rgba(96,165,250,0.12)',
+            border: `1px solid ${
+              syncMsg.type === 'success' ? '#4ade80' :
+              syncMsg.type === 'error' ? '#f87171' :
+              '#60a5fa'
+            }`,
+            color:
+              syncMsg.type === 'success' ? '#4ade80' :
+              syncMsg.type === 'error' ? '#f87171' :
+              '#60a5fa',
+          }}>
+            {syncMsg.text}
+          </div>
+        )}
+      </div>
+
+      {/* ── Status Tabs ── */}
+      <div style={{ marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
+        <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+          {[
+            { label: 'All Orders', value: null, color: gold, count: globalCounts.pending + globalCounts.confirmed + globalCounts.on_packing + globalCounts.packed + globalCounts.dispatched + globalCounts.delivered + globalCounts.attempted + globalCounts.hold + globalCounts.rto + globalCounts.cancelled },
+            { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending },
+            { label: 'Confirmed',  value: 'confirmed',  color: '#3b82f6', count: globalCounts.confirmed },
+            { label: 'On Packing', value: 'on_packing', color: '#f59e0b', count: globalCounts.on_packing },
+            { label: 'Packed',     value: 'packed',     color: '#06b6d4', count: globalCounts.packed },
+            { label: 'Dispatched', value: 'dispatched', color: '#a855f7', count: globalCounts.dispatched },
+            { label: 'Delivered',  value: 'delivered',  color: '#22c55e', count: globalCounts.delivered },
+            { label: 'Attempted',  value: 'attempted',  color: '#f97316', count: globalCounts.attempted },
+            { label: 'Hold',       value: 'hold',       color: '#64748b', count: globalCounts.hold },
+            { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
+            { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled },
+            { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
+          ].map(tab => {
+            const tabFilterType = tab.filterType || 'status';
+            const isActive = tab.value === null
+              ? filter.type === null
+              : (filter.type === tabFilterType && filter.value === tab.value);
+            return (
+              <button
+                key={tab.value ?? 'all'}
+                title={tab.tooltip || ''}
+                onClick={() => {
+                  setFilter(tab.value ? { type: tabFilterType, value: tab.value } : { type: null, value: null });
+                  setPage(1);
+                }}
+                style={{
+                  background: isActive ? tab.color + '18' : 'transparent',
+                  border: isActive ? `1px solid ${tab.color}55` : `1px solid transparent`,
+                  borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
+                  color: isActive ? tab.color : '#555',
+                  borderRadius: '8px 8px 0 0',
+                  padding: '9px 14px',
+                  fontSize: 12,
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: isActive ? tab.color + '22' : '#1a1a1a',
+                    color: isActive ? tab.color : '#444',
+                    padding: '1px 7px',
+                    borderRadius: 10,
+                    minWidth: 20,
+                    textAlign: 'center',
+                  }}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ borderBottom: `1px solid ${border}`, marginTop: -1 }} />
+      </div>
+
+      {/* ── Search + Secondary filters + Buttons ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Search order, customer, phone, tracking..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
+
+        {/* Secondary filter — Type / Courier / Payment only (Status handled by tabs) */}
+        <FilterDropdown
+          current={filter}
+          onChange={(f) => { setFilter(f); setPage(1); }}
+          globalCounts={globalCounts}
+        />
+
+        <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
+
+        <button onClick={() => setShowDraft(true)}
+          style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid #a855f7', color: '#a855f7', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          + Draft Order
+        </button>
+
+        <button
+          onClick={syncFromShopify}
+          disabled={anySyncing}
+          style={{
+            background: syncing ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
+            border: `1px solid ${syncing ? border : '#c9a96e'}`,
+            color: syncing ? '#888' : '#000',
+            borderRadius: 8,
+            padding: '9px 18px',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: anySyncing ? 'not-allowed' : 'pointer',
+            opacity: (anySyncing && !syncing) ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
           }}
+          title="Pull latest orders from Shopify"
         >
-          {toast.msg}
+          {syncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>⟱ Sync from Shopify</>)}
+        </button>
+
+        {/* FIX: Clean button removed — /api/orders/cleanup endpoint doesn't exist */}
+
+        <style jsx>{`
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+
+      {/* ── Bulk Action Toolbar — shows when selection > 0 ── */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '10px 14px', marginBottom: 10,
+          background: gold + '11', border: `1px solid ${gold}55`, borderRadius: 8,
+        }}>
+          <span style={{ color: gold, fontSize: 13, fontWeight: 700 }}>
+            {selectedIds.size} selected
+          </span>
+          <div style={{ width: 1, height: 20, background: border }} />
+
+          <button
+            onClick={handleBulkConfirm}
+            disabled={bulkRunning}
+            title="Confirm all selected pending/processing orders"
+            style={{ background: '#3b82f622', border: '1px solid #3b82f6', color: '#3b82f6', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ✓ Confirm
+          </button>
+
+          <button
+            onClick={() => setBulkModal('assign')}
+            disabled={bulkRunning}
+            title="Assign a packer to selected orders"
+            style={{ background: '#f59e0b22', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            👤 Assign Packer
+          </button>
+
+          <button
+            onClick={() => setBulkModal('status')}
+            disabled={bulkRunning}
+            title="Change status for selected orders"
+            style={{ background: gold + '22', border: `1px solid ${gold}`, color: gold, borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ⚙ Change Status
+          </button>
+
+          <button
+            onClick={() => setBulkModal('cancel')}
+            disabled={bulkRunning}
+            title="Cancel selected orders"
+            style={{ background: '#ef444422', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
+            ✕ Cancel
+          </button>
+
+          <div style={{ flex: 1 }} />
+
+          {bulkRunning && (
+            <span style={{ color: gold, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+              Processing...
+            </span>
+          )}
+
+          <button
+            onClick={clearSelection}
+            disabled={bulkRunning}
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            ✕ Clear
+          </button>
         </div>
       )}
 
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            fontFamily: "'Cormorant Garamond', serif",
-            fontSize: 28,
-            fontWeight: 600,
-            color: 'var(--gold)',
-            letterSpacing: 1,
-          }}
-        >
-          Users
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
-          Manage team members and their roles. {users.length} total.
-        </p>
-      </div>
-
-      <div
-        style={{
-          background: 'var(--blue-dim)',
-          border: '1px solid var(--blue)',
-          borderRadius: 'var(--radius)',
-          padding: 14,
-          marginBottom: 20,
-          fontSize: 12,
-          color: 'var(--text2)',
-          lineHeight: 1.6,
-        }}
-      >
-        <strong style={{ color: 'var(--blue)' }}>How to add a new user:</strong>
-        <br />
-        Go to Supabase Dashboard → Authentication → Users → Add User. Create with email + password + Auto Confirm.
-        The new user will appear here, phir role assign karke unka naam bhi set karlo — warna logs mein email hi dikhega.
-      </div>
-
-      {loading ? (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: 60,
-            color: 'var(--text3)',
-            fontSize: 13,
-          }}
-        >
-          Loading users…
-        </div>
-      ) : (
-        <div
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      {/* Table */}
+      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: 'var(--bg2)' }}>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Role</th>
-                <th style={thStyle}>Status</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+              <tr style={{ borderBottom: `1px solid ${border}` }}>
+                <th style={{ padding: '12px 8px 12px 16px', width: 36, textAlign: 'left' }}>
+                  <input
+                    type="checkbox"
+                    checked={allSelectedOnPage}
+                    ref={el => { if (el) el.indeterminate = someSelectedOnPage; }}
+                    onChange={toggleAllOnPage}
+                    title={allSelectedOnPage ? 'Deselect all on page' : 'Select all on page'}
+                    style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
+                  />
+                </th>
+                {['Order', 'Customer', 'City', 'COD', 'Office Status', 'Payment', 'Courier', 'Courier Status', 'Assigned', 'Date', 'Actions'].map(h => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
-                const isSelf = me?.id === u.id;
-                const nameMissing = !u.full_name;
+              {loading && (
+                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+              )}
+              {!loading && orders.length === 0 && (
+                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+              )}
+              {orders.map((order, i) => {
+                let typeIcon = '';
+                if (order.is_wholesale) typeIcon = '🏢';
+                else if (order.is_international) typeIcon = '🌍';
+                else if (order.is_walkin) typeIcon = '🚶';
+                const courierStatusRaw = order.courier_status_raw;
+                const isWaCancelledReview = order.status === 'cancelled'
+                  && Array.isArray(order.tags)
+                  && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
+                const isSelected = selectedIds.has(order.id);
+                const rowBg = isSelected
+                  ? gold + '12'
+                  : (isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : '#0a0a0a'));
                 return (
-                  <tr
-                    key={u.id}
-                    style={{ borderTop: '1px solid var(--border)' }}
-                  >
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div
-                          style={{
-                            width: 32, height: 32, borderRadius: '50%',
-                            background: nameMissing ? 'var(--red-dim)' : 'var(--gold-dim)',
-                            border: `1px solid ${nameMissing ? 'var(--red)' : 'var(--gold)'}`,
-                            color: nameMissing ? 'var(--red)' : 'var(--gold)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 12, fontWeight: 600, flexShrink: 0,
+                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: rowBg }}
+                    onClick={() => setSelected(order)} className="order-row">
+                    <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleOne(order.id, e)}
+                        style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
+                      />
+                    </td>
+                    <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Link
+                          href={`/orders/${order.id}`}
+                          onClick={e => {
+                            // Regular left-click (no modifier keys) → drawer
+                            // Ctrl/Cmd/middle-click → new tab (browser default)
+                            if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelected(order);
+                            }
                           }}
+                          style={{ color: gold, textDecoration: 'none', fontWeight: 600 }}
                         >
-                          {(u.full_name || '?').charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ color: nameMissing ? 'var(--red)' : 'var(--text)' }}>
-                            {u.full_name || <em style={{ color: 'var(--red)' }}>⚠ Name set nahi hai</em>}
-                          </div>
-                          {isSelf && (
-                            <div style={{ fontSize: 9, color: 'var(--sapphire)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              · You
-                            </div>
-                          )}
-                        </div>
+                          {order.order_number || '#' + order.id}
+                        </Link>
+                        {isWaCancelledReview && (
+                          <span
+                            title="Customer ne WhatsApp se cancel kiya — review zaroori"
+                            style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}
+                          >
+                            ⚠️ Review
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td style={{ ...tdStyle, color: 'var(--text2)' }}>
-                      {u.email || '—'}
+                    <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
+                    <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
+                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
+                    <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
+                    <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
+                    <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {courierStatusRaw
+                        ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '2px 8px', borderRadius: 5, fontSize: 11, whiteSpace: 'nowrap' }}>{courierStatusRaw}</span>
+                        : <span style={{ color: '#333' }}>—</span>}
                     </td>
-                    <td style={tdStyle}>
-                      <select
-                        value={u.role}
-                        onChange={(e) => updateRole(u.id, e.target.value)}
-                        disabled={busyId === u.id || (isSelf && u.role === 'super_admin')}
-                        title={isSelf && u.role === 'super_admin' ? 'Apna super_admin role change nahi kar sakte' : ''}
-                        style={{
-                          background: 'var(--bg)',
-                          border: '1px solid var(--border2)',
-                          color: 'var(--text)',
-                          padding: '6px 10px',
-                          borderRadius: 'var(--radius)',
-                          fontSize: 12,
-                          fontFamily: 'inherit',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {ALL_ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {ROLE_LABELS[r]}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                      {order.assigned_to_name
+                        ? <span style={{ color: '#f59e0b', fontWeight: 600 }}>{order.assigned_to_name}</span>
+                        : <span style={{ color: '#333' }}>—</span>
+                      }
                     </td>
-                    <td style={tdStyle}>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: '3px 8px',
-                          borderRadius: 4,
-                          letterSpacing: 0.5,
-                          textTransform: 'uppercase',
-                          fontWeight: 600,
-                          background: u.is_active ? 'var(--green-dim)' : 'var(--red-dim)',
-                          color: u.is_active ? 'var(--green)' : 'var(--red)',
-                          border: `1px solid ${u.is_active ? 'var(--green)' : 'var(--red)'}`,
-                        }}
-                      >
-                        {u.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {/* Edit Name (super admin) */}
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => openEditName(u)}
-                            disabled={busyId === u.id}
-                            title="Naam edit karo"
-                            style={{
-                              background: nameMissing ? 'var(--red-dim)' : 'transparent',
-                              border: `1px solid ${nameMissing ? 'var(--red)' : 'var(--border2)'}`,
-                              color: nameMissing ? 'var(--red)' : 'var(--text2)',
-                              padding: '5px 10px',
-                              borderRadius: 'var(--radius)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              fontFamily: 'inherit',
-                              fontWeight: nameMissing ? 700 : 400,
-                            }}
-                          >
-                            ✏ Name
-                          </button>
-                        )}
-                        {/* Shared Login config (super admin) */}
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => openSharingConfig(u)}
-                            disabled={busyId === u.id}
-                            title="Shared login configure karo"
-                            style={{
-                              background: u.is_shared_login ? 'var(--gold-dim)' : 'transparent',
-                              border: `1px solid ${u.is_shared_login ? 'var(--gold)' : 'var(--border2)'}`,
-                              color: u.is_shared_login ? 'var(--gold)' : 'var(--text2)',
-                              padding: '5px 10px',
-                              borderRadius: 'var(--radius)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              fontFamily: 'inherit',
-                              fontWeight: u.is_shared_login ? 700 : 400,
-                            }}
-                          >
-                            👥 {u.is_shared_login ? `Shared (${(u.shared_staff_ids || []).length})` : 'Shared'}
-                          </button>
-                        )}
-                        {/* Activate / Deactivate */}
-                        <button
-                          onClick={() => toggleActive(u)}
-                          disabled={busyId === u.id || isSelf}
-                          title={isSelf ? 'Apne aap ko deactivate nahi kar sakte' : ''}
-                          style={{
-                            background: 'transparent',
-                            border: '1px solid var(--border2)',
-                            color: 'var(--text2)',
-                            padding: '5px 12px',
-                            borderRadius: 'var(--radius)',
-                            fontSize: 11,
-                            cursor: isSelf ? 'not-allowed' : 'pointer',
-                            fontFamily: 'inherit',
-                            opacity: isSelf ? 0.4 : 1,
-                          }}
-                        >
-                          {u.is_active ? 'Deactivate' : 'Activate'}
+                    <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <a
+                          href={`/orders/${order.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          title="Naye tab mein kholo"
+                          style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '5px 9px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
+                        >↗</a>
+                        <button onClick={e => { e.stopPropagation(); setSelected(order); }}
+                          style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Actions →
                         </button>
-                        {/* Delete (super admin, not self) */}
-                        {isSuperAdmin && !isSelf && (
-                          <button
-                            onClick={() => openDelete(u)}
-                            disabled={busyId === u.id}
-                            style={{
-                              background: 'var(--red-dim)',
-                              border: '1px solid var(--red)',
-                              color: 'var(--red)',
-                              padding: '5px 10px',
-                              borderRadius: 'var(--radius)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              fontFamily: 'inherit',
-                              fontWeight: 600,
-                            }}
-                          >
-                            🗑 Delete
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -466,303 +1250,21 @@ export default function UsersPage() {
               })}
             </tbody>
           </table>
+        </div>
 
-          {users.length === 0 && (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: 48,
-                color: 'var(--text3)',
-                fontSize: 13,
-              }}
+        <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#555' }}>Showing {orders.length} orders</span>
+          {hasMore && (
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={loading}
+              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: loading ? '#444' : gold, borderRadius: 6, padding: '6px 18px', fontSize: 12, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
             >
-              No users yet.
-            </div>
+              {loading ? '⟳ Loading...' : 'Show More ↓'}
+            </button>
           )}
         </div>
-      )}
-
-      {/* ── Edit Name Modal ────────────────────────────────────── */}
-      {editingUser && (
-        <ModalOverlay onClose={() => setEditingUser(null)}>
-          <h2 style={{ fontSize: 16, color: 'var(--gold)', marginBottom: 6 }}>✏ Edit Name</h2>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16 }}>
-            {editingUser.email}
-          </div>
-          <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 6 }}>
-            Full Name
-          </label>
-          <input
-            autoFocus
-            value={editNameInput}
-            onChange={(e) => setEditNameInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && saveEditName()}
-            placeholder="e.g. Sharjeel Ahmed"
-            style={{
-              width: '100%',
-              background: 'var(--bg)',
-              border: '1px solid var(--gold)',
-              color: 'var(--text)',
-              padding: '9px 12px',
-              borderRadius: 'var(--radius)',
-              fontSize: 13,
-              outline: 'none',
-              marginBottom: 14,
-              boxSizing: 'border-box',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={saveEditName}
-              disabled={!editNameInput.trim() || busyId === editingUser.id}
-              style={{
-                flex: 1,
-                background: 'var(--gold)',
-                color: '#000',
-                border: 'none',
-                borderRadius: 'var(--radius)',
-                padding: '9px',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              {busyId === editingUser.id ? 'Saving…' : '💾 Save'}
-            </button>
-            <button
-              onClick={() => setEditingUser(null)}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--border2)',
-                color: 'var(--text3)',
-                borderRadius: 'var(--radius)',
-                padding: '9px 14px',
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </ModalOverlay>
-      )}
-
-      {/* ── Delete Confirm Modal ──────────────────────────────── */}
-      {deletingUser && (
-        <ModalOverlay onClose={() => setDeletingUser(null)}>
-          <h2 style={{ fontSize: 16, color: 'var(--red)', marginBottom: 6 }}>🗑 Delete User</h2>
-          <div style={{
-            background: 'var(--red-dim)',
-            border: '1px solid var(--red)',
-            padding: 12, borderRadius: 'var(--radius)', marginBottom: 14,
-            fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
-          }}>
-            <strong style={{ color: 'var(--red)' }}>⚠ Ye permanent delete hoga.</strong><br />
-            <strong>{deletingUser.full_name || deletingUser.email}</strong> ke auth/login aur profile row dono remove ho jayenge.
-            Purani activity logs mein naam preserved rahega.
-          </div>
-          <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 6 }}>
-            Confirmation: poora naam/email type karo → <code style={{ color: 'var(--gold)' }}>{deletingUser.full_name || deletingUser.email}</code>
-          </label>
-          <input
-            autoFocus
-            value={deleteConfirm}
-            onChange={(e) => setDeleteConfirm(e.target.value)}
-            placeholder={deletingUser.full_name || deletingUser.email}
-            style={{
-              width: '100%',
-              background: 'var(--bg)',
-              border: '1px solid var(--red)',
-              color: 'var(--text)',
-              padding: '9px 12px',
-              borderRadius: 'var(--radius)',
-              fontSize: 13,
-              outline: 'none',
-              marginBottom: 14,
-              boxSizing: 'border-box',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={confirmDelete}
-              disabled={
-                busyId === deletingUser.id ||
-                deleteConfirm.trim() !== (deletingUser.full_name || deletingUser.email || '').trim()
-              }
-              style={{
-                flex: 1,
-                background: 'var(--red)',
-                color: '#000',
-                border: 'none',
-                borderRadius: 'var(--radius)',
-                padding: '9px',
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: 'pointer',
-                opacity: (deleteConfirm.trim() !== (deletingUser.full_name || deletingUser.email || '').trim()) ? 0.4 : 1,
-              }}
-            >
-              {busyId === deletingUser.id ? 'Deleting…' : '🗑 Delete Forever'}
-            </button>
-            <button
-              onClick={() => setDeletingUser(null)}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--border2)',
-                color: 'var(--text3)',
-                borderRadius: 'var(--radius)',
-                padding: '9px 14px',
-                fontSize: 13,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </ModalOverlay>
-      )}
-
-      {/* ── Shared Login Config Modal ──────────────────────────── */}
-      {sharingUser && (
-        <ModalOverlay onClose={() => setSharingUser(null)}>
-          <h2 style={{ fontSize: 16, color: 'var(--gold)', marginBottom: 6 }}>👥 Shared Login Config</h2>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 14 }}>
-            {sharingUser.full_name || sharingUser.email}
-          </div>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 14, padding: 10, background: 'var(--bg)', border: `1px solid ${sharedFlag ? 'var(--gold)' : 'var(--border2)'}`, borderRadius: 'var(--radius)' }}>
-            <input
-              type="checkbox"
-              checked={sharedFlag}
-              onChange={e => setSharedFlag(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>Shared login enable karo</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                Multiple bande ek phone se use karenge — login pe "Kaun hai abhi?" picker dikhega.
-              </div>
-            </div>
-          </label>
-
-          {sharedFlag && (
-            <>
-              <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 6 }}>
-                Kon konse employees link hain? ({sharedIds.length} selected)
-              </label>
-              <div style={{
-                maxHeight: 260, overflowY: 'auto',
-                background: 'var(--bg)', border: '1px solid var(--border2)',
-                borderRadius: 'var(--radius)', padding: 8, marginBottom: 14,
-              }}>
-                {employeesList.length === 0 && (
-                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-                    Koi employee nahi mila — HR page se add karo pehle.
-                  </div>
-                )}
-                {employeesList.map(emp => {
-                  const checked = sharedIds.includes(emp.id);
-                  return (
-                    <label
-                      key={emp.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '7px 10px', borderRadius: 5,
-                        cursor: 'pointer',
-                        background: checked ? 'var(--gold-dim)' : 'transparent',
-                        marginBottom: 2,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSharedEmployeeId(emp.id)}
-                        style={{ width: 14, height: 14, cursor: 'pointer' }}
-                      />
-                      <span style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>{emp.name}</span>
-                      {emp.role && (
-                        <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                          {emp.role}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={saveSharingConfig}
-              disabled={busyId === sharingUser.id || (sharedFlag && sharedIds.length === 0)}
-              style={{
-                flex: 1, background: 'var(--gold)', color: '#000',
-                border: 'none', borderRadius: 'var(--radius)', padding: '9px',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                opacity: (sharedFlag && sharedIds.length === 0) ? 0.4 : 1,
-              }}
-            >
-              {busyId === sharingUser.id ? 'Saving…' : '💾 Save'}
-            </button>
-            <button
-              onClick={() => setSharingUser(null)}
-              style={{
-                background: 'transparent', border: '1px solid var(--border2)',
-                color: 'var(--text3)', borderRadius: 'var(--radius)',
-                padding: '9px 14px', fontSize: 13, cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </ModalOverlay>
-      )}
-    </div>
-  );
-}
-
-// ─── Modal overlay helper ──────────────────────────────────────
-function ModalOverlay({ children, onClose }) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-        zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          padding: 24,
-          width: '100%',
-          maxWidth: 380,
-          boxShadow: 'var(--shadow-lg)',
-        }}
-      >
-        {children}
       </div>
     </div>
   );
 }
-
-const thStyle = {
-  textAlign: 'left',
-  padding: '12px 16px',
-  fontSize: 10,
-  color: 'var(--text3)',
-  fontWeight: 600,
-  letterSpacing: 1,
-  textTransform: 'uppercase',
-};
-
-const tdStyle = {
-  padding: '12px 16px',
-  fontSize: 13,
-  color: 'var(--text)',
-};
