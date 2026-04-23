@@ -32,27 +32,12 @@ export default function UsersPage() {
   const [deletingUser, setDeletingUser] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
-  // Shared login config modal state
-  const [sharingUser, setSharingUser] = useState(null);
-  const [sharedFlag, setSharedFlag] = useState(false);
-  const [sharedIds, setSharedIds] = useState([]);
-  const [employeesList, setEmployeesList] = useState([]);
-
   const supabase = createClient();
 
   useEffect(() => {
     loadUsers();
-    loadEmployees();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function loadEmployees() {
-    const { data } = await supabase
-      .from('employees')
-      .select('id, name, role, status')
-      .order('name', { ascending: true });
-    setEmployeesList(data || []);
-  }
 
   async function loadUsers() {
     setLoading(true);
@@ -163,46 +148,6 @@ export default function UsersPage() {
         setDeleteConfirm('');
       } else {
         showToast('Error: ' + (d.error || 'Delete failed'), 'error');
-      }
-    } catch (e) {
-      showToast('Error: ' + e.message, 'error');
-    }
-    setBusyId(null);
-  }
-
-  // ─── Shared Login Config ──────────────────────────────────────
-  function openSharingConfig(u) {
-    setSharingUser(u);
-    setSharedFlag(!!u.is_shared_login);
-    setSharedIds(Array.isArray(u.shared_staff_ids) ? u.shared_staff_ids : []);
-  }
-
-  function toggleSharedEmployeeId(empId) {
-    setSharedIds(prev => prev.includes(empId) ? prev.filter(x => x !== empId) : [...prev, empId]);
-  }
-
-  async function saveSharingConfig() {
-    if (!sharingUser) return;
-    setBusyId(sharingUser.id);
-    try {
-      const r = await fetch('/api/users/update-shared', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: sharingUser.id,
-          is_shared_login: sharedFlag,
-          shared_staff_ids: sharedFlag ? sharedIds : [],
-        }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        setUsers(prev => prev.map(x => x.id === sharingUser.id
-          ? { ...x, is_shared_login: sharedFlag, shared_staff_ids: sharedFlag ? sharedIds : [] }
-          : x));
-        showToast('Sharing config saved');
-        setSharingUser(null);
-      } else {
-        showToast('Error: ' + (d.error || 'Save failed'), 'error');
       }
     } catch (e) {
       showToast('Error: ' + e.message, 'error');
@@ -397,27 +342,6 @@ export default function UsersPage() {
                             }}
                           >
                             ✏ Name
-                          </button>
-                        )}
-                        {/* Shared Login config (super admin) */}
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => openSharingConfig(u)}
-                            disabled={busyId === u.id}
-                            title="Shared login configure karo"
-                            style={{
-                              background: u.is_shared_login ? 'var(--gold-dim)' : 'transparent',
-                              border: `1px solid ${u.is_shared_login ? 'var(--gold)' : 'var(--border2)'}`,
-                              color: u.is_shared_login ? 'var(--gold)' : 'var(--text2)',
-                              padding: '5px 10px',
-                              borderRadius: 'var(--radius)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              fontFamily: 'inherit',
-                              fontWeight: u.is_shared_login ? 700 : 400,
-                            }}
-                          >
-                            👥 {u.is_shared_login ? `Shared (${(u.shared_staff_ids || []).length})` : 'Shared'}
                           </button>
                         )}
                         {/* Activate / Deactivate */}
@@ -622,102 +546,6 @@ export default function UsersPage() {
         </ModalOverlay>
       )}
 
-      {/* ── Shared Login Config Modal ──────────────────────────── */}
-      {sharingUser && (
-        <ModalOverlay onClose={() => setSharingUser(null)}>
-          <h2 style={{ fontSize: 16, color: 'var(--gold)', marginBottom: 6 }}>👥 Shared Login Config</h2>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 14 }}>
-            {sharingUser.full_name || sharingUser.email}
-          </div>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 14, padding: 10, background: 'var(--bg)', border: `1px solid ${sharedFlag ? 'var(--gold)' : 'var(--border2)'}`, borderRadius: 'var(--radius)' }}>
-            <input
-              type="checkbox"
-              checked={sharedFlag}
-              onChange={e => setSharedFlag(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: 'pointer' }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>Shared login enable karo</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
-                Multiple bande ek phone se use karenge — login pe "Kaun hai abhi?" picker dikhega.
-              </div>
-            </div>
-          </label>
-
-          {sharedFlag && (
-            <>
-              <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 6 }}>
-                Kon konse employees link hain? ({sharedIds.length} selected)
-              </label>
-              <div style={{
-                maxHeight: 260, overflowY: 'auto',
-                background: 'var(--bg)', border: '1px solid var(--border2)',
-                borderRadius: 'var(--radius)', padding: 8, marginBottom: 14,
-              }}>
-                {employeesList.length === 0 && (
-                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-                    Koi employee nahi mila — HR page se add karo pehle.
-                  </div>
-                )}
-                {employeesList.map(emp => {
-                  const checked = sharedIds.includes(emp.id);
-                  return (
-                    <label
-                      key={emp.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '7px 10px', borderRadius: 5,
-                        cursor: 'pointer',
-                        background: checked ? 'var(--gold-dim)' : 'transparent',
-                        marginBottom: 2,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSharedEmployeeId(emp.id)}
-                        style={{ width: 14, height: 14, cursor: 'pointer' }}
-                      />
-                      <span style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>{emp.name}</span>
-                      {emp.role && (
-                        <span style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                          {emp.role}
-                        </span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={saveSharingConfig}
-              disabled={busyId === sharingUser.id || (sharedFlag && sharedIds.length === 0)}
-              style={{
-                flex: 1, background: 'var(--gold)', color: '#000',
-                border: 'none', borderRadius: 'var(--radius)', padding: '9px',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                opacity: (sharedFlag && sharedIds.length === 0) ? 0.4 : 1,
-              }}
-            >
-              {busyId === sharingUser.id ? 'Saving…' : '💾 Save'}
-            </button>
-            <button
-              onClick={() => setSharingUser(null)}
-              style={{
-                background: 'transparent', border: '1px solid var(--border2)',
-                color: 'var(--text3)', borderRadius: 'var(--radius)',
-                padding: '9px 14px', fontSize: 13, cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </ModalOverlay>
-      )}
     </div>
   );
 }
