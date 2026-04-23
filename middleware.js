@@ -1,6 +1,12 @@
+import { NextResponse } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 export async function middleware(request) {
+  // Public API routes bypass auth (used by storefront for order tracking)
+  if (request.nextUrl.pathname.startsWith('/api/public')) {
+    return NextResponse.next();
+  }
+
   return await updateSession(request);
 }
 
