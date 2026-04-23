@@ -532,8 +532,51 @@ body {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   LEGACY mobile table size (preserved for back-compat)
+   PRINT MEDIA — jab user Ctrl+P kare to sirf content print ho, chrome nahi.
+   Defensive rules: AppShell already /print/ routes ko skip karta hai, but
+   agar kabhi koi page pe user direct print kare to ye safety net hai.
 ═══════════════════════════════════════════════════════════════════════════ */
-@media (max-width: 768px) {
-  table { font-size: 11px !important; }
+
+@media print {
+  /* Hide all navigation chrome */
+  aside,
+  .mobile-bottom-nav,
+  [class*="AIAdvisorFloat"],
+  [class*="ai-advisor"] {
+    display: none !important;
+  }
+
+  /* Mobile top bar (position: fixed, height: 52, zIndex: 200) */
+  body > div > div[style*="z-index: 200"],
+  body > div > div[style*="zIndex: 200"] {
+    display: none !important;
+  }
+
+  /* Main content — full width, no margins for clean print */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* Body / html — white background for print */
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+  }
+
+  /* Page breaks — avoid breaking rows/cards across pages */
+  tr, .mobile-card-row, .slip, .info-box {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Hide scrollbars in print */
+  * {
+    scrollbar-width: none !important;
+  }
+  *::-webkit-scrollbar {
+    display: none !important;
+  }
 }
