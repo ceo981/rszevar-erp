@@ -26,7 +26,7 @@ import { useUser } from '@/context/UserContext';
 import OrderDrawer, {
   StatusBadge, PaymentBadge, fmt, timeAgo,
   gold, card, border, STATUS_CONFIG,
-} from '../_components/OrderDrawer';
+} from ''../../_components/OrderDrawer';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
 function formatFullDate(iso) {
