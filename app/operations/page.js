@@ -832,13 +832,15 @@ function AdvancesTab({ isCEO, currentUserName }) {
 
 // ─── MAIN PAGE ──────────────────────────────────────────────────
 export default function OperationsPage() {
-  const { profile, isSuperAdmin, userEmail } = useUser();
+  const { profile, isSuperAdmin, userEmail, activeUser } = useUser();
   const [tab, setTab] = useState('cash');
 
   const role = profile?.role || '';
   const isCEO = isSuperAdmin || role === 'super_admin';
   const isManager = role === 'manager' || isCEO;
-  const currentUserName = profile?.full_name || userEmail || 'Unknown';
+  // Shared-login aware: prefer the picked packer/staff name over the login's
+  // generic name, so audit trails show who actually added the expense etc.
+  const currentUserName = activeUser?.name || profile?.full_name || userEmail || 'Unknown';
 
   const TABS = [
     { id: 'cash', label: '💰 Cash & Expenses' },
