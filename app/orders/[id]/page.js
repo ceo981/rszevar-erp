@@ -148,8 +148,8 @@ function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
 export default function SingleOrderPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, userEmail } = useUser();
-  const performer = profile?.full_name || profile?.email || 'Staff';
+  const { profile, userEmail, activeUser } = useUser();
+  const performer = activeUser?.name || profile?.full_name || profile?.email || 'Staff';
   const userRole = profile?.role || '';
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
