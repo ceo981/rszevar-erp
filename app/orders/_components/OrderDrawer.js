@@ -81,6 +81,15 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const canConfirm  = isCEO || isOpsManager;
   const canPack     = isCEO || isDispatcher;
 
+  // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState('actions');
@@ -421,20 +430,42 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
   // Outer wrapper: `drawer` = fixed-position slide-in with backdrop (list page usage)
   //                 `page`   = normal block-flow full-page (new-tab usage)
+  // Mobile pe drawer full-screen bana do — side panel mobile pe kaam nahi karti
   const outerStyle = isPage
-    ? { minHeight: '100vh', background: '#0a0a0a', padding: '20px 16px' }
+    ? { minHeight: '100vh', background: '#0a0a0a', padding: isMobile ? '12px 8px' : '20px 16px' }
     : { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' };
   const panelStyle = isPage
     ? { maxWidth: 900, margin: '0 auto', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column' }
-    : { width: 580, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' };
+    : isMobile
+      ? { width: '100%', background: '#0f0f0f', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
+      : { width: 580, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' };
 
   return (
     <div style={outerStyle}>
-      {!isPage && <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />}
+      {!isPage && !isMobile && <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />}
       <div style={panelStyle}>
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{order.order_number || '#' + order.id}</div>
+        <div style={{
+          padding: isMobile ? '14px 14px' : '20px 24px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 8,
+          position: isMobile && !isPage ? 'sticky' : 'static',
+          top: 0,
+          background: '#0f0f0f',
+          zIndex: 10,
+        }}>
+          {/* Mobile: back arrow instead of close */}
+          {isMobile && !isPage && (
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', color: gold, fontSize: 22, cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}
+              title="Wapas"
+            >←</button>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 15 : 16, color: gold }}>{order.order_number || '#' + order.id}</div>
             <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.customer_city}</div>
             <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <StatusBadge status={order.status} />
@@ -448,21 +479,21 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               ))}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {order.shopify_order_id && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            {order.shopify_order_id && !isMobile && (
               <a href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank" rel="noopener noreferrer"
                 style={{ background: 'none', border: `1px solid #333`, color: '#555', fontSize: 12, padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
                 🔗 Shopify
               </a>
             )}
-            {!isPage && (
+            {!isPage && !isMobile && (
               <a href={`/orders/${order.id}`} target="_blank" rel="noopener noreferrer"
                 title="Naye tab mein kholo"
                 style={{ background: 'none', border: `1px solid #333`, color: '#888', fontSize: 13, padding: '4px 8px', borderRadius: 5, textDecoration: 'none', lineHeight: 1 }}>
                 ↗
               </a>
             )}
-            {!isPage && (
+            {!isPage && !isMobile && (
               <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
             )}
             {isPage && (
