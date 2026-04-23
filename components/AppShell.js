@@ -342,6 +342,25 @@ function AuthenticatedShell({ pathname, router, children }) {
   const activeId = getActiveModuleId(pathname);
   const activeMod = MODULES.find(m => m.id === activeId);
 
+  // ── BOTTOM NAV FOR MOBILE ────────────────────────────────────────────
+  // Mobile app jaisi feel ke liye top 4 most-used modules bottom bar pe.
+  // User ke role-permissions ke hisab se filter karke top 4 pick karo.
+  // Packing staff ke liye: Packing, Submit Work, Messages, More.
+  // Baaki staff/CEO ke liye: Dashboard, Orders, Inventory, Messages, More.
+  const BOTTOM_NAV_CANDIDATES = [
+    { id: 'dashboard', href: '/dashboard', label: 'Home',    icon: '🏠', perm: 'dashboard.view' },
+    { id: 'orders',    href: '/orders',    label: 'Orders',  icon: '📋', perm: 'orders.view' },
+    { id: 'packing',   href: '/packing',   label: 'Packing', icon: '🎁', perm: 'packing.view' },
+    { id: 'work-submit', href: '/work-submit', label: 'Work', icon: '📝', perm: 'packing.submit' },
+    { id: 'inventory', href: '/inventory', label: 'Stock',   icon: '📦', perm: 'inventory.view' },
+    { id: 'messages',  href: '/messages',  label: 'Chat',    icon: '💬', perm: 'customers.view' },
+    { id: 'hr',        href: '/hr',        label: 'HR',      icon: '👥', perm: 'hr.view' },
+  ];
+  // Pick top 4 that user has permission for
+  const bottomNavItems = BOTTOM_NAV_CANDIDATES
+    .filter(m => !m.perm || can(m.perm))
+    .slice(0, 4);
+
   // Single source of truth for "who performed this action"
   // (activeUser is kept here as null for backwards-compatibility with other
   // pages that read it via useUser(); they all fall back to profile.full_name)
@@ -616,8 +635,46 @@ function AuthenticatedShell({ pathname, router, children }) {
           )}
           {children}
         </main>
-        {/* Hide AI advisor float on /messages — it overlaps the chat send/voice buttons */}
-        {!(pathname === '/messages' || pathname?.startsWith('/messages/')) && <AIAdvisorFloat />}
+        {/* ═════════════════════════════════════════════════════════════
+            MOBILE BOTTOM NAV — sirf mobile pe dikhega (CSS controls visibility).
+            Mobile app jaisi feel — 4 most-used modules tap-reach mein.
+            "More" button sidebar khol deta hai sab modules ke liye.
+            ═════════════════════════════════════════════════════════════ */}
+        {isMobile && bottomNavItems.length > 0 && (
+          <nav className="mobile-bottom-nav">
+            {bottomNavItems.map(item => {
+              const isActive = activeId === item.id;
+              const showBadge = item.id === 'messages' && unreadTotal > 0;
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className={`mobile-bottom-nav-item${isActive ? ' active' : ''}`}
+                >
+                  <span className="mbn-icon">{item.icon}</span>
+                  <span className="mbn-label">{item.label}</span>
+                  {showBadge && (
+                    <span className="mbn-badge">
+                      {unreadTotal > 99 ? '99+' : unreadTotal}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+            {/* "More" button opens sidebar for full module list */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="mobile-bottom-nav-item"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <span className="mbn-icon">☰</span>
+              <span className="mbn-label">More</span>
+            </button>
+          </nav>
+        )}
+        {/* Hide AI advisor float on /messages — it overlaps the chat send/voice buttons.
+            On mobile, also hide by default to avoid overlap with bottom nav. */}
+        {!(pathname === '/messages' || pathname?.startsWith('/messages/')) && !isMobile && <AIAdvisorFloat />}
       </div>
     </UserContext.Provider>
   );
