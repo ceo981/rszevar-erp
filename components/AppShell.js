@@ -403,24 +403,31 @@ function AuthenticatedShell({ pathname, router, children }) {
         {isMobile && sidebarOpen && (
           <div onClick={() => setSidebarOpen(false)} style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
-            zIndex: 149, backdropFilter: 'blur(2px)',
+            zIndex: 249, backdropFilter: 'blur(2px)',
           }} />
         )}
 
         {/* ── Sidebar ── */}
+        {/* Z-INDEX FIX: Mobile pe sidebar ka z-index 250 (bottom nav=180, top bar=200 se upar),
+            taake sidebar jab khule to top bar aur bottom nav ko PURA cover kare. Warna
+            sidebar ka logo top bar ke peeche chhup jata aur logout button bottom nav ke
+            peeche chhup jata. Desktop pe z-index 150 hi theek hai (modals ~1000). */}
         <aside style={{
           width: isMobile ? 260 : (sidebarOpen ? 224 : 60),
           background: 'linear-gradient(180deg, #0d1626 0%, #091220 100%)',
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column',
           transition: isMobile ? 'transform 0.25s ease' : 'width 0.2s ease',
-          position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 150,
+          position: 'fixed', top: 0, left: 0, bottom: 0,
+          zIndex: isMobile ? 250 : 150,
           transform: isMobile && !sidebarOpen ? 'translateX(-270px)' : 'translateX(0)',
           boxShadow: sidebarOpen && isMobile ? '4px 0 32px rgba(0,0,0,0.7)' : 'none',
         }}>
-          {/* Logo */}
+          {/* Logo — Mobile pe iPhone notch ke liye extra top padding */}
           <div style={{
-            padding: (sidebarOpen || isMobile) ? '18px 16px' : '18px 8px',
+            padding: (sidebarOpen || isMobile)
+              ? (isMobile ? 'calc(18px + env(safe-area-inset-top, 0px)) 16px 18px' : '18px 16px')
+              : '18px 8px',
             borderBottom: '1px solid var(--border)',
             textAlign: 'center',
             background: 'rgba(74,130,216,0.04)',
@@ -490,11 +497,15 @@ function AuthenticatedShell({ pathname, router, children }) {
             })}
           </nav>
 
-          {/* User Footer */}
+          {/* User Footer — Mobile pe safe-area-bottom (iPhone home indicator space)
+              + bigger logout button touch target */}
           {(sidebarOpen || isMobile) && profile && (
             <>
               <div style={{
-                padding: '12px 14px', borderTop: '1px solid var(--border)',
+                padding: isMobile
+                  ? '12px 14px calc(12px + env(safe-area-inset-bottom, 0px))'
+                  : '12px 14px',
+                borderTop: '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 10,
                 background: 'rgba(74,130,216,0.04)',
               }}>
@@ -514,9 +525,13 @@ function AuthenticatedShell({ pathname, router, children }) {
                   </div>
                 </div>
                 <button onClick={handleLogout} title="Sign out" style={{
-                  background: 'transparent', border: '1px solid var(--border2)',
-                  color: 'var(--text3)', width: 28, height: 28,
-                  borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 12,
+                  background: 'rgba(248,113,113,0.1)',
+                  border: '1px solid rgba(248,113,113,0.4)',
+                  color: '#f87171',
+                  width: isMobile ? 40 : 28,
+                  height: isMobile ? 40 : 28,
+                  borderRadius: 'var(--radius)', cursor: 'pointer',
+                  fontSize: isMobile ? 16 : 12,
                   fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0, transition: 'all 0.15s',
                 }}>⏻</button>
