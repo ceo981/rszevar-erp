@@ -5,7 +5,11 @@ import { useUser } from '@/context/UserContext';
 const gold = '#c9a96e';
 
 export default function PackingPage() {
-  const { profile } = useUser();
+  const { profile, activeUser } = useUser();
+  // With shared login, activeUser.name is the specific packer selected
+  // ("Hassan"). Without it, profile.full_name is the login's name
+  // ("Packing Team A"). Either way we want the sharpest label in logs.
+  const performer = activeUser?.name || profile?.full_name || 'Packing Staff';
   const [orderNum, setOrderNum]     = useState('ZEVAR-');
   const [order, setOrder]           = useState(null);
   const [items, setItems]           = useState([]);
@@ -73,7 +77,7 @@ export default function PackingPage() {
           action: 'set_packer',
           order_id: order.id,
           assigned_to: packedBy,
-          performed_by: profile?.full_name || 'Packing Staff',
+          performed_by: performer,
         }),
       });
       const d = await r.json();
