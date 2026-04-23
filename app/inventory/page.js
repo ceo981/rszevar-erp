@@ -355,8 +355,8 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Products Table */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      {/* Products Table — mobile pe cards dikhte hain */}
+      <div className="mobile-card-table" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
             <div style={{ fontSize: 24, marginBottom: 8, animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</div>
@@ -369,6 +369,7 @@ export default function InventoryPage() {
             <div style={{ fontSize: 13 }}>{filters.search || filters.stock !== 'all' || filters.collection !== 'all' || abcFilter !== 'all' ? 'Try different filters' : 'Click "Sync from Shopify" to pull your products'}</div>
           </div>
         ) : (
+          <>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -485,6 +486,77 @@ export default function InventoryPage() {
               </tbody>
             </table>
           </div>
+
+          {/* ─── MOBILE CARD VIEW — inventory products ─────────────────── */}
+          <div className="mobile-card-view">
+            {(view === 'grouped' ? products : products).map(p => {
+              const isGrouped = view === 'grouped';
+              const displayItem = isGrouped ? p : p;
+              const isSelected = selectedProduct?.id === displayItem.id;
+              const stock = isGrouped ? displayItem.total_stock : (displayItem.stock_quantity || 0);
+              const title = isGrouped ? displayItem.parent_title : displayItem.title;
+              const variantCount = isGrouped ? displayItem.variant_count : null;
+              return (
+                <div
+                  key={isGrouped ? displayItem.group_key : displayItem.id}
+                  onClick={() => {
+                    if (isGrouped) {
+                      setExpandedGroups(prev => {
+                        const next = new Set(prev);
+                        if (next.has(displayItem.group_key)) next.delete(displayItem.group_key);
+                        else next.add(displayItem.group_key);
+                        return next;
+                      });
+                    }
+                    setSelectedProduct(isSelected ? null : displayItem);
+                  }}
+                  className={`mobile-card-row${isSelected ? ' selected' : ''}`}
+                >
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    {displayItem.image_url ? (
+                      <img src={displayItem.image_url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: 'var(--text3)', flexShrink: 0 }}>📷</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {title}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3, fontFamily: 'monospace' }}>
+                        {displayItem.sku || (variantCount ? `${variantCount} variants` : '—')}
+                      </div>
+                      {canViewFinancial && (
+                        <div style={{ fontSize: 13, color: 'var(--gold)', fontWeight: 600, marginTop: 4 }}>
+                          Rs {displayItem.selling_price?.toLocaleString() || '—'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11 }}>
+                    <span style={{ padding: '3px 9px', borderRadius: 4, background: getStockBg(stock), color: getStockColor(stock), fontWeight: 600 }}>
+                      Stock: {stock}
+                    </span>
+                    {!isGrouped && displayItem[abcCol] && <AbcBadge value={displayItem[abcCol]} />}
+                    {(isGrouped ? displayItem.variants?.[0] : displayItem).seo_score !== undefined && (
+                      <SeoBadge
+                        score={(isGrouped ? displayItem.variants[0] : displayItem).seo_score}
+                        tier={(isGrouped ? displayItem.variants[0] : displayItem).seo_tier}
+                      />
+                    )}
+                    {canViewFinancial && !isGrouped && displayItem[revCol] && (
+                      <span style={{ padding: '3px 9px', borderRadius: 4, background: '#1a1a1a', color: 'var(--text2)' }}>
+                        Rev: Rs {Number(displayItem[revCol]).toLocaleString()}
+                      </span>
+                    )}
+                    <span style={{ padding: '3px 9px', borderRadius: 4, background: displayItem.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: displayItem.is_active ? 'var(--green)' : 'var(--text3)' }}>
+                      {displayItem.is_active ? 'Active' : 'Draft'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </>
         )}
         {totalPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text3)' }}>
