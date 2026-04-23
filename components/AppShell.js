@@ -561,7 +561,8 @@ function AuthenticatedShell({ pathname, router, children }) {
           )}
           {children}
         </main>
-        <AIAdvisorFloat />
+        {/* Hide AI advisor float on /messages — it overlaps the chat send/voice buttons */}
+        {!(pathname === '/messages' || pathname?.startsWith('/messages/')) && <AIAdvisorFloat />}
       </div>
     </UserContext.Provider>
   );
