@@ -240,8 +240,8 @@ export default function CustomersPage() {
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, phone, city..."
         style={{ width: '100%', maxWidth: 380, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
 
-      {/* Table */}
-      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
+      {/* Table — mobile pe cards dikhte hain (CSS .mobile-card-table) */}
+      <div className="mobile-card-table" style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -276,6 +276,42 @@ export default function CustomersPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* ─── MOBILE CARD VIEW — customers ─────────────────────────── */}
+        <div className="mobile-card-view">
+          {loading && <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>Loading...</div>}
+          {!loading && customers.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>No customers found</div>}
+          {customers.map((c, i) => (
+            <div
+              key={i}
+              onClick={() => setSelected(c)}
+              className="mobile-card-row"
+              style={{ background: c.is_blacklisted ? 'rgba(239,68,68,0.08)' : 'var(--bg-card)' }}
+            >
+              <div className="mobile-card-row-header">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: c.is_blacklisted ? '#ef4444' : '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.is_blacklisted && '⛔ '}{c.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                    {c.phone} {c.city && `· ${c.city}`}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ color: gold, fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>{fmt(c.total_spend)}</div>
+                  <div style={{ fontSize: 10, color: '#555' }}>{timeAgo(c.last_order)}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 11 }}>
+                <span style={{ padding: '2px 8px', borderRadius: 4, background: '#1a1a1a', color: '#fff' }}>{c.orders} orders</span>
+                <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#22c55e' }}>✓ {c.delivered}</span>
+                {c.rto > 0 && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>RTO {c.rto}</span>}
+                {c.is_vip && <span style={{ padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
+                {c.is_repeat && !c.is_vip && <span style={{ padding: '2px 8px', borderRadius: 4, background: '#3b82f622', color: '#3b82f6' }}>🔄 Repeat</span>}
+              </div>
+            </div>
+          ))}
         </div>
         {/* Pagination */}
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
