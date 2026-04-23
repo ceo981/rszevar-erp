@@ -45,6 +45,16 @@ const MODULES = [
 // Routes jahan sidebar NAHI chahiye (login aur koi bhi public route)
 const NO_SHELL_PREFIXES = ['/login'];
 
+// Routes jo path ke BEECH mein /print/ contain karti hain — ye self-contained
+// print pages hain jinhe sidebar / bottom nav / mobile top bar ki zaroorat nahi.
+// Example: /orders/[id]/print/packing-slip, /orders/[id]/print/invoice
+function isShellSkippedRoute(pathname) {
+  if (!pathname) return false;
+  if (NO_SHELL_PREFIXES.some(prefix => pathname.startsWith(prefix))) return true;
+  if (pathname.includes('/print/')) return true;
+  return false;
+}
+
 // Determine active module by longest matching href prefix
 // /courier/sync → wins over /courier (longer prefix match)
 function getActiveModuleId(pathname) {
@@ -65,8 +75,10 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Login/public routes ke liye shell skip — raw children render karo
-  if (NO_SHELL_PREFIXES.some(prefix => pathname?.startsWith(prefix))) {
+  // Login/public/print routes ke liye shell skip — raw children render karo.
+  // Print pages (/orders/[id]/print/...) ko clean render karna hai taake
+  // print preview / PDF mein sidebar/nav na aaye.
+  if (isShellSkippedRoute(pathname)) {
     return <>{children}</>;
   }
 
