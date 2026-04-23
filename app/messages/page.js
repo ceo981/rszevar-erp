@@ -677,6 +677,17 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
 
+  // ─── Mobile detection — WhatsApp-style split view ──────────────────────
+  // Mobile pe: jab conversation select ho, list hide ho jati hai aur sirf chat
+  // dikhti hai. Back button press karne pe wapis list aa jati hai.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // New state
   const [showEmoji, setShowEmoji] = useState(false);
   const [showAttach, setShowAttach] = useState(false);
@@ -937,18 +948,21 @@ export default function MessagesPage() {
         </button>
       </div>
 
-      {/* Two-column layout */}
+      {/* Two-column layout — desktop. On mobile, we show EITHER list OR chat
+          (WhatsApp-style navigation) based on selectedId state. */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '360px 1fr',
-        gap: 16,
-        height: 'calc(100vh - 150px)',
-        minHeight: 500,
+        gridTemplateColumns: isMobile ? '1fr' : '360px 1fr',
+        gap: isMobile ? 0 : 16,
+        height: isMobile ? 'calc(100vh - 160px)' : 'calc(100vh - 150px)',
+        minHeight: isMobile ? 0 : 500,
       }}>
-        {/* ─── LEFT: Conversations list ──────────────────────────────── */}
+        {/* ─── LEFT: Conversations list ────────────────────────────────
+            Mobile pe: sirf tab dikho jab koi conversation select NAHI hai */}
         <div style={{
           background: card, border: `1px solid ${border}`, borderRadius: 10,
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          display: (isMobile && selectedId) ? 'none' : 'flex',
+          flexDirection: 'column', overflow: 'hidden',
         }}>
           <div style={{ padding: 12, borderBottom: `1px solid ${border}` }}>
             <input
@@ -1040,10 +1054,12 @@ export default function MessagesPage() {
           </div>
         </div>
 
-        {/* ─── RIGHT: Chat view ───────────────────────────────────────── */}
+        {/* ─── RIGHT: Chat view ─────────────────────────────────────────
+            Mobile pe: sirf tab dikho jab koi conversation select HO */}
         <div style={{
           background: card, border: `1px solid ${border}`, borderRadius: 10,
-          display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative',
+          display: (isMobile && !selectedId) ? 'none' : 'flex',
+          flexDirection: 'column', overflow: 'hidden', position: 'relative',
         }}>
           {!selectedId ? (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#444' }}>
@@ -1055,6 +1071,18 @@ export default function MessagesPage() {
               {/* Chat header */}
               <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, background: '#0f0f0f', position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {/* Back button — sirf mobile pe dikhega, list view pe le jayega */}
+                  {isMobile && (
+                    <button
+                      onClick={() => setSelectedId(null)}
+                      title="Back to conversations"
+                      style={{
+                        background: 'transparent', border: 'none', color: gold,
+                        fontSize: 22, cursor: 'pointer', padding: '4px 6px',
+                        lineHeight: 1, flexShrink: 0,
+                      }}
+                    >←</button>
+                  )}
                   <div style={{
                     width: 40, height: 40, borderRadius: '50%',
                     background: gold + '22', color: gold,
