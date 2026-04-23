@@ -4,9 +4,15 @@
 // RS ZEVAR ERP — Packing Slip Print Page
 // Route: /orders/[id]/print/packing-slip
 // ----------------------------------------------------------------------------
-// For packing staff. Minimal, functional, scannable.
-// Opens in a new tab; user uses browser's Print dialog (Ctrl+P) to print
-// or Save as PDF. Control bar (Print / Back buttons) is hidden in @media print.
+// For packing staff. Designed to ALWAYS fit on a single A4 page regardless of
+// item count. Uses dynamic density mode:
+//   ≤5 items   → 'comfortable' — images, spacious
+//   6-10 items → 'compact'     — smaller images, tight spacing
+//   ≥11 items  → 'dense'       — no images, minimal spacing, smaller fonts
+//
+// Note: AppShell (sidebar/nav) is automatically skipped for all `/print/*`
+// routes via AppShell's isShellSkippedRoute() check — so this page renders
+// standalone with zero chrome, perfect for Ctrl+P or Save-as-PDF.
 // ============================================================================
 
 import { useState, useEffect } from 'react';
@@ -77,16 +83,25 @@ export default function PackingSlipPage() {
   const isCOD = order.payment_method === 'COD' || !order.payment_method;
   const codAmount = isPaid ? 0 : total;
 
+  // ── Dynamic density — ensures A4 fit regardless of item count ──────────
+  // 1-5 items: comfortable (40px images, 8pt padding)
+  // 6-10 items: compact (28px images, 4pt padding)
+  // 11+ items: dense (no images, minimal padding, smaller font)
+  let density = 'comfortable';
+  if (items.length >= 11) density = 'dense';
+  else if (items.length >= 6) density = 'compact';
+
   return (
     <>
       {/* Print CSS */}
       <style>{`
+        /* ── A4 page setup — 10mm margin for max content area ──────────── */
         @page {
           size: A4;
-          margin: 15mm;
+          margin: 10mm;
         }
 
-        body {
+        html, body {
           margin: 0;
           padding: 0;
           background: #eee;
@@ -94,6 +109,7 @@ export default function PackingSlipPage() {
           color: #111;
         }
 
+        /* ── Screen-only top controls (Print / Back buttons) ──────────── */
         .controls {
           position: sticky;
           top: 0;
@@ -106,7 +122,6 @@ export default function PackingSlipPage() {
           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
           z-index: 100;
         }
-
         .controls button, .controls a {
           background: #c9a96e;
           color: #000;
@@ -128,190 +143,347 @@ export default function PackingSlipPage() {
           border: 1px solid #c9a96e;
         }
 
+        /* ── THE SLIP — fits A4 exactly (190mm × 277mm content area) ──── */
         .slip {
-          max-width: 180mm;
+          width: 190mm;
+          min-height: 277mm;
           margin: 20px auto;
           background: #fff;
-          padding: 18mm 14mm;
+          padding: 8mm 10mm;
           box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-          font-size: 12pt;
-          line-height: 1.5;
+          font-size: 10.5pt;
+          line-height: 1.4;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
         }
 
+        /* ── Header ──────────────────────────────────────────────────── */
         .slip h1 {
           margin: 0;
-          font-size: 24pt;
+          font-size: 20pt;
           font-weight: 800;
-          letter-spacing: 2px;
+          letter-spacing: 1.5px;
           color: #000;
+          line-height: 1;
         }
         .slip h2 {
-          font-size: 14pt;
-          margin: 0 0 4px;
+          font-size: 12pt;
+          margin: 0 0 3px;
           font-weight: 600;
         }
         .slip .muted {
           color: #666;
-          font-size: 10pt;
+          font-size: 9pt;
         }
 
         .hr {
           border: none;
-          border-top: 2px dashed #999;
-          margin: 14px 0;
+          border-top: 1.5px dashed #999;
+          margin: 8px 0;
+        }
+
+        /* ── Info boxes (compact grid) ───────────────────────────────── */
+        .info-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+        .info-box {
+          background: #f6f6f6;
+          border-left: 3px solid #c9a96e;
+          padding: 5px 10px;
+          border-radius: 3px;
+        }
+        .info-box .label {
+          font-size: 8pt;
+          text-transform: uppercase;
+          color: #888;
+          letter-spacing: 0.8px;
+          margin-bottom: 1px;
+        }
+        .info-box .value {
+          font-size: 10pt;
+          font-weight: 600;
+          color: #111;
+        }
+        .info-box .value-lg {
+          font-size: 13pt;
+          font-weight: 800;
+        }
+
+        /* ── Ship To section ─────────────────────────────────────────── */
+        .ship-to {
+          margin-bottom: 6px;
+        }
+        .ship-to .ship-label {
+          font-size: 8pt;
+          text-transform: uppercase;
+          color: #888;
+          letter-spacing: 0.8px;
+          margin-bottom: 2px;
+        }
+        .ship-to .ship-name {
+          font-size: 11pt;
+          font-weight: 700;
+          margin-bottom: 2px;
+        }
+        .ship-to .ship-addr {
+          font-size: 10pt;
+          color: #333;
+          line-height: 1.35;
+        }
+
+        /* ── COD / Paid alerts ───────────────────────────────────────── */
+        .cod-alert {
+          background: #fef3c7;
+          border: 1.5px solid #f59e0b;
+          border-radius: 4px;
+          padding: 6px 12px;
+          margin: 6px 0;
+          text-align: center;
+        }
+        .cod-alert .label {
+          font-size: 9pt;
+          color: #92400e;
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          font-weight: 700;
+        }
+        .cod-alert .amount {
+          font-size: 16pt;
+          font-weight: 900;
+          color: #78350f;
+          margin-top: 1px;
+          line-height: 1.1;
+        }
+
+        .paid-note {
+          background: #d1fae5;
+          border: 1.5px solid #10b981;
+          border-radius: 4px;
+          padding: 6px 12px;
+          margin: 6px 0;
+          text-align: center;
+          color: #065f46;
+          font-weight: 700;
+          font-size: 10pt;
+        }
+
+        /* ── Items section — GROWS to fill available space ───────────── */
+        .items-section {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          margin-top: 6px;
+        }
+        .items-heading {
+          font-size: 11pt;
+          font-weight: 700;
+          margin-bottom: 3px;
         }
 
         .items-table {
           width: 100%;
           border-collapse: collapse;
-          margin-top: 8px;
         }
         .items-table th {
           text-align: left;
-          font-size: 10pt;
+          font-size: 8.5pt;
           text-transform: uppercase;
           color: #555;
-          letter-spacing: 1px;
-          padding: 6px 8px;
+          letter-spacing: 0.8px;
+          padding: 4px 6px;
           border-bottom: 1.5px solid #333;
         }
         .items-table td {
-          padding: 10px 8px;
-          border-bottom: 1px dashed #ccc;
-          vertical-align: top;
+          padding: 5px 6px;
+          border-bottom: 1px dashed #ddd;
+          vertical-align: middle;
+          font-size: 10pt;
         }
         .items-table .check-box {
-          width: 20px;
-          height: 20px;
-          border: 2px solid #333;
-          border-radius: 3px;
+          width: 14px;
+          height: 14px;
+          border: 1.5px solid #333;
+          border-radius: 2px;
           display: inline-block;
         }
         .items-table .qty {
-          font-size: 16pt;
+          font-size: 13pt;
           font-weight: 800;
           color: #c9a96e;
           text-align: center;
-          min-width: 60px;
+          min-width: 40px;
         }
         .items-table img {
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           object-fit: cover;
-          border-radius: 4px;
+          border-radius: 3px;
           border: 1px solid #ddd;
+          display: block;
+        }
+        .items-table .img-placeholder {
+          width: 36px;
+          height: 36px;
+          background: #f0f0f0;
+          border-radius: 3px;
+          text-align: center;
+          line-height: 36px;
+          font-size: 14px;
         }
 
-        .info-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 14px;
-          margin-bottom: 10px;
+        /* ── COMPACT density (6-10 items) ─────────────────────────── */
+        .slip.compact {
+          font-size: 9.5pt;
         }
-        .info-box {
-          background: #f6f6f6;
-          border-left: 4px solid #c9a96e;
-          padding: 10px 14px;
-          border-radius: 4px;
-        }
-        .info-box .label {
+        .slip.compact .items-table td {
+          padding: 3px 6px;
           font-size: 9pt;
-          text-transform: uppercase;
-          color: #888;
-          letter-spacing: 1px;
-          margin-bottom: 2px;
         }
-        .info-box .value {
-          font-size: 12pt;
-          font-weight: 600;
-          color: #111;
+        .slip.compact .items-table img,
+        .slip.compact .items-table .img-placeholder {
+          width: 24px;
+          height: 24px;
+          line-height: 24px;
+          font-size: 11px;
         }
-        .info-box .value-lg {
-          font-size: 16pt;
-          font-weight: 800;
-        }
-
-        .cod-alert {
-          background: #fef3c7;
-          border: 2px solid #f59e0b;
-          border-radius: 6px;
-          padding: 12px 16px;
-          margin: 14px 0;
-          text-align: center;
-        }
-        .cod-alert .label {
-          font-size: 10pt;
-          color: #92400e;
-          text-transform: uppercase;
-          letter-spacing: 2px;
-          font-weight: 700;
-        }
-        .cod-alert .amount {
-          font-size: 22pt;
-          font-weight: 900;
-          color: #78350f;
-          margin-top: 4px;
-        }
-
-        .paid-note {
-          background: #d1fae5;
-          border: 2px solid #10b981;
-          border-radius: 6px;
-          padding: 10px 16px;
-          margin: 14px 0;
-          text-align: center;
-          color: #065f46;
-          font-weight: 700;
+        .slip.compact .items-table .qty {
           font-size: 11pt;
         }
+        .slip.compact .items-table .check-box {
+          width: 12px;
+          height: 12px;
+        }
 
+        /* ── DENSE density (11+ items) — no images, tight ──────────── */
+        .slip.dense {
+          font-size: 9pt;
+        }
+        .slip.dense .items-table th {
+          font-size: 7.5pt;
+          padding: 3px 5px;
+        }
+        .slip.dense .items-table td {
+          padding: 2.5px 5px;
+          font-size: 8.5pt;
+        }
+        .slip.dense .items-table .img-col,
+        .slip.dense .items-table .img-cell {
+          display: none;
+        }
+        .slip.dense .items-table .qty {
+          font-size: 10pt;
+        }
+        .slip.dense .items-table .check-box {
+          width: 10px;
+          height: 10px;
+          border-width: 1px;
+        }
+        /* Dense: also compact everything above items */
+        .slip.dense h1 { font-size: 17pt; }
+        .slip.dense h2 { font-size: 10pt; }
+        .slip.dense .info-box { padding: 4px 8px; }
+        .slip.dense .info-box .value-lg { font-size: 11pt; }
+        .slip.dense .cod-alert { padding: 5px 10px; margin: 4px 0; }
+        .slip.dense .cod-alert .amount { font-size: 13pt; }
+        .slip.dense .ship-to .ship-name { font-size: 10pt; }
+        .slip.dense .ship-to .ship-addr { font-size: 9pt; }
+        .slip.dense .sign-grid { margin-top: 10px; padding-top: 8px; }
+        .slip.dense .sign-line { height: 18px; }
+        .slip.dense .order-number-footer { padding: 10px; margin-top: 10px; }
+        .slip.dense .order-number-footer .number { font-size: 20pt; }
+
+        /* ── Signature grid — compact ────────────────────────────────── */
         .sign-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 30px;
-          margin-top: 30px;
-          padding-top: 20px;
+          gap: 20px;
+          margin-top: 14px;
+          padding-top: 10px;
           border-top: 1px solid #ccc;
         }
         .sign-box {
-          font-size: 10pt;
+          font-size: 9pt;
         }
         .sign-line {
           border-bottom: 1px solid #000;
-          height: 30px;
-          margin-bottom: 4px;
+          height: 22px;
+          margin-bottom: 3px;
         }
 
+        /* ── Big order number footer — essential for scan ───────────── */
         .order-number-footer {
           text-align: center;
-          margin-top: 30px;
-          padding: 20px;
-          border: 3px dashed #c9a96e;
-          border-radius: 8px;
+          margin-top: 14px;
+          padding: 12px;
+          border: 2.5px dashed #c9a96e;
+          border-radius: 6px;
         }
         .order-number-footer .label {
-          font-size: 9pt;
+          font-size: 8pt;
           color: #888;
           text-transform: uppercase;
-          letter-spacing: 2px;
+          letter-spacing: 1.5px;
         }
         .order-number-footer .number {
-          font-size: 28pt;
+          font-size: 22pt;
           font-weight: 900;
           color: #111;
-          letter-spacing: 3px;
+          letter-spacing: 2px;
           font-family: 'Courier New', monospace;
-          margin-top: 4px;
+          margin-top: 3px;
+          line-height: 1;
         }
 
+        /* ── Customer note — inline if present ──────────────────────── */
+        .customer-note {
+          margin-top: 8px;
+          padding: 6px 10px;
+          background: #fffbeb;
+          border: 1px solid #fde68a;
+          border-radius: 3px;
+          font-size: 9pt;
+        }
+        .customer-note .label {
+          font-size: 8pt;
+          text-transform: uppercase;
+          color: #92400e;
+          letter-spacing: 1px;
+          margin-bottom: 1px;
+          font-weight: 600;
+        }
+        .customer-note .text {
+          color: #78350f;
+        }
+
+        /* ═══════════════════════════════════════════════════════════
+           PRINT — make it fit A4 exactly, no extras
+        ═══════════════════════════════════════════════════════════ */
         @media print {
-          body { background: #fff; }
-          .controls { display: none !important; }
-          .slip {
+          html, body {
+            background: #fff !important;
             margin: 0;
             padding: 0;
-            max-width: none;
-            box-shadow: none;
+          }
+          .controls { display: none !important; }
+          .slip {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            min-height: auto !important;
+            box-shadow: none !important;
+            page-break-inside: avoid;
+          }
+          /* Make sure NOTHING overflows to page 2 — if it does, scale down */
+          .slip * {
+            page-break-inside: avoid;
+          }
+          /* Keep item rows intact */
+          .items-table tr {
+            page-break-inside: avoid;
           }
         }
       `}</style>
@@ -321,22 +493,23 @@ export default function PackingSlipPage() {
         <button onClick={() => window.print()}>🖨 Print / Save as PDF</button>
       </div>
 
-      <div className="slip">
+      {/* Density class applied dynamically based on item count */}
+      <div className={`slip ${density}`}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div>
             <h1>RS ZEVAR</h1>
             <div className="muted">Luxury Jewelry · Karachi</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <h2 style={{ color: '#c9a96e', textTransform: 'uppercase', letterSpacing: 2 }}>Packing Slip</h2>
+            <h2 style={{ color: '#c9a96e', textTransform: 'uppercase', letterSpacing: 1.5 }}>Packing Slip</h2>
             <div className="muted">{formatShortDate(order.created_at)}</div>
           </div>
         </div>
 
         <hr className="hr" />
 
-        {/* Info grid */}
+        {/* Info grid — Order Number + Date */}
         <div className="info-grid">
           <div className="info-box">
             <div className="label">Order Number</div>
@@ -348,19 +521,15 @@ export default function PackingSlipPage() {
           </div>
         </div>
 
-        {/* Ship to */}
-        <div style={{ marginBottom: 10 }}>
-          <div className="label" style={{ fontSize: '10pt', textTransform: 'uppercase', color: '#888', letterSpacing: 1, marginBottom: 4 }}>
-            Ship To
-          </div>
-          <div style={{ fontSize: '13pt', fontWeight: 700, marginBottom: 2 }}>
-            {order.customer_name || '—'}
-          </div>
-          <div style={{ fontSize: '11pt', color: '#333', lineHeight: 1.5 }}>
+        {/* Ship To */}
+        <div className="ship-to">
+          <div className="ship-label">Ship To</div>
+          <div className="ship-name">{order.customer_name || '—'}</div>
+          <div className="ship-addr">
             {order.customer_address && <div>{order.customer_address}</div>}
             {order.customer_city && <div>{order.customer_city}</div>}
             {order.customer_phone && (
-              <div style={{ marginTop: 4, fontWeight: 600 }}>
+              <div style={{ marginTop: 2, fontWeight: 600 }}>
                 📞 {order.customer_phone}
               </div>
             )}
@@ -380,7 +549,7 @@ export default function PackingSlipPage() {
           </div>
         )}
 
-        {/* Courier */}
+        {/* Courier info (if dispatched already) */}
         {order.dispatched_courier && (
           <div className="info-grid">
             <div className="info-box">
@@ -398,52 +567,61 @@ export default function PackingSlipPage() {
 
         <hr className="hr" />
 
-        {/* Items */}
-        <h2 style={{ marginBottom: 6 }}>Items to Pack ({items.length} {items.length === 1 ? 'item' : 'items'}, {totalQty} units)</h2>
+        {/* ═══════════ Items Section — grows to fill page ═══════════ */}
+        <div className="items-section">
+          <div className="items-heading">
+            Items to Pack ({items.length} {items.length === 1 ? 'item' : 'items'}, {totalQty} units)
+            {density !== 'comfortable' && (
+              <span style={{ marginLeft: 8, fontSize: '8pt', color: '#888', fontWeight: 'normal' }}>
+                {density === 'compact' ? '(compact view)' : '(dense view — no images)'}
+              </span>
+            )}
+          </div>
 
-        <table className="items-table">
-          <thead>
-            <tr>
-              <th style={{ width: 30 }}>✓</th>
-              <th style={{ width: 50 }}></th>
-              <th>Product</th>
-              <th style={{ width: 100 }}>SKU</th>
-              <th style={{ width: 70 }}>Qty</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <tr key={item.id || idx}>
-                <td><span className="check-box"></span></td>
-                <td>
-                  {item.image_url
-                    ? <img src={item.image_url} alt="" />
-                    : <div style={{ width: 40, height: 40, background: '#f0f0f0', borderRadius: 4, textAlign: 'center', lineHeight: '40px' }}>📦</div>
-                  }
-                </td>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{item.title}</div>
-                </td>
-                <td style={{ fontFamily: 'Courier New, monospace', fontSize: '10pt' }}>
-                  {item.sku || '—'}
-                </td>
-                <td className="qty">× {item.quantity}</td>
+          <table className="items-table">
+            <thead>
+              <tr>
+                <th style={{ width: 22 }}>✓</th>
+                {density !== 'dense' && <th className="img-col" style={{ width: density === 'compact' ? 32 : 44 }}></th>}
+                <th>Product</th>
+                <th style={{ width: 90 }}>SKU</th>
+                <th style={{ width: 50 }}>Qty</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <tr key={item.id || idx}>
+                  <td><span className="check-box"></span></td>
+                  {density !== 'dense' && (
+                    <td className="img-cell">
+                      {item.image_url
+                        ? <img src={item.image_url} alt="" />
+                        : <div className="img-placeholder">📦</div>
+                      }
+                    </td>
+                  )}
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{item.title}</div>
+                  </td>
+                  <td style={{ fontFamily: 'Courier New, monospace', fontSize: density === 'dense' ? '8pt' : '9pt' }}>
+                    {item.sku || '—'}
+                  </td>
+                  <td className="qty">× {item.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Notes from customer */}
-        {order.confirmation_notes && (
-          <div style={{ marginTop: 14, padding: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 4 }}>
-            <div className="label" style={{ fontSize: '9pt', textTransform: 'uppercase', color: '#92400e', letterSpacing: 1, marginBottom: 4 }}>
-              Customer Note
-            </div>
-            <div style={{ fontSize: '11pt', color: '#78350f' }}>{order.confirmation_notes}</div>
+        {/* Customer note — only if present and comfortable density */}
+        {order.confirmation_notes && density !== 'dense' && (
+          <div className="customer-note">
+            <div className="label">Customer Note</div>
+            <div className="text">{order.confirmation_notes}</div>
           </div>
         )}
 
-        {/* Signature grid */}
+        {/* Signature grid — always present but compact */}
         <div className="sign-grid">
           <div className="sign-box">
             <div className="sign-line"></div>
