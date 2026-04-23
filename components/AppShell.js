@@ -85,6 +85,12 @@ function AuthenticatedShell({ pathname, router, children }) {
   const [permissions, setPermissions] = useState(new Set());
   const [authLoading, setAuthLoading] = useState(true);
 
+  // Shared-login "Kaun hai abhi?" picker
+  const [activeUser, setActiveUserState] = useState(null);   // { id, name } or null
+  const [showSharedPicker, setShowSharedPicker] = useState(false);
+  const [sharedChoices, setSharedChoices] = useState([]);    // [{id, name}]
+  const [sharedLoading, setSharedLoading] = useState(false);
+
   // ── Browser notifications state ──
   const [notifPermission, setNotifPermission] = useState('default');
   const [showNotifBanner, setShowNotifBanner] = useState(false);
@@ -195,6 +201,51 @@ function AuthenticatedShell({ pathname, router, children }) {
       const { data: perms } = await supabase.from('my_permissions').select('permission_key');
       setPermissions(new Set((perms || []).map(x => x.permission_key)));
       setAuthLoading(false);
+
+      // FORCE name setup: if user has no full_name, auto-open the modal.
+      // The modal will hide its Cancel button in this mode so user must save.
+      if (p && (!p.full_name || !p.full_name.trim())) {
+        setProfileNameInput('');
+        setShowProfileModal(true);
+      }
+
+      // SHARED LOGIN: if this profile is flagged as shared, load the linked
+      // employees and show the "Kaun hai abhi?" picker (unless a recent
+      // selection is already stored for this login in localStorage).
+      if (p?.is_shared_login) {
+        try {
+          const ids = Array.isArray(p.shared_staff_ids) ? p.shared_staff_ids : [];
+          if (ids.length > 0) {
+            const { data: emps } = await supabase
+              .from('employees')
+              .select('id, name')
+              .in('id', ids)
+              .order('name', { ascending: true });
+            setSharedChoices(emps || []);
+
+            // Try to restore last selection (per login, survives refresh)
+            const key = `rszevar_active_user:${u.id}`;
+            const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                if (parsed?.id && parsed?.name && (emps || []).some(e => e.id === parsed.id)) {
+                  setActiveUserState(parsed);
+                  return;
+                }
+              } catch {}
+            }
+            // No valid cached selection → force pick
+            setShowSharedPicker(true);
+          } else {
+            // Shared login flag set but no employees linked — block with a warning
+            setSharedChoices([]);
+            setShowSharedPicker(true);
+          }
+        } catch (e) {
+          console.error('[shared-login] load error:', e?.message);
+        }
+      }
     }
     loadUser();
   }, [router]);
@@ -284,12 +335,34 @@ function AuthenticatedShell({ pathname, router, children }) {
   }, [pathname, authLoading, can, visibleModules, router]);
 
   async function saveProfileName() {
-    if (!profileNameInput.trim()) return;
+    const name = profileNameInput.trim();
+    if (!name) return;
     setProfileSaving(true);
-    const supabase = createClient();
-    await supabase.from('profiles').update({ full_name: profileNameInput.trim() }).eq('id', user.id);
-    setProfile(p => ({ ...p, full_name: profileNameInput.trim() }));
-    setShowProfileModal(false);
+    try {
+      // Use the new server API so we don't silently fail on RLS.
+      const r = await fetch('/api/users/update-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id, full_name: name }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setProfile(p => ({ ...p, full_name: d.full_name }));
+        setShowProfileModal(false);
+      } else {
+        // Fallback to client-side update (if API route not yet deployed)
+        const supabase = createClient();
+        const { error } = await supabase.from('profiles').update({ full_name: name }).eq('id', user.id);
+        if (!error) {
+          setProfile(p => ({ ...p, full_name: name }));
+          setShowProfileModal(false);
+        } else {
+          alert('Naam save nahi hua: ' + (d.error || error.message));
+        }
+      }
+    } catch (e) {
+      alert('Naam save nahi hua: ' + e.message);
+    }
     setProfileSaving(false);
   }
 
@@ -313,10 +386,27 @@ function AuthenticatedShell({ pathname, router, children }) {
   const activeId = getActiveModuleId(pathname);
   const activeMod = MODULES.find(m => m.id === activeId);
 
+  // Shared-login helper — save selection to localStorage + state
+  const setActiveUser = useCallback((next) => {
+    setActiveUserState(next);
+    if (typeof window !== 'undefined' && user?.id) {
+      const key = `rszevar_active_user:${user.id}`;
+      if (next?.id) {
+        window.localStorage.setItem(key, JSON.stringify({ id: next.id, name: next.name }));
+      } else {
+        window.localStorage.removeItem(key);
+      }
+    }
+  }, [user?.id]);
+
+  // Single source of truth for "who performed this action"
+  const performer = activeUser?.name || profile?.full_name || user?.email || 'Staff';
+
   return (
     <UserContext.Provider value={{
       profile, isSuperAdmin, canViewFinancial,
       userRole: profile?.role, userEmail: user?.email,
+      activeUser, setActiveUser, performer,
     }}>
       <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
 
@@ -437,32 +527,28 @@ function AuthenticatedShell({ pathname, router, children }) {
           {/* User Footer */}
           {(sidebarOpen || isMobile) && profile && (
             <>
-              {showProfileModal && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: 320 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e', marginBottom: 16 }}>✏️ Profile Update</div>
-                    <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Email (change nahi hoga)</div>
-                    <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
-                    <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Display Name</div>
-                    <input
-                      value={profileNameInput}
-                      onChange={e => setProfileNameInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && saveProfileName()}
-                      placeholder="Apna naam likhein..."
-                      autoFocus
-                      style={{ width: '100%', background: '#1a1a1a', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: '#fff', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
-                    />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={saveProfileName} disabled={profileSaving || !profileNameInput.trim()}
-                        style={{ flex: 1, background: '#c9a96e', color: '#000', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                        {profileSaving ? 'Saving...' : '💾 Save'}
-                      </button>
-                      <button onClick={() => setShowProfileModal(false)}
-                        style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
-                        Cancel
-                      </button>
-                    </div>
+              {/* Shared-login banner: shows who's using the phone right now */}
+              {profile?.is_shared_login && activeUser && (
+                <div style={{
+                  padding: '8px 14px', borderTop: '1px solid var(--border)',
+                  background: 'rgba(201,169,110,0.08)',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11,
+                }}>
+                  <span style={{ fontSize: 13 }}>👤</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: '#888', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Abhi</div>
+                    <div style={{ color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeUser.name}</div>
                   </div>
+                  <button
+                    onClick={() => setShowSharedPicker(true)}
+                    title="Switch karo kisi aur pe"
+                    style={{
+                      background: 'transparent', border: '1px solid var(--gold)',
+                      color: 'var(--gold)', padding: '3px 9px', borderRadius: 4,
+                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >Switch</button>
                 </div>
               )}
               <div style={{
@@ -481,7 +567,10 @@ function AuthenticatedShell({ pathname, router, children }) {
                   }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
                 <div style={{ flex: 1, minWidth: 0 }} onClick={() => { setProfileNameInput(profile.full_name || ''); setShowProfileModal(true); }} title="Profile edit karo">
                   <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{profile.full_name || <span style={{ color: '#555', fontStyle: 'italic' }}>Name set karo</span>}</div>
-                  <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>{(profile.role || '').replace(/_/g, ' ')}</div>
+                  <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>
+                    {(profile.role || '').replace(/_/g, ' ')}
+                    {profile?.is_shared_login && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>· shared</span>}
+                  </div>
                 </div>
                 <button onClick={handleLogout} title="Sign out" style={{
                   background: 'transparent', border: '1px solid var(--border2)',
@@ -492,6 +581,113 @@ function AuthenticatedShell({ pathname, router, children }) {
                 }}>⏻</button>
               </div>
             </>
+          )}
+
+          {/* Profile Modal — rendered at top level of sidebar so it ALWAYS shows
+              when showProfileModal is true (including collapsed sidebar + forced
+              first-login name setup). */}
+          {profile && showProfileModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: 340 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e', marginBottom: 6 }}>
+                  {!profile?.full_name ? '👋 Welcome — Naam set karo' : '✏️ Profile Update'}
+                </div>
+                {!profile?.full_name && (
+                  <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.4)', padding: 10, borderRadius: 7, fontSize: 11, color: '#f87171', lineHeight: 1.5, marginBottom: 12 }}>
+                    ⚠ Naam set karna zaroori hai. Isi se har activity log, order entry, aur packing credit
+                    mein tumhara naam save hoga. Ye kaam kiye bagair ERP use nahi kar sakte.
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 6, marginTop: profile?.full_name ? 10 : 0 }}>Email (change nahi hoga)</div>
+                <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Full Name</div>
+                <input
+                  value={profileNameInput}
+                  onChange={e => setProfileNameInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && saveProfileName()}
+                  placeholder="e.g. Sharjeel Ahmed"
+                  autoFocus
+                  maxLength={80}
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: '#fff', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={saveProfileName} disabled={profileSaving || !profileNameInput.trim()}
+                    style={{ flex: 1, background: '#c9a96e', color: '#000', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: profileNameInput.trim() ? 'pointer' : 'not-allowed', opacity: profileNameInput.trim() ? 1 : 0.4 }}>
+                    {profileSaving ? 'Saving...' : '💾 Save'}
+                  </button>
+                  {/* Cancel is only shown if user already has a name (i.e., they're just editing) */}
+                  {profile?.full_name && (
+                    <button onClick={() => setShowProfileModal(false)}
+                      style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Shared-login "Kaun hai abhi?" picker — blocks ERP until a person is selected */}
+          {profile?.is_shared_login && showSharedPicker && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: '100%', maxWidth: 420 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a96e', marginBottom: 6 }}>
+                  👤 Kaun istemal kar raha hai abhi?
+                </div>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 16, lineHeight: 1.6 }}>
+                  Ye login shared hai ({profile?.full_name || user?.email}). Select karo kaun kaam kar raha hai — saare logs isi naam se save honge.
+                </div>
+
+                {sharedChoices.length === 0 ? (
+                  <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.4)', padding: 12, borderRadius: 7, fontSize: 12, color: '#f87171', lineHeight: 1.6 }}>
+                    ⚠ Is shared login mein koi employee link nahi hua.
+                    <br/>Super admin ko bolo: /users page → Edit Name button → Shared Staff multi-select karein.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {sharedChoices.map(emp => (
+                      <button
+                        key={emp.id}
+                        onClick={() => {
+                          setActiveUser({ id: emp.id, name: emp.name });
+                          setShowSharedPicker(false);
+                        }}
+                        disabled={sharedLoading}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          background: '#1a1a1a', border: '1px solid #c9a96e44',
+                          color: '#fff', padding: '12px 14px',
+                          borderRadius: 8, fontSize: 14, fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                          transition: 'all 0.1s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#241e0f'; e.currentTarget.style.borderColor = '#c9a96e'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.borderColor = '#c9a96e44'; }}
+                      >
+                        <div style={{
+                          width: 38, height: 38, borderRadius: '50%',
+                          background: '#c9a96e22', color: '#c9a96e',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 15, fontWeight: 700, flexShrink: 0,
+                        }}>{(emp.name || '?').charAt(0).toUpperCase()}</div>
+                        <span style={{ flex: 1 }}>{emp.name}</span>
+                        <span style={{ color: '#c9a96e', fontSize: 14 }}>→</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* If user already had a selection, allow cancelling (they're just switching) */}
+                {activeUser && (
+                  <button
+                    onClick={() => setShowSharedPicker(false)}
+                    style={{ marginTop: 14, width: '100%', background: 'transparent', border: '1px solid #2a2a2a', color: '#666', borderRadius: 7, padding: '9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Cancel (abhi {activeUser.name} hi rahenge)
+                  </button>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Collapse Toggle (desktop only) */}
