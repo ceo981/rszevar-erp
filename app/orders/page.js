@@ -1132,8 +1132,8 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
+      {/* Table — mobile pe hide ho ke cards dikhte hain (CSS .mobile-card-table) */}
+      <div className="mobile-card-table" style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -1250,6 +1250,103 @@ export default function OrdersPage() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* ─── MOBILE CARD VIEW ─────────────────────────────────────────
+            CSS controls visibility — desktop pe hide, mobile pe show.
+            Table jo 12 columns wide hai, wo mobile pe tap-friendly cards
+            bana deta hai. Same click handler (setSelected) use karta hai. */}
+        <div className="mobile-card-view">
+          {loading && (
+            <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>Loading...</div>
+          )}
+          {!loading && orders.length === 0 && (
+            <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>No orders found</div>
+          )}
+          {orders.map(order => {
+            const isWaCancelledReview = order.status === 'cancelled'
+              && Array.isArray(order.tags)
+              && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
+            const isSelected = selectedIds.has(order.id);
+            return (
+              <div
+                key={order.id}
+                onClick={() => setSelected(order)}
+                className={`mobile-card-row${isSelected ? ' selected' : ''}`}
+              >
+                <div className="mobile-card-row-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => toggleOne(order.id, e)}
+                      style={{ width: 18, height: 18, accentColor: gold, flexShrink: 0 }}
+                    />
+                    <span style={{ color: gold, fontWeight: 700, fontSize: 14 }}>
+                      {order.order_number || '#' + order.id}
+                    </span>
+                    {order.is_wholesale && <span style={{ fontSize: 11 }}>🏢</span>}
+                    {order.is_international && <span style={{ fontSize: 11 }}>🌍</span>}
+                    {order.is_walkin && <span style={{ fontSize: 11 }}>🚶</span>}
+                    {isWaCancelledReview && (
+                      <span style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>⚠️</span>
+                    )}
+                  </div>
+                  <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>
+                    {fmt(order.total_amount)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: '#ccc', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {order.customer_name}
+                    </div>
+                    <div style={{ color: '#666', fontSize: 11 }}>
+                      {order.customer_city || '—'} · {timeAgo(order.created_at)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  <StatusBadge status={order.status} />
+                  <PaymentBadge payment_status={order.payment_status} />
+                  {order.dispatched_courier && (
+                    <span style={{ color: '#888', background: '#1a1a1a', border: `1px solid ${border}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                      🚚 {order.dispatched_courier}
+                    </span>
+                  )}
+                  {order.courier_status_raw && (
+                    <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                      {order.courier_status_raw}
+                    </span>
+                  )}
+                  {order.assigned_to_name && (
+                    <span style={{ color: '#f59e0b', fontSize: 11, fontWeight: 600 }}>
+                      👤 {order.assigned_to_name}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); setSelected(order); }}
+                    style={{ flex: 1, background: gold + '22', border: `1px solid ${gold}`, color: gold, borderRadius: 6, padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Actions →
+                  </button>
+                  <a
+                    href={`/orders/${order.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '8px 12px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
+                  >↗</a>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
