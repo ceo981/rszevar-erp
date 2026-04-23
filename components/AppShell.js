@@ -85,12 +85,6 @@ function AuthenticatedShell({ pathname, router, children }) {
   const [permissions, setPermissions] = useState(new Set());
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Shared-login "Kaun hai abhi?" picker
-  const [activeUser, setActiveUserState] = useState(null);   // { id, name } or null
-  const [showSharedPicker, setShowSharedPicker] = useState(false);
-  const [sharedChoices, setSharedChoices] = useState([]);    // [{id, name}]
-  const [sharedLoading, setSharedLoading] = useState(false);
-
   // ── Browser notifications state ──
   const [notifPermission, setNotifPermission] = useState('default');
   const [showNotifBanner, setShowNotifBanner] = useState(false);
@@ -207,44 +201,6 @@ function AuthenticatedShell({ pathname, router, children }) {
       if (p && (!p.full_name || !p.full_name.trim())) {
         setProfileNameInput('');
         setShowProfileModal(true);
-      }
-
-      // SHARED LOGIN: if this profile is flagged as shared, load the linked
-      // employees and show the "Kaun hai abhi?" picker (unless a recent
-      // selection is already stored for this login in localStorage).
-      if (p?.is_shared_login) {
-        try {
-          const ids = Array.isArray(p.shared_staff_ids) ? p.shared_staff_ids : [];
-          if (ids.length > 0) {
-            const { data: emps } = await supabase
-              .from('employees')
-              .select('id, name')
-              .in('id', ids)
-              .order('name', { ascending: true });
-            setSharedChoices(emps || []);
-
-            // Try to restore last selection (per login, survives refresh)
-            const key = `rszevar_active_user:${u.id}`;
-            const cached = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
-            if (cached) {
-              try {
-                const parsed = JSON.parse(cached);
-                if (parsed?.id && parsed?.name && (emps || []).some(e => e.id === parsed.id)) {
-                  setActiveUserState(parsed);
-                  return;
-                }
-              } catch {}
-            }
-            // No valid cached selection → force pick
-            setShowSharedPicker(true);
-          } else {
-            // Shared login flag set but no employees linked — block with a warning
-            setSharedChoices([]);
-            setShowSharedPicker(true);
-          }
-        } catch (e) {
-          console.error('[shared-login] load error:', e?.message);
-        }
       }
     }
     loadUser();
@@ -373,20 +329,6 @@ function AuthenticatedShell({ pathname, router, children }) {
     router.refresh();
   }
 
-  // Shared-login helper — save selection to localStorage + state.
-  // MUST be declared BEFORE any early return, otherwise hooks-order mismatches.
-  const setActiveUser = useCallback((next) => {
-    setActiveUserState(next);
-    if (typeof window !== 'undefined' && user?.id) {
-      const key = `rszevar_active_user:${user.id}`;
-      if (next?.id) {
-        window.localStorage.setItem(key, JSON.stringify({ id: next.id, name: next.name }));
-      } else {
-        window.localStorage.removeItem(key);
-      }
-    }
-  }, [user?.id]);
-
   if (authLoading) {
     return (
       <div style={{
@@ -401,7 +343,11 @@ function AuthenticatedShell({ pathname, router, children }) {
   const activeMod = MODULES.find(m => m.id === activeId);
 
   // Single source of truth for "who performed this action"
-  const performer = activeUser?.name || profile?.full_name || user?.email || 'Staff';
+  // (activeUser is kept here as null for backwards-compatibility with other
+  // pages that read it via useUser(); they all fall back to profile.full_name)
+  const activeUser = null;
+  const setActiveUser = () => {};
+  const performer = profile?.full_name || user?.email || 'Staff';
 
   return (
     <UserContext.Provider value={{
@@ -528,30 +474,6 @@ function AuthenticatedShell({ pathname, router, children }) {
           {/* User Footer */}
           {(sidebarOpen || isMobile) && profile && (
             <>
-              {/* Shared-login banner: shows who's using the phone right now */}
-              {profile?.is_shared_login && activeUser && (
-                <div style={{
-                  padding: '8px 14px', borderTop: '1px solid var(--border)',
-                  background: 'rgba(201,169,110,0.08)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  fontSize: 11,
-                }}>
-                  <span style={{ fontSize: 13 }}>👤</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: '#888', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Abhi</div>
-                    <div style={{ color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeUser.name}</div>
-                  </div>
-                  <button
-                    onClick={() => setShowSharedPicker(true)}
-                    title="Switch karo kisi aur pe"
-                    style={{
-                      background: 'transparent', border: '1px solid var(--gold)',
-                      color: 'var(--gold)', padding: '3px 9px', borderRadius: 4,
-                      fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >Switch</button>
-                </div>
-              )}
               <div style={{
                 padding: '12px 14px', borderTop: '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 10,
@@ -570,7 +492,6 @@ function AuthenticatedShell({ pathname, router, children }) {
                   <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{profile.full_name || <span style={{ color: '#555', fontStyle: 'italic' }}>Name set karo</span>}</div>
                   <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>
                     {(profile.role || '').replace(/_/g, ' ')}
-                    {profile?.is_shared_login && <span style={{ color: 'var(--gold)', marginLeft: 6 }}>· shared</span>}
                   </div>
                 </div>
                 <button onClick={handleLogout} title="Sign out" style={{
@@ -624,69 +545,6 @@ function AuthenticatedShell({ pathname, router, children }) {
                     </button>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Shared-login "Kaun hai abhi?" picker — blocks ERP until a person is selected */}
-          {profile?.is_shared_login && showSharedPicker && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: '100%', maxWidth: 420 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a96e', marginBottom: 6 }}>
-                  👤 Kaun istemal kar raha hai abhi?
-                </div>
-                <div style={{ fontSize: 11, color: '#888', marginBottom: 16, lineHeight: 1.6 }}>
-                  Ye login shared hai ({profile?.full_name || user?.email}). Select karo kaun kaam kar raha hai — saare logs isi naam se save honge.
-                </div>
-
-                {sharedChoices.length === 0 ? (
-                  <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.4)', padding: 12, borderRadius: 7, fontSize: 12, color: '#f87171', lineHeight: 1.6 }}>
-                    ⚠ Is shared login mein koi employee link nahi hua.
-                    <br/>Super admin ko bolo: /users page → Edit Name button → Shared Staff multi-select karein.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {sharedChoices.map(emp => (
-                      <button
-                        key={emp.id}
-                        onClick={() => {
-                          setActiveUser({ id: emp.id, name: emp.name });
-                          setShowSharedPicker(false);
-                        }}
-                        disabled={sharedLoading}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          background: '#1a1a1a', border: '1px solid #c9a96e44',
-                          color: '#fff', padding: '12px 14px',
-                          borderRadius: 8, fontSize: 14, fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                          transition: 'all 0.1s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#241e0f'; e.currentTarget.style.borderColor = '#c9a96e'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.borderColor = '#c9a96e44'; }}
-                      >
-                        <div style={{
-                          width: 38, height: 38, borderRadius: '50%',
-                          background: '#c9a96e22', color: '#c9a96e',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 15, fontWeight: 700, flexShrink: 0,
-                        }}>{(emp.name || '?').charAt(0).toUpperCase()}</div>
-                        <span style={{ flex: 1 }}>{emp.name}</span>
-                        <span style={{ color: '#c9a96e', fontSize: 14 }}>→</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* If user already had a selection, allow cancelling (they're just switching) */}
-                {activeUser && (
-                  <button
-                    onClick={() => setShowSharedPicker(false)}
-                    style={{ marginTop: 14, width: '100%', background: 'transparent', border: '1px solid #2a2a2a', color: '#666', borderRadius: 7, padding: '9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    Cancel (abhi {activeUser.name} hi rahenge)
-                  </button>
-                )}
               </div>
             </div>
           )}
