@@ -77,9 +77,21 @@ export async function POST(request) {
         const existing = existingMap.get(orderData.shopify_order_id);
 
         if (existing) {
-          if (lockedStatuses.includes(existing.status)) delete orderData.status;
-          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') delete orderData.payment_status;
-          if (existing.payment_status === 'refunded') delete orderData.payment_status;
+          // FIX Apr 2026 — Preserve existing locked status instead of `delete`.
+          // `delete orderData.status` ne undefined bana diya jo Supabase upsert
+          // ke INSERT-first attempt mein NULL ban jata. `status` column ka
+          // NOT NULL constraint hit ho jata aur pura upsert fail ho jata
+          // (PostgreSQL 23502 error). Ab existing value hi re-use karte hain —
+          // NOT NULL satisfy hota hai aur locked status overwrite bhi nahi hota.
+          if (lockedStatuses.includes(existing.status)) {
+            orderData.status = existing.status;
+          }
+          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
+            orderData.payment_status = existing.payment_status;
+          }
+          if (existing.payment_status === 'refunded') {
+            orderData.payment_status = existing.payment_status;
+          }
 
           // confirmed → on_packing when Shopify tracking exists
           if (existing.status === 'confirmed') {
