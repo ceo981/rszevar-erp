@@ -1,220 +1,187 @@
-import crypto from 'crypto';
-import { createServerClient } from './supabase';
-import { transformOrder, transformLineItems } from './shopify';
-import { getSettings } from './settings';
-import { sendOrderConfirmInteractive } from './whatsapp';
-import { PRE_DISPATCH_STATUSES } from './order-status';
+import { NextResponse } from 'next/server';
+import { createServerClient } from '../../../../lib/supabase';
+import { fetchAllOrdersSince, transformOrder, transformLineItems } from '../../../../lib/shopify';
+import { getSettings } from '../../../../lib/settings';
 
-// Fallback if settings table is unreachable
-const DEFAULT_LOCKED = ['confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'returned', 'rto', 'cancelled', 'refunded'];
+// LOCKED_STATUSES also read from settings now, with sensible fallback
+// confirmed, processing, packed, dispatched, in_transit etc — sab manually set hote hain
+// Shopify sync ko inhe KABHI overwrite nahi karna chahiye
+const DEFAULT_LOCKED = ['confirmed', 'on_packing', 'processing', 'packed', 'dispatched', 'in_transit', 'attempted', 'hold', 'delivered', 'returned', 'rto', 'cancelled', 'refunded'];
 
-/**
- * Verify Shopify webhook HMAC signature.
- */
-export function verifyShopifyWebhook(rawBody, hmacHeader) {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (!hmacHeader || !secret) return false;
-  try {
-    const computed = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody, 'utf8')
-      .digest('base64');
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
-    const a = Buffer.from(computed);
-    const b = Buffer.from(hmacHeader);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Shared handler for all order webhooks.
- *
- * FIX Apr 2026 — Cancellation bypass:
- * Previously, if Shopify cancelled an order and ERP had it in a "locked" status
- * (confirmed/on_packing/packed/etc.), the webhook silently dropped the cancel.
- * Result: Shopify cancelled, ERP still confirmed → permanent desync.
- *
- * Now: if the Shopify payload has `cancelled_at`, the 'cancelled' status ALWAYS
- * applies — regardless of locked-status rules. This is the one case where
- * Shopify's source-of-truth MUST override ERP's flow state, since the customer
- * has explicitly cancelled and we should not dispatch a cancelled order.
- *
- * PROTOCOL GUARD (unchanged): Shopify webhook ab silently office status ko pre-
- * dispatch zone ke andar nahi badlega. Agar Shopify fulfillment tracking ke
- * sath aaya magar order ERP mein abhi pending/confirmed/on_packing hai to
- * sirf tracking_number, dispatched_courier, courier_status_raw update hoga —
- * office status untouched rahega aur exception log ban jayega.
- */
-export async function handleOrderWebhook(request, { topic, insertLineItems = false }) {
+export async function POST(request) {
   const startTime = Date.now();
+  const debug = { stage: 'init', steps: [] };
 
-  // 1. Read raw body
-  const rawBody = await request.text();
-  const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
-  const shopDomain = request.headers.get('x-shopify-shop-domain');
-
-  // 2. HMAC verify
-  if (!verifyShopifyWebhook(rawBody, hmacHeader)) {
-    console.warn(`[webhook:${topic}] HMAC verification failed from ${shopDomain || 'unknown'}`);
-    return { status: 401, body: { success: false, error: 'Invalid HMAC signature' } };
-  }
-
-  // 3. Parse JSON
-  let shopifyOrder;
   try {
-    shopifyOrder = JSON.parse(rawBody);
-  } catch (e) {
-    return { status: 400, body: { success: false, error: 'Invalid JSON body' } };
-  }
+    const supabase = createServerClient();
+    const body = await request.json().catch(() => ({}));
 
-  // 3b. Skip draft/invalid orders
-  const orderNum = shopifyOrder.order_number || shopifyOrder.name;
-  const hasCustomer = shopifyOrder.customer?.id || shopifyOrder.shipping_address?.name;
-  const hasAmount = parseFloat(shopifyOrder.total_price || 0) > 0;
-
-  console.log(`[webhook:${topic}] Order: ${orderNum}, hasCustomer: ${!!hasCustomer}, hasAmount: ${hasAmount}, insertLineItems: ${insertLineItems}`);
-
-  if (!orderNum || !hasCustomer || !hasAmount) {
-    console.log(`[webhook:${topic}] Skipping invalid/draft order — no order_number, customer, or amount`);
-    return { status: 200, body: { success: true, skipped: 'draft_or_invalid_order' } };
-  }
-
-  const supabase = createServerClient();
-
-  // 4. Read locked statuses from settings (cached 60s)
-  let lockedStatuses = DEFAULT_LOCKED;
-  try {
+    // Read sync window from settings (fallback to 3 days)
     const rules = await getSettings('business_rules');
-    if (rules['rules.locked_statuses'] && Array.isArray(rules['rules.locked_statuses'])) {
-      lockedStatuses = rules['rules.locked_statuses'];
-    }
-  } catch {}
+    const configuredDays = rules['rules.shopify_sync_window_days'] ?? 3;
+    const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
 
-  // 5. Transform
-  const orderData = await transformOrder(shopifyOrder);
+    const days = body.days || configuredDays;
+    const sinceDate = body.since || new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  // 6. Check existing row + apply lock/override rules
-  const { data: existing } = await supabase
-    .from('orders')
-    .select('id, status, payment_status, confirmed_at')
-    .eq('shopify_order_id', orderData.shopify_order_id)
-    .maybeSingle();
+    debug.stage = 'fetching_shopify';
+    debug.steps.push({ step: 'fetch_start', since: sinceDate, days, locked_count: lockedStatuses.length });
 
-  let protocolViolation = null;
+    // 1. Fetch from Shopify
+    const shopifyOrders = await fetchAllOrdersSince(sinceDate);
+    debug.steps.push({ step: 'fetch_done', count: shopifyOrders.length });
 
-  // ── CANCELLATION BYPASS (new) ──────────────────────────────────────────
-  // Detect Shopify cancellation intent: either topic is orders/cancelled, OR
-  // the payload has cancelled_at set. In both cases, 'cancelled' status must
-  // apply regardless of ERP lock state.
-  const isShopifyCancellation =
-    topic === 'orders/cancelled' ||
-    !!shopifyOrder.cancelled_at ||
-    orderData.status === 'cancelled';
-
-  if (existing) {
-    if (isShopifyCancellation) {
-      // ALLOW the status through even if existing.status was locked
-      // Don't apply any other lock rules — cancellation is authoritative
-      // Keep existing confirmed_at (history) but status = cancelled
-      delete orderData.confirmed_at;
-    } else {
-      if (lockedStatuses.includes(existing.status)) {
-        delete orderData.status;
-        delete orderData.confirmed_at;
-      }
-      if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
-        delete orderData.payment_status;
-      }
-      if (existing.payment_status === 'refunded') {
-        delete orderData.payment_status;
-      }
-      if (existing.confirmed_at && orderData.confirmed_at) {
-        delete orderData.confirmed_at;
-      }
-
-      // PROTOCOL GUARD: tracking added externally but ERP still pre-dispatch
-      const fulfillments = shopifyOrder.fulfillments || [];
-      const hasActiveTracking = fulfillments.some(
-        f => f.tracking_number && f.status !== 'cancelled',
-      );
-
-      if (hasActiveTracking && PRE_DISPATCH_STATUSES.includes(existing.status)) {
-        delete orderData.status;
-        delete orderData.confirmed_at;
-        protocolViolation = {
-          office_status: existing.status,
-          reason: `shopify_webhook:tracking_added_but_office_still_${existing.status}`,
-        };
-      }
-    }
-  }
-
-  // 7. Upsert
-  const { data: upserted, error: upsertError } = await supabase
-    .from('orders')
-    .upsert(orderData, { onConflict: 'shopify_order_id' })
-    .select('id')
-    .single();
-
-  if (upsertError) {
-    console.error(`[webhook:${topic}] upsert error:`, upsertError.message);
-    return { status: 500, body: { success: false, error: upsertError.message } };
-  }
-
-  const orderId = upserted?.id;
-  const wasNew = !existing;
-
-  // 7b. Log protocol violation
-  if (protocolViolation && orderId) {
-    try {
-      await supabase.from('order_activity_log').insert({
-        order_id: orderId,
-        action: 'protocol_violation:shopify_tracking_ahead_of_office',
-        notes:
-          `Shopify fulfillment tracking aayi magar office status abhi "${protocolViolation.office_status}" pe hai. ` +
-          `Office status unchanged — staff ne ERP flow skip kiya. Confirm/Packed buttons click nahi hue.`,
-        performed_by: 'Shopify Webhook',
-        performed_at: new Date().toISOString(),
+    if (shopifyOrders.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No new orders found',
+        synced: 0,
+        duration_ms: Date.now() - startTime,
       });
-    } catch (e) {
-      console.error(`[webhook:${topic}] violation log failed:`, e.message);
     }
-  }
 
-  // 7c. Log Shopify-triggered cancellation
-  if (isShopifyCancellation && existing && orderId) {
-    try {
-      await supabase.from('order_activity_log').insert({
-        order_id: orderId,
-        action: 'cancelled_via_shopify',
-        notes:
-          existing.status !== 'cancelled'
-            ? `Shopify se cancellation aayi — ERP status "${existing.status}" se "cancelled" pe shift. Shopify authoritative for cancellations.`
-            : 'Shopify cancellation webhook received (already cancelled in ERP)',
-        performed_by: 'Shopify Webhook',
-        performed_at: new Date().toISOString(),
-      });
-    } catch (e) { console.error(`[webhook:${topic}] cancel log failed:`, e.message); }
-  }
+    // 2. Batch fetch existing
+    debug.stage = 'fetching_existing';
+    const shopifyOrderIds = shopifyOrders.map(o => String(o.id));
+    const { data: existingOrders, error: existingError } = await supabase
+      .from('orders')
+      .select('id, shopify_order_id, status, payment_status')
+      .in('shopify_order_id', shopifyOrderIds);
 
-  // 8. Line items — `wasNew` par INSERT, aur edits par RE-SYNC.
-  //
-  // FIX Apr 2026 — Shopify order edits (items add/remove/price change) ab
-  // properly reflect hote hain. Pehle sirf `wasNew` pe line items insert hote
-  // the — agar baad mein order edit hua (items removed/added/price changed),
-  // ERP ka order_items stale reh jata tha aur totals bhi mismatch hote.
-  //
-  // SAFETY: Hum transformLineItems PEHLE chalate hain. Agar result non-empty ho
-  // tab hi DELETE+INSERT karte hain — taake failed-transform ki surat mein
-  // DB mein stale-but-existing items ko wipe na kar dein (empty state worse
-  // hota hai stale state se).
-  const hasLineItemsInPayload = Array.isArray(shopifyOrder.line_items) && shopifyOrder.line_items.length > 0;
-  const shouldSyncLineItems = orderId && hasLineItemsInPayload && (wasNew || topic === 'orders/updated' || topic === 'orders/edited');
+    if (existingError) {
+      return NextResponse.json({
+        success: false,
+        stage: 'fetch_existing_orders',
+        error: existingError.message,
+        debug,
+      }, { status: 500 });
+    }
 
-  if (shouldSyncLineItems) {
+    const existingMap = new Map();
+    (existingOrders || []).forEach(o => existingMap.set(o.shopify_order_id, o));
+
+    // 3. Transform (now async — each call reads settings but cache makes it fast)
+    debug.stage = 'transforming';
+    const ordersToUpsert = [];
+    const customersToUpsert = [];
+    const customerIdsSeen = new Set();
+    const transformErrors = [];
+
+    for (const shopifyOrder of shopifyOrders) {
+      try {
+        const orderData = await transformOrder(shopifyOrder);
+        const existing = existingMap.get(orderData.shopify_order_id);
+
+        if (existing) {
+          if (lockedStatuses.includes(existing.status)) delete orderData.status;
+          if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') delete orderData.payment_status;
+          if (existing.payment_status === 'refunded') delete orderData.payment_status;
+
+          // confirmed → on_packing when Shopify tracking exists
+          if (existing.status === 'confirmed') {
+            const fulfillments = shopifyOrder.fulfillments || [];
+            const hasTracking = fulfillments.some(
+              f => f.tracking_number && f.status !== 'cancelled'
+            );
+            if (hasTracking) orderData.status = 'on_packing';
+          }
+        }
+
+        ordersToUpsert.push(orderData);
+
+        if (shopifyOrder.customer && !customerIdsSeen.has(shopifyOrder.customer.id)) {
+          customerIdsSeen.add(shopifyOrder.customer.id);
+          const c = shopifyOrder.customer;
+          customersToUpsert.push({
+            shopify_customer_id: String(c.id),
+            name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown',
+            phone: c.phone || null,
+            email: c.email || null,
+            city: shopifyOrder.shipping_address?.city || null,
+            address: shopifyOrder.shipping_address?.address1 || null,
+          });
+        }
+      } catch (e) {
+        transformErrors.push({ order: shopifyOrder.name, error: e.message });
+      }
+    }
+
+    debug.steps.push({
+      step: 'transform_done',
+      orders_to_upsert: ordersToUpsert.length,
+      customers_to_upsert: customersToUpsert.length,
+      transform_errors: transformErrors.length,
+    });
+
+    // 4. Dedupe (Shopify pagination overlap)
+    const dedupMap = new Map();
+    for (const o of ordersToUpsert) dedupMap.set(o.shopify_order_id, o);
+    const dedupedOrders = Array.from(dedupMap.values());
+    debug.steps.push({
+      step: 'dedup_done',
+      before: ordersToUpsert.length,
+      after: dedupedOrders.length,
+      removed: ordersToUpsert.length - dedupedOrders.length,
+    });
+
+    // 5. Upsert
+    debug.stage = 'upserting_orders';
+    let synced = 0;
+    let upsertedOrders = [];
+    if (dedupedOrders.length > 0) {
+      const { data, error: upsertError } = await supabase
+        .from('orders')
+        .upsert(dedupedOrders, { onConflict: 'shopify_order_id' })
+        .select('id, shopify_order_id');
+
+      if (upsertError) {
+        return NextResponse.json({
+          success: false,
+          stage: 'upsert_orders',
+          error: upsertError.message,
+          code: upsertError.code,
+          hint: upsertError.hint,
+          sample_order_keys: Object.keys(dedupedOrders[0] || {}),
+          debug,
+        }, { status: 500 });
+      }
+      upsertedOrders = data || [];
+      synced = upsertedOrders.length;
+    }
+
+    // 6. Upsert customers
+    let customerError = null;
+    if (customersToUpsert.length > 0) {
+      const { error } = await supabase
+        .from('customers')
+        .upsert(customersToUpsert, { onConflict: 'shopify_customer_id' });
+      if (error) {
+        customerError = { message: error.message, code: error.code };
+      }
+    }
+
+    // 7. Line items — NEW orders + existing orders missing items
+    const newOrdersMap = new Map();
+    upsertedOrders.forEach(o => {
+      if (!existingMap.has(o.shopify_order_id)) {
+        newOrdersMap.set(o.shopify_order_id, o.id);
+      }
+    });
+
+    // Also track existing orders for items backfill
+    const existingNoItemsMap = new Map();
+    upsertedOrders.forEach(o => {
+      if (existingMap.has(o.shopify_order_id)) {
+        existingNoItemsMap.set(o.shopify_order_id, o.id);
+      }
+    });
+
+    // Pre-fetch SKU → image_url map from products table
+    // Taake Shopify null image wale items bhi sahi image payein
     let skuImageMap = {};
     try {
       const { data: productImages } = await supabase
@@ -227,164 +194,137 @@ export async function handleOrderWebhook(request, { topic, insertLineItems = fal
           skuImageMap[p.sku] = p.image_url;
         }
       }
-    } catch {}
+    } catch (e) { /* silent fallback */ }
 
-    // Transform PEHLE — agar kuch fail ho gaya to DB ko chhed hi na dein.
-    const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: orderId }));
+    let itemsError = null;
+    let itemsInserted = 0;
 
-    if (items.length > 0) {
-      // On UPDATE: delete stale items first (since we have valid replacements ready).
-      // On NEW (wasNew=true): no existing items to delete, straight insert.
-      if (!wasNew) {
-        try {
-          const { error: delError } = await supabase
-            .from('order_items')
-            .delete()
-            .eq('order_id', orderId);
-          if (delError) {
-            console.error(`[webhook:${topic}] delete old items failed:`, delError.message);
-            // Don't insert if delete failed — would cause duplicates.
-            // Stale state is better than corrupted duplicate state.
-            return { status: 200, body: { success: true, warning: 'items delete failed, not re-inserted' } };
-          }
-          console.log(`[webhook:${topic}] deleted old line items for order ${orderId} — re-syncing with current Shopify state`);
-        } catch (e) {
-          console.error(`[webhook:${topic}] delete old items threw:`, e.message);
-          return { status: 200, body: { success: true, warning: 'items delete threw, not re-inserted' } };
-        }
+    // New orders — insert items
+    if (newOrdersMap.size > 0) {
+      const allItems = [];
+      for (const shopifyOrder of shopifyOrders) {
+        const dbId = newOrdersMap.get(String(shopifyOrder.id));
+        if (!dbId) continue;
+        const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: dbId }));
+        allItems.push(...items);
       }
-
-      const { error: itemsError } = await supabase.from('order_items').insert(items);
-      if (itemsError) {
-        console.error(`[webhook:${topic}] line items insert error:`, itemsError.message);
-        // At this point if !wasNew, we've deleted old items but failed insert.
-        // Log loudly so admin can manual re-sync. Webhook still returns 200
-        // to prevent Shopify retry storm.
-      } else {
-        console.log(`[webhook:${topic}] inserted ${items.length} line items for order ${orderId}`);
+      if (allItems.length > 0) {
+        const { error } = await supabase.from('order_items').insert(allItems);
+        if (error) itemsError = { message: error.message, code: error.code };
+        else itemsInserted = allItems.length;
       }
-    } else {
-      // transformLineItems returned [] despite hasLineItemsInPayload being true.
-      // Shouldn't happen with current code, but defensive: don't touch DB.
-      console.warn(`[webhook:${topic}] transformLineItems returned empty despite non-empty payload — keeping existing order_items unchanged`);
     }
-  }
 
-  // 8b. Customer upsert — INDEPENDENT of line items sync.
-  // Previously this was nested inside the items block, which meant if payload
-  // had no line_items, customer would not be created. Now it's always done
-  // on new orders (regardless of line items status).
-  if (wasNew && orderId && shopifyOrder.customer) {
-    const c = shopifyOrder.customer;
-    await supabase.from('customers').upsert({
-      shopify_customer_id: String(c.id),
-      name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown',
-      phone: c.phone || null,
-      email: c.email || null,
-      city: shopifyOrder.shipping_address?.city || null,
-      address: shopifyOrder.shipping_address?.address1 || null,
-    }, { onConflict: 'shopify_customer_id' });
-  }
+    // Existing orders — fill missing items (or re-sync if counts don't match).
+    //
+    // FIX Apr 2026 — Shopify edits now properly reflected in bulk sync:
+    // Pehle sirf count === 0 pe items backfill hote the. Ab agar Shopify
+    // ka line_items count aur DB ka order_items count alag ho (matlab
+    // order edit hua Shopify mein — items add/removed), hum purane items
+    // delete karke fresh insert karte hain. Ye webhook-missed edits ko
+    // bhi catch kar leta hai.
+    //
+    // SAFETY: Re-sync SIRF tab karte hain jab Shopify bhi non-empty list
+    // bhejta ho (shopifyCount > 0). Agar Shopify malformed payload bheje
+    // (line_items missing), hum DB ko wipe nahi karte — stale state safer
+    // hota hai empty state se.
+    if (existingNoItemsMap.size > 0) {
+      for (const shopifyOrder of shopifyOrders) {
+        const dbId = existingNoItemsMap.get(String(shopifyOrder.id));
+        if (!dbId) continue;
+        const { count } = await supabase
+          .from('order_items').select('*', { count: 'exact', head: true }).eq('order_id', dbId);
+        const dbCount = count || 0;
+        const shopifyCount = Array.isArray(shopifyOrder.line_items) ? shopifyOrder.line_items.length : 0;
 
-  // 8b. WhatsApp confirmation — on create only
-  if (insertLineItems && orderId) {
-    const customerPhone =
-      shopifyOrder.shipping_address?.phone ||
-      shopifyOrder.customer?.phone ||
-      shopifyOrder.billing_address?.phone;
+        // Case 1: DB has no items → backfill (original behavior)
+        // Case 2: Both sides have items but counts differ → order was edited,
+        //         delete stale and insert fresh.
+        // NOTE: We do NOT trigger re-sync if Shopify side is empty — that
+        // would wipe DB items based on potentially malformed payload.
+        const needsBackfill = dbCount === 0 && shopifyCount > 0;
+        const needsResync   = dbCount > 0 && shopifyCount > 0 && shopifyCount !== dbCount;
 
-    console.log(`[webhook:orders/create] customerPhone: ${customerPhone}, orderId: ${orderId}`);
+        if (needsBackfill || needsResync) {
+          // Transform first — only touch DB if we have valid items to insert.
+          const items = transformLineItems(shopifyOrder, skuImageMap).map(i => ({ ...i, order_id: dbId }));
 
-    if (customerPhone) {
-      try {
-        const { data: existingLog } = await supabase
-          .from('whatsapp_logs')
-          .select('id')
-          .eq('order_id', orderId)
-          .limit(1)
-          .maybeSingle();
-
-        if (!existingLog) {
-          const itemsText = (shopifyOrder.line_items || [])
-            .map(i => `${i.title}${i.variant_title ? ` (${i.variant_title})` : ''} x${i.quantity}`)
-            .join(', ') || 'N/A';
-
-          const sa = shopifyOrder.shipping_address;
-          const addressText = sa
-            ? [sa.address1, sa.city, sa.province].filter(Boolean).join(', ')
-            : 'N/A';
-
-          console.log(`[webhook:orders/create] Sending WhatsApp to ${customerPhone}`);
-
-          const waResult = await sendOrderConfirmInteractive({
-            phone: customerPhone,
-            order_number: orderData.order_number,
-            total_amount: orderData.total_amount,
-            customer_name: orderData.customer_name,
-            items: itemsText,
-            address: addressText,
-          });
-
-          console.log(`[webhook:orders/create] WhatsApp result:`, JSON.stringify(waResult));
-
-          await supabase.from('whatsapp_logs').insert({
-            order_id: orderId,
-            customer_phone: customerPhone,
-            template_name: 'rs_zevar_order_interactive',
-            status: waResult?.sent ? 'sent' : 'failed',
-            message_content: orderData.order_number,
-            wa_message_id: waResult?.message_id || null,
-            sent_at: new Date().toISOString(),
-          });
-
-          // ── NEW: If message sent successfully, add "confirmation pending" tag
-          // to Shopify (automatic — CEO requirement). ERP status UNTOUCHED.
-          // If message failed at send-time (invalid phone etc), "no whatsapp"
-          // tag will be added later by the status webhook when Meta confirms.
-          if (waResult?.sent && orderData.shopify_order_id) {
-            try {
-              const { updateShopifyOrderTags } = await import('./shopify');
-              await updateShopifyOrderTags(
-                orderData.shopify_order_id,
-                ['confirmation pending'],  // add
-                [],                        // remove
-              );
-              console.log(`[webhook:orders/create] Tag "confirmation pending" added for ${orderData.order_number}`);
-            } catch (e) {
-              console.error('[webhook:orders/create] confirmation pending tag error:', e.message);
+          if (items.length > 0) {
+            if (needsResync) {
+              const { error: delError } = await supabase
+                .from('order_items').delete().eq('order_id', dbId);
+              if (delError) {
+                console.error(`[sync] delete old items failed for order ${dbId}:`, delError.message);
+                continue; // Skip insert if delete failed — avoid duplicates
+              }
+              console.log(`[sync] re-syncing line items for edited order ${shopifyOrder.name} (was ${dbCount}, now ${shopifyCount})`);
+            }
+            const { error: insError } = await supabase.from('order_items').insert(items);
+            if (insError) {
+              console.error(`[sync] insert items failed for order ${dbId}:`, insError.message);
+            } else {
+              itemsInserted += items.length;
             }
           }
-        } else {
-          console.log(`[webhook:orders/create] WhatsApp already sent for ${orderData.order_number} — skipping`);
         }
-      } catch (e) {
-        console.error('[webhook:orders/create] WhatsApp error:', e.message);
       }
     }
-  }
 
-  // 9. Activity log
-  if (orderId) {
-    try {
-      await supabase.from('order_activity_log').insert({
-        order_id: orderId,
-        action: `webhook:${topic}`,
-        notes: `Real-time ${topic} from Shopify (${wasNew ? 'new' : 'updated'})`,
-        performed_at: new Date().toISOString(),
-      });
-    } catch {}
-  }
-
-  return {
-    status: 200,
-    body: {
+    return NextResponse.json({
       success: true,
-      topic,
-      order_number: orderData.order_number,
-      action: wasNew ? 'created' : 'updated',
-      protocol_violation: !!protocolViolation,
-      cancellation_applied: !!(isShopifyCancellation && existing),
+      total_fetched: shopifyOrders.length,
+      synced,
+      items_inserted: itemsInserted,
+      transform_errors: transformErrors.length > 0 ? transformErrors.slice(0, 5) : undefined,
+      customer_error: customerError,
+      items_error: itemsError,
+      sync_window_days: days,
       duration_ms: Date.now() - startTime,
-    },
-  };
+      message: `${synced} orders synced in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+    });
+
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        stage: debug.stage,
+        error: error.message,
+        stack: error.stack,
+        debug,
+        duration_ms: Date.now() - startTime,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+    const supabase = createServerClient();
+
+    const { count: totalOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true });
+
+    const { data: lastSynced } = await supabase
+      .from('orders')
+      .select('shopify_synced_at, order_number')
+      .not('shopify_synced_at', 'is', null)
+      .order('shopify_synced_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return NextResponse.json({
+      success: true,
+      total_orders: totalOrders || 0,
+      last_synced: lastSynced?.shopify_synced_at || null,
+      last_order: lastSynced?.order_number || null,
+    });
+
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
 }
