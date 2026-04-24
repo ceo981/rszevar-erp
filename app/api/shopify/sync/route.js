@@ -224,17 +224,42 @@ export async function POST(request) {
     // delete karke fresh insert karte hain. Ye webhook-missed edits ko
     // bhi catch kar leta hai.
     //
+    // PERFORMANCE FIX Apr 2026 — Pehle har existing order ke liye alag
+    // count query fire hoti thi (N queries for N orders). 500+ orders
+    // ke liye ye Vercel ka 60s timeout cross kar jati thi aur 500 return
+    // hoti thi. Ab ek hi query mein sab counts le aate hain, phir local
+    // JavaScript se compare karte hain. 500 queries → 1 query.
+    //
     // SAFETY: Re-sync SIRF tab karte hain jab Shopify bhi non-empty list
     // bhejta ho (shopifyCount > 0). Agar Shopify malformed payload bheje
     // (line_items missing), hum DB ko wipe nahi karte — stale state safer
     // hota hai empty state se.
     if (existingNoItemsMap.size > 0) {
+      // Bulk fetch all order_items counts in ONE query.
+      // Chunk into batches of 500 to avoid URL length limits on .in() clauses.
+      const existingDbIds = Array.from(existingNoItemsMap.values());
+      const countByOrderId = {};
+      const CHUNK = 500;
+      for (let i = 0; i < existingDbIds.length; i += CHUNK) {
+        const chunk = existingDbIds.slice(i, i + CHUNK);
+        const { data: chunkRows, error: chunkErr } = await supabase
+          .from('order_items')
+          .select('order_id')
+          .in('order_id', chunk);
+        if (chunkErr) {
+          console.error('[sync] bulk count chunk failed:', chunkErr.message);
+          continue;
+        }
+        for (const row of chunkRows || []) {
+          countByOrderId[row.order_id] = (countByOrderId[row.order_id] || 0) + 1;
+        }
+      }
+
+      // Now process orders using pre-fetched counts — no per-order count queries.
       for (const shopifyOrder of shopifyOrders) {
         const dbId = existingNoItemsMap.get(String(shopifyOrder.id));
         if (!dbId) continue;
-        const { count } = await supabase
-          .from('order_items').select('*', { count: 'exact', head: true }).eq('order_id', dbId);
-        const dbCount = count || 0;
+        const dbCount = countByOrderId[dbId] || 0;
         const shopifyCount = Array.isArray(shopifyOrder.line_items) ? shopifyOrder.line_items.length : 0;
 
         // Case 1: DB has no items → backfill (original behavior)
