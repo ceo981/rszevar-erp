@@ -370,20 +370,60 @@ export default function SingleOrderPage() {
   // Items: prefer DB order_items; fallback to shopify_raw.line_items for older
   // orders where order_items rows weren't backfilled. Same pattern as the
   // original OrderDrawer's buildItems helper.
-  const items = (order.order_items?.length > 0)
+  //
+  // FIX Apr 2026 — Line-level discount display (see /orders/[id]/page.js):
+  const rawLineItems = order.shopify_raw?.line_items || [];
+  const enrichItemWithDiscount = (item) => {
+    const raw = rawLineItems.find(r =>
+      (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+      (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+      (r.title && item.title && item.title.startsWith(r.title))
+    );
+    const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+    const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+    const qty = item.quantity || 1;
+    const effectiveUnitPrice = qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice;
+    return {
+      ...item,
+      original_unit_price: rawPrice,
+      effective_unit_price: effectiveUnitPrice,
+      line_discount: rawDiscount,
+      has_line_discount: rawDiscount > 0.01,
+    };
+  };
+
+  const items = ((order.order_items?.length > 0)
     ? order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
-    : (order.shopify_raw?.line_items || []).map(it => ({
+    : rawLineItems.map(it => ({
         title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
         sku: it.sku || null,
         quantity: it.quantity,
         unit_price: parseFloat(it.price) || 0,
         total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
         image_url: null,
-      }));
+        shopify_line_item_id: String(it.id),
+      }))
+  ).map(enrichItemWithDiscount);
+
   const subtotal = parseFloat(order.subtotal || 0);
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
   const total = parseFloat(order.total_amount || 0);
+
+  // Discount code name extraction from shopify_raw
+  const discountCodes = order.shopify_raw?.discount_codes || [];
+  const discountApplications = order.shopify_raw?.discount_applications || [];
+  const discountLabel = (() => {
+    if (discountApplications.length > 0) {
+      const app = discountApplications[0];
+      if (app.code) return app.code;
+      if (app.title) return app.title;
+      if (app.type === 'manual') return 'Manual';
+      if (app.type === 'automatic') return 'Auto';
+    }
+    if (discountCodes.length > 0 && discountCodes[0].code) return discountCodes[0].code;
+    return null;
+  })();
   const isPaid = order.payment_status === 'paid';
   const isRefunded = order.payment_status === 'refunded';
   const paidAmt = isPaid ? total : 0;
@@ -600,12 +640,34 @@ export default function SingleOrderPage() {
                       )}
                     </div>
                     <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <div style={{ fontSize: 13, color: '#ccc' }}>
-                        {fmt(item.unit_price)} × {item.quantity}
-                      </div>
-                      <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
-                        {fmt(item.total_price || (item.unit_price * item.quantity))}
-                      </div>
+                      {item.has_line_discount ? (
+                        <>
+                          <div style={{ fontSize: 13, color: '#ccc' }}>
+                            <span style={{ textDecoration: 'line-through', color: '#666', marginRight: 6 }}>
+                              {fmt(item.original_unit_price)}
+                            </span>
+                            <span style={{ color: '#22c55e', fontWeight: 600 }}>
+                              {fmt(item.effective_unit_price)}
+                            </span>
+                            {' '}× {item.quantity}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
+                            {fmt(item.effective_unit_price * item.quantity)}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#22c55e', marginTop: 2 }}>
+                            Saved {fmt(item.line_discount)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 13, color: '#ccc' }}>
+                            {fmt(item.unit_price)} × {item.quantity}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
+                            {fmt(item.total_price || (item.unit_price * item.quantity))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -803,7 +865,31 @@ export default function SingleOrderPage() {
               overflowVisible
             >
               <Row label={`Subtotal (${items.length} item${items.length !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
-              {discount > 0 && <Row label="Discount" value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>} />}
+              {discount > 0 && (
+                <Row
+                  label={
+                    <span>
+                      Discount
+                      {discountLabel && (
+                        <span style={{
+                          marginLeft: 8,
+                          fontSize: 10,
+                          padding: '2px 7px',
+                          borderRadius: 4,
+                          background: 'rgba(34,197,94,0.12)',
+                          color: '#22c55e',
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          letterSpacing: 0.5,
+                        }}>
+                          {discountLabel}
+                        </span>
+                      )}
+                    </span>
+                  }
+                  value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>}
+                />
+              )}
               <Row label="Shipping" value={fmt(shipping)} />
               <div style={{ borderTop: `1px solid ${border}`, margin: '8px 0', paddingTop: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
