@@ -136,20 +136,47 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const [packingStaff, setPackingStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState('');
   const [currentAssignment, setCurrentAssignment] = useState(null);
-  // Items: DB order_items agar hain, warna shopify_raw se seedha
+  // Items: DB order_items agar hain, warna shopify_raw se seedha.
+  // FIX Apr 2026 — Line-level discount display: har item enrich hota hai
+  // shopify_raw.line_items se match karke (SKU/title/id se). Ye has_line_discount,
+  // original_unit_price, effective_unit_price, line_discount deta hai jisse
+  // frontend strikethrough original price + highlighted discounted price dikha sake.
   const buildItems = (ord) => {
+    const rawLineItems = ord.shopify_raw?.line_items || [];
+    const enrichWithDiscount = (item) => {
+      const raw = rawLineItems.find(r =>
+        (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+        (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+        (r.title && item.title && item.title.startsWith(r.title))
+      );
+      const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+      const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+      const qty = item.quantity || 1;
+      return {
+        ...item,
+        original_unit_price: rawPrice,
+        effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
+        line_discount: rawDiscount,
+        has_line_discount: rawDiscount > 0.01,
+      };
+    };
+
     if (ord.order_items?.length > 0) {
-      return ord.order_items.sort((a, b) => (a.id || 0) - (b.id || 0));
+      return ord.order_items
+        .slice()
+        .sort((a, b) => (a.id || 0) - (b.id || 0))
+        .map(enrichWithDiscount);
     }
     // Fallback: shopify_raw.line_items (purane orders ke liye)
-    return (ord.shopify_raw?.line_items || []).map(item => ({
+    return rawLineItems.map(item => ({
       title: item.title + (item.variant_title ? ` - ${item.variant_title}` : ''),
       sku: item.sku || null,
       quantity: item.quantity,
       unit_price: parseFloat(item.price) || 0,
       total_price: (parseFloat(item.price) || 0) * item.quantity,
       image_url: item.image?.src || null,
-    }));
+      shopify_line_item_id: String(item.id),
+    })).map(enrichWithDiscount);
   };
   const [orderItems, setOrderItems] = useState(() => buildItems(order));
   const [customerOrders, setCustomerOrders] = useState([]);
@@ -565,7 +592,21 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 15, color: '#c9a96e', fontWeight: 700 }}>x{item.quantity}</div>
-                    {item.unit_price && <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Rs {Number(item.unit_price).toLocaleString()}</div>}
+                    {/* Line-level discount strikethrough — jab manual per-line
+                        discount hai (e.g., Rs 1,450 → Rs 1,380), dono prices
+                        dikhte hain Shopify admin ki tarah. */}
+                    {item.has_line_discount ? (
+                      <>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2, textDecoration: 'line-through' }}>
+                          Rs {Number(item.original_unit_price).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                          Rs {Number(item.effective_unit_price).toLocaleString()}
+                        </div>
+                      </>
+                    ) : (
+                      item.unit_price && <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Rs {Number(item.unit_price).toLocaleString()}</div>
+                    )}
                   </div>
                 </div>
               ))}
