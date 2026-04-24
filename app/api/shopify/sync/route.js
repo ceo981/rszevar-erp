@@ -77,15 +77,29 @@ export async function POST(request) {
         const existing = existingMap.get(orderData.shopify_order_id);
 
         if (existing) {
-          // FIX Apr 2026 — Preserve existing locked status instead of `delete`.
-          // `delete orderData.status` ne undefined bana diya jo Supabase upsert
-          // ke INSERT-first attempt mein NULL ban jata. `status` column ka
-          // NOT NULL constraint hit ho jata aur pura upsert fail ho jata
-          // (PostgreSQL 23502 error). Ab existing value hi re-use karte hain —
-          // NOT NULL satisfy hota hai aur locked status overwrite bhi nahi hota.
-          if (lockedStatuses.includes(existing.status)) {
+          // FIX Apr 2026 — Status preservation (CRITICAL DATA INTEGRITY):
+          //
+          // ERP manages order status through its own workflow (confirm →
+          // on_packing → packed → dispatched → delivered). Shopify sync ko
+          // is workflow mein interfere NAHI karna chahiye. Isliye:
+          //
+          //   - Agar existing order 'pending' hai → mapShopifyStatus ka
+          //     result use karo (pending → confirmed allow hai, kyunki
+          //     Shopify tags/payment se signal milta hai).
+          //   - Warna → existing status PRESERVE karo. Advanced statuses
+          //     (on_packing, packed, dispatched, delivered, returned, rto,
+          //     cancelled, hold, attempted, refunded) ko sync touch nahi
+          //     karega.
+          //
+          // Pehle lockedStatuses setting pe depend karte the — agar user ne
+          // setting mein koi status include karna bhool gaya, wo orders
+          // sync se corrupt ho jate the. Ab safer default: pending ke
+          // alawa sab preserve.
+          if (existing.status !== 'pending') {
             orderData.status = existing.status;
           }
+
+          // Payment status preservation
           if (existing.payment_status === 'paid' && orderData.payment_status === 'unpaid') {
             orderData.payment_status = existing.payment_status;
           }
@@ -93,7 +107,11 @@ export async function POST(request) {
             orderData.payment_status = existing.payment_status;
           }
 
-          // confirmed → on_packing when Shopify tracking exists
+          // confirmed → on_packing auto-transition when Shopify tracking exists.
+          // Ye sirf tab chalta hai jab existing.status 'confirmed' hai — yaani
+          // order abhi packing workflow mein enter nahi hua. Agar confirmed
+          // hai AND Shopify pe tracking create ho gayi, matlab shopify side
+          // pe fulfillment ban gayi → packing start ho gayi.
           if (existing.status === 'confirmed') {
             const fulfillments = shopifyOrder.fulfillments || [];
             const hasTracking = fulfillments.some(
