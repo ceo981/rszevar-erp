@@ -1038,8 +1038,13 @@ export default function OrdersPage() {
 
         <button onClick={() => setShowDraft(true)}
           style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid #a855f7', color: '#a855f7', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          + Draft Order
+          + Quick Draft
         </button>
+
+        <Link href="/orders/create"
+          style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: '1px solid #22c55e', color: '#000', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          + Create Order
+        </Link>
 
         <button
           onClick={syncFromShopify}
