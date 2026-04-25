@@ -154,7 +154,9 @@ export default function SingleOrderPage() {
   const userRole = profile?.role || '';
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
+  const isDispatcher = userRole === 'dispatcher';
   const canConfirm = isCEO || isOpsManager;
+  const canPack    = isCEO || isDispatcher;
 
   const id = params?.id;
   const [order, setOrder] = useState(null);
@@ -314,6 +316,14 @@ export default function SingleOrderPage() {
     setShowCancelBox(false);
     setCancelReason('');
     setForceCancel(false);
+  };
+
+  // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
+  // tracking removed, courier cleared, status reverted (dispatched → confirmed).
+  const cancelFulfillment = async () => {
+    const reason = window.prompt('Fulfillment cancel karne ki wajah likho:\n(Tracking + courier hat jayegi, status confirmed pe wapas chala jayega)');
+    if (reason === null) return; // user cancelled
+    await doAction('/api/orders/cancel-fulfillment', { order_id: id, reason: reason || 'No reason' }, '✓ Fulfillment cancelled — tracking removed');
   };
 
   const addComment = async () => {
@@ -948,6 +958,20 @@ export default function SingleOrderPage() {
                       onClick={() => setShowCancelBox(v => !v)}
                       style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                       ✕ Cancel order
+                    </button>
+                  )}
+
+                  {/* Apr 2026 — Cancel Fulfillment button.
+                      Visible jab order pe tracking/fulfillment hai aur user
+                      CEO/Dispatcher hai. Tracking + courier clear ho jate,
+                      dispatched → confirmed wapas. Shopify pe bhi cancel hoti
+                      (ya already cancelled toh skip). Re-book ke liye safe. */}
+                  {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
+                    <button
+                      onClick={cancelFulfillment}
+                      disabled={actionBusy}
+                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      🔄 Cancel fulfillment
                     </button>
                   )}
                 </div>
