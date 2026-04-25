@@ -425,6 +425,26 @@ export default function SingleOrderPage() {
       })
   ).map(enrichItemWithDiscount);
 
+  // FIX Apr 2026 — Removed items history (Shopify-style):
+  // Shopify Order Edit ke baad jo items remove hue, woh `line_items` array mein
+  // rehte hain `current_quantity: 0` ke saath. Yahan unko alag se dikha rahe hain
+  // taa ke packers/CS ko visible ho ke kya hata diya gaya tha aur kab.
+  const removedItems = (order.shopify_raw?.line_items || [])
+    .filter(it => {
+      // Original mein order tha (qty > 0), ab nahi hai (current_quantity 0)
+      if ((it.quantity || 0) === 0) return false;
+      return it.current_quantity === 0;
+    })
+    .map(it => ({
+      title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+      sku: it.sku || null,
+      original_quantity: it.quantity,
+      unit_price: parseFloat(it.price) || 0,
+      total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
+      image_url: it.image?.src || null,
+      shopify_line_item_id: String(it.id),
+    }));
+
   const subtotal = parseFloat(order.subtotal || 0);
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
@@ -699,6 +719,81 @@ export default function SingleOrderPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* FIX Apr 2026 — Removed items history (Shopify-style).
+                    Shopify Order Edit ke baad jo items hata diye gaye, woh
+                    yahan dim/strikethrough style mein dikhte hain — bilkul
+                    Shopify admin ki tarah. Operationally important: packers
+                    ko clear visible ho ke kya hata hai. */}
+                {removedItems.length > 0 && (
+                  <>
+                    <div style={{
+                      padding: '10px 20px 6px 20px',
+                      borderTop: `1px solid ${border}`,
+                      fontSize: 11,
+                      color: '#888',
+                      textTransform: 'uppercase',
+                      letterSpacing: 1,
+                      background: 'rgba(239,68,68,0.04)',
+                    }}>
+                      Removed from order ({removedItems.length})
+                    </div>
+                    {removedItems.map((item, idx) => (
+                      <div key={`removed-${idx}`} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                        padding: '14px 20px',
+                        borderTop: idx === 0 ? 'none' : `1px solid ${border}`,
+                        background: 'rgba(239,68,68,0.02)',
+                        opacity: 0.7,
+                      }}>
+                        <div style={{
+                          width: 52, height: 52, borderRadius: 8,
+                          background: '#1a1a1a', border: `1px solid ${border}`,
+                          overflow: 'hidden', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {item.image_url
+                            ? <img src={item.image_url} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(0.7)' }} />
+                            : <span style={{ color: '#444', fontSize: 22 }}>📦</span>
+                          }
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: '#bbb', textDecoration: 'line-through', wordBreak: 'break-word' }}>
+                            {item.title || 'Untitled'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+                            <span style={{
+                              fontSize: 9,
+                              color: '#ef4444',
+                              background: 'rgba(239,68,68,0.12)',
+                              padding: '2px 7px',
+                              borderRadius: 3,
+                              fontWeight: 700,
+                              letterSpacing: 0.5,
+                            }}>
+                              REMOVED
+                            </span>
+                            {item.sku && (
+                              <span style={{ fontSize: 11, color: '#666', fontFamily: 'monospace' }}>
+                                SKU: {item.sku}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap', color: '#777' }}>
+                          <div style={{ fontSize: 13, textDecoration: 'line-through' }}>
+                            {fmt(item.unit_price)} × {item.original_quantity}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2, textDecoration: 'line-through' }}>
+                            {fmt(item.total_price)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
 
                 {/* Primary action strip — Shopify-style compound button */}
                 {primaryAction && !isCancelled && (
