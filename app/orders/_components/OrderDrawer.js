@@ -141,8 +141,23 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   // shopify_raw.line_items se match karke (SKU/title/id se). Ye has_line_discount,
   // original_unit_price, effective_unit_price, line_discount deta hai jisse
   // frontend strikethrough original price + highlighted discounted price dikha sake.
+  //
+  // FIX Apr 2026 (additional) — Filter out items removed via Shopify Order Edit.
+  // Removed items have `current_quantity: 0` lekin abhi bhi line_items array
+  // mein hote hain. Inko show karne se ERP mein removed earrings/items dikhte
+  // thay (jaise ZEVAR-118275). Filter dono jagah lagana zaroori hai:
+  //   - Fallback path mein (jab order_items empty ho) — direct rendering
+  //   - Discount enrichment lookup mein — taa ke active item ka raw match
+  //     hamesha milay (filter na karein toh active + removed dono entries
+  //     same SKU rakh sakti hain)
+  const isActiveRawLineItem = (it) => {
+    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
+      return it.current_quantity > 0;
+    }
+    return (it?.quantity || 0) > 0;
+  };
   const buildItems = (ord) => {
-    const rawLineItems = ord.shopify_raw?.line_items || [];
+    const rawLineItems = (ord.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
     const enrichWithDiscount = (item) => {
       const raw = rawLineItems.find(r =>
         (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
@@ -167,16 +182,21 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
         .sort((a, b) => (a.id || 0) - (b.id || 0))
         .map(enrichWithDiscount);
     }
-    // Fallback: shopify_raw.line_items (purane orders ke liye)
-    return rawLineItems.map(item => ({
-      title: item.title + (item.variant_title ? ` - ${item.variant_title}` : ''),
-      sku: item.sku || null,
-      quantity: item.quantity,
-      unit_price: parseFloat(item.price) || 0,
-      total_price: (parseFloat(item.price) || 0) * item.quantity,
-      image_url: item.image?.src || null,
-      shopify_line_item_id: String(item.id),
-    })).map(enrichWithDiscount);
+    // Fallback: shopify_raw.line_items (purane orders ke liye) — already filtered above
+    return rawLineItems.map(item => {
+      const effectiveQty = (item.current_quantity !== undefined && item.current_quantity !== null)
+        ? item.current_quantity
+        : (item.quantity || 1);
+      return {
+        title: item.title + (item.variant_title ? ` - ${item.variant_title}` : ''),
+        sku: item.sku || null,
+        quantity: effectiveQty,
+        unit_price: parseFloat(item.price) || 0,
+        total_price: (parseFloat(item.price) || 0) * effectiveQty,
+        image_url: item.image?.src || null,
+        shopify_line_item_id: String(item.id),
+      };
+    }).map(enrichWithDiscount);
   };
   const [orderItems, setOrderItems] = useState(() => buildItems(order));
   const [customerOrders, setCustomerOrders] = useState([]);
