@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabase';
-import { fetchAllOrdersSince, transformOrder, transformLineItems } from '../../../../lib/shopify';
+import { fetchAllOrdersSince, transformOrder, transformLineItems, isActiveLineItem } from '../../../../lib/shopify';
 import { getSettings } from '../../../../lib/settings';
 
 // LOCKED_STATUSES also read from settings now, with sensible fallback
@@ -290,7 +290,15 @@ export async function POST(request) {
         const dbId = existingNoItemsMap.get(String(shopifyOrder.id));
         if (!dbId) continue;
         const dbCount = countByOrderId[dbId] || 0;
-        const shopifyCount = Array.isArray(shopifyOrder.line_items) ? shopifyOrder.line_items.length : 0;
+        // FIX Apr 2026 — Count only ACTIVE items (post-edit). Pehle
+        // `line_items.length` use karte thay jismein removed-by-edit items
+        // bhi count hote thay. Ab ye dbCount (jo filtered items rakhta hai)
+        // ke saath consistent hai. Bina is fix ke har sync run pe edited
+        // orders ke liye `dbCount !== shopifyCount` hamesha true hota aur
+        // wasteful re-sync trigger hota.
+        const shopifyCount = Array.isArray(shopifyOrder.line_items)
+          ? shopifyOrder.line_items.filter(isActiveLineItem).length
+          : 0;
 
         // Case 1: DB has no items → backfill (original behavior)
         // Case 2: Both sides have items but counts differ → order was edited,
