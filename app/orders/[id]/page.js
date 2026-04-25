@@ -376,7 +376,17 @@ export default function SingleOrderPage() {
   // We enrich each item with `effective_unit_price` + `line_discount` by
   // matching SKU/title from shopify_raw.line_items. Display shows strikethrough
   // original price when there's a per-line discount (like Rs 1,450 → Rs 1,380).
-  const rawLineItems = order.shopify_raw?.line_items || [];
+  //
+  // FIX Apr 2026 (additional) — Filter out items removed via Shopify Order Edit
+  // (current_quantity === 0). Removed items remain in line_items array for
+  // history but should not appear in ERP display.
+  const isActiveRawLineItem = (it) => {
+    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
+      return it.current_quantity > 0;
+    }
+    return (it?.quantity || 0) > 0;
+  };
+  const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
   const enrichItemWithDiscount = (item) => {
     // Try to match with raw Shopify line item by shopify_line_item_id, SKU, or title
     const raw = rawLineItems.find(r =>
@@ -399,15 +409,20 @@ export default function SingleOrderPage() {
 
   const items = ((order.order_items?.length > 0)
     ? order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
-    : rawLineItems.map(it => ({
-        title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
-        sku: it.sku || null,
-        quantity: it.quantity,
-        unit_price: parseFloat(it.price) || 0,
-        total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
-        image_url: null,
-        shopify_line_item_id: String(it.id),
-      }))
+    : rawLineItems.map(it => {
+        const effectiveQty = (it.current_quantity !== undefined && it.current_quantity !== null)
+          ? it.current_quantity
+          : (it.quantity || 0);
+        return {
+          title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+          sku: it.sku || null,
+          quantity: effectiveQty,
+          unit_price: parseFloat(it.price) || 0,
+          total_price: (parseFloat(it.price) || 0) * effectiveQty,
+          image_url: null,
+          shopify_line_item_id: String(it.id),
+        };
+      })
   ).map(enrichItemWithDiscount);
 
   const subtotal = parseFloat(order.subtotal || 0);
