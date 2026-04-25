@@ -25,7 +25,7 @@ import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import OrderDrawer, {
   StatusBadge, PaymentBadge, fmt, timeAgo,
-  gold, card, border, STATUS_CONFIG,
+  gold, card, border, STATUS_CONFIG, NO_CANCEL_FROM_UI,
 } from '../_components/OrderDrawer';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
@@ -167,6 +167,8 @@ export default function SingleOrderPage() {
   const [commentText, setCommentText] = useState('');
   const [showCancelBox, setShowCancelBox] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  // Apr 2026 — Super-admin force cancel for post-dispatch overrides (RTO/dispatched/delivered cleanup)
+  const [forceCancel, setForceCancel] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
   // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
@@ -307,9 +309,10 @@ export default function SingleOrderPage() {
 
   const cancelOrder = async () => {
     if (!cancelReason.trim()) { flash('error', 'Reason zaroori hai'); return; }
-    await doAction('/api/orders/cancel', { order_id: id, reason: cancelReason }, '✓ Order cancelled');
+    await doAction('/api/orders/cancel', { order_id: id, reason: cancelReason, force: forceCancel }, '✓ Order cancelled');
     setShowCancelBox(false);
     setCancelReason('');
+    setForceCancel(false);
   };
 
   const addComment = async () => {
@@ -959,14 +962,29 @@ export default function SingleOrderPage() {
                     placeholder="Kyun cancel kar rahe ho..."
                     style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                   />
+
+                  {/* Apr 2026 — Force cancel checkbox for super_admin only,
+                      visible only when order is in post-dispatch state */}
+                  {isCEO && NO_CANCEL_FROM_UI.has(order.status) && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer', marginTop: 3 }} />
+                      <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4 }}>
+                        <strong>Force cancel (admin override)</strong><br/>
+                        <span style={{ color: '#999', fontSize: 10 }}>
+                          Status '{order.status}' se cancel hoga. Yeh cleanup scenarios ke liye hai (out-of-sync orders, etc.)
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
                   <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-                    <button onClick={() => { setShowCancelBox(false); setCancelReason(''); }}
+                    <button onClick={() => { setShowCancelBox(false); setCancelReason(''); setForceCancel(false); }}
                       style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Back
                     </button>
                     <button onClick={cancelOrder} disabled={actionBusy || !cancelReason.trim()}
                       style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: (actionBusy || !cancelReason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !cancelReason.trim()) ? 0.5 : 1 }}>
-                      {actionBusy ? 'Cancelling…' : 'Confirm cancel'}
+                      {actionBusy ? 'Cancelling…' : (forceCancel ? '⚡ Force cancel' : 'Confirm cancel')}
                     </button>
                   </div>
                 </div>
