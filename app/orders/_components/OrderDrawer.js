@@ -78,7 +78,7 @@ export function PaymentBadge({ payment_status }) {
 }
 
 // ─── OrderDrawer (the main export) ───────────────────────────────────────
-export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer' }) {
+export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultEditMode = false }) {
   const isPage = variant === 'page';
   const { profile } = useUser();
   const userRole    = profile?.role || '';
@@ -135,7 +135,17 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   // Apr 2026 — Super-admin force cancel flag for post-dispatch overrides
   // (RTO/dispatched/delivered cleanup scenarios)
   const [forceCancel, setForceCancel] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(defaultEditMode);
+  // Apr 2026 — Agar parent ne defaultEditMode=true bheja hai (e.g., page.js
+  // ka Edit button click), toh drawer mount hote hi edit mode mein khulega
+  // aur tab "actions" pe set ho jayega taa ke Edit form turant visible ho.
+  useEffect(() => {
+    if (defaultEditMode) {
+      setEditMode(true);
+      setTab('actions');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [editForm, setEditForm] = useState({
     customer_name: order.customer_name || '',
     customer_phone: order.customer_phone || '',
@@ -429,6 +439,15 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     setLoading(false);
   };
   const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason, force: forceCancel }, '✅ Order cancelled');
+
+  // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
+  // tracking removed, courier cleared, status reverted (dispatched → confirmed).
+  // Confirms with native dialog before calling — destructive action.
+  const cancelFulfillment = async () => {
+    const reason = window.prompt('Fulfillment cancel karne ki wajah likho:\n(Tracking + courier hat jayegi, status confirmed pe wapas chala jayega)');
+    if (reason === null) return; // user cancelled
+    doAction('/api/orders/cancel-fulfillment', { order_id: order.id, reason: reason || 'No reason' }, '✅ Fulfillment cancelled — tracking removed');
+  };
   
   const saveEdit = async () => {
     setLoading(true); setMsg('');
@@ -1031,6 +1050,19 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 <button onClick={() => setStatus('rto')} disabled={loading}
                   style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   ↩️ Mark as RTO (manual)
+                </button>
+              )}
+
+              {/* Apr 2026 — Cancel Fulfillment (Shopify-style).
+                  Visible jab order pe tracking/fulfillment hai — useful jab
+                  staff ne accidentally galat courier book kar diya, ya order
+                  edit hua aur dobara book karna hai. Tracking + courier clear
+                  ho jate, status dispatched → confirmed wapas, Shopify side
+                  bhi cancel hoti hai (ya already cancelled hai toh skip). */}
+              {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
+                <button onClick={cancelFulfillment} disabled={loading}
+                  style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  🔄 Cancel Fulfillment (remove tracking)
                 </button>
               )}
 
