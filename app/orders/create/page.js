@@ -153,6 +153,7 @@ function CustomerSearch({ onSelect, onCreateNew }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     if (!query || query.length < 2) { setResults([]); return; }
@@ -168,8 +169,19 @@ function CustomerSearch({ onSelect, onCreateNew }) {
     return () => clearTimeout(t);
   }, [query]);
 
+  // Click-outside handler — dropdown band karne ke liye
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDropdown]);
+
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={containerRef} style={{ position: 'relative' }}>
       <input value={query} onChange={e => { setQuery(e.target.value); setShowDropdown(true); }}
         onFocus={() => setShowDropdown(true)}
         placeholder="🔍 Search or create a customer..." style={inpStyle} />
@@ -355,6 +367,9 @@ export default function CreateOrderPage() {
     if (!customer) { setError('Customer add karo'); return; }
     if (!customer.phone) { setError('Customer phone zaroori hai'); return; }
 
+    // Phone normalize karo: spaces, dashes, brackets hata do
+    const cleanPhone = String(customer.phone).replace(/[\s\-()]/g, '');
+
     setCreating(true);
     try {
       const tagsList = tags.split(',').map(t => t.trim()).filter(Boolean);
@@ -372,15 +387,16 @@ export default function CreateOrderPage() {
           customer: {
             first_name: customer.first_name,
             last_name:  customer.last_name,
-            phone:      customer.phone,
+            phone:      cleanPhone,
             email:      customer.email || undefined,
           },
           shipping_address: {
             address1: customer.address1 || '',
             city:     customer.city || 'Karachi',
             country:  'Pakistan',
+            phone:    cleanPhone,
           },
-          shipping_line: shippingAmt > 0 ? { title: 'Shipping Charges', price: parseFloat(shippingAmt) } : null,
+          shipping_line: parseFloat(shippingAmt) > 0 ? { title: 'Shipping Charges', price: parseFloat(shippingAmt) } : null,
           order_discount: orderDiscount,
           note,
           tags: [...tagsList, source].filter(Boolean),
