@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
+import { openCourierBooking } from '@/lib/courier-booking-urls';
 
 // ─── Shared style constants (mirrored from orders/page.js) ───────────────
 export const gold   = '#c9a96e';
@@ -966,6 +967,31 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   </button>
                   <div style={{ fontSize: 10, color: '#666', marginBottom: 10, textAlign: 'center', lineHeight: 1.4 }}>
                     Shopify pe already book ho chuka? Ye click karo.
+                  </div>
+
+                  {/* Apr 2026 — Book at courier via Shopify (temporary bridge).
+                      Staff ko Shopify Orders page access band karne ke baad,
+                      yahan se directly Shopify courier app khol sakte hain
+                      (naya tab) jisme order data prefilled aata hai. Booking
+                      complete karne ke baad wapas ERP me "Mark as Dispatched"
+                      click karna hai. */}
+                  <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, color: '#555', marginBottom: 6, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      — Book on Shopify (new tab) —
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => openCourierBooking('postex', order.shopify_order_id)} disabled={loading}
+                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🚚 PostEx
+                      </button>
+                      <button onClick={() => openCourierBooking('leopards', order.shopify_order_id)} disabled={loading}
+                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🚚 Leopards
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 6, textAlign: 'center', lineHeight: 1.4 }}>
+                      Shopify courier app khulega → book karke wapas aao → Mark as Dispatched
+                    </div>
                   </div>
 
                   {/* Secondary: ERP direct booking (Shopify pe book nahi hua) */}
