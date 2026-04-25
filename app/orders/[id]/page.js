@@ -168,6 +168,9 @@ export default function SingleOrderPage() {
   const [msg, setMsg] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [commentText, setCommentText] = useState('');
+  // Apr 2026 — In-place edit state for staff comments
+  const [editingId, setEditingId] = useState(null);     // id of comment being edited
+  const [editingText, setEditingText] = useState('');   // current edit textarea value
   const [showCancelBox, setShowCancelBox] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   // Apr 2026 — Super-admin force cancel for post-dispatch overrides (RTO/dispatched/delivered cleanup)
@@ -343,6 +346,63 @@ export default function SingleOrderPage() {
         flash('success', '✓ Comment added');
       } else {
         flash('error', d.error || 'Comment failed');
+      }
+    } catch (e) {
+      flash('error', e.message);
+    }
+    setActionBusy(false);
+  };
+
+  // Apr 2026 — Edit own comment (in-place)
+  const startEditComment = (comment) => {
+    setEditingId(comment.id);
+    setEditingText(comment.notes || '');
+  };
+  const cancelEditComment = () => {
+    setEditingId(null);
+    setEditingText('');
+  };
+  const saveEditComment = async () => {
+    const txt = editingText.trim();
+    if (!txt || !editingId) return;
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/comment', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, comment: txt, staff_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        cancelEditComment();
+        await loadTimeline();
+        flash('success', '✓ Comment updated');
+      } else {
+        flash('error', d.error || 'Edit failed');
+      }
+    } catch (e) {
+      flash('error', e.message);
+    }
+    setActionBusy(false);
+  };
+
+  // Apr 2026 — Delete own comment (with confirmation)
+  const deleteComment = async (commentId) => {
+    if (!commentId) return;
+    if (!window.confirm('Yeh comment delete kardenge?')) return;
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/comment', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: commentId, staff_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        await loadTimeline();
+        flash('success', '✓ Comment deleted');
+      } else {
+        flash('error', d.error || 'Delete failed');
       }
     } catch (e) {
       flash('error', e.message);
@@ -1135,7 +1195,7 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Timeline — unchanged */}
-            <Card title={`Timeline (${timeline.length})`}>
+            <Card title={`Timeline (${timeline.filter(l => !(l.action || '').startsWith('webhook:')).length})`}>
               {/* Comment input */}
               <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -1164,34 +1224,103 @@ export default function SingleOrderPage() {
 
               {/* Log */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {timeline.length === 0 && (
-                  <div style={{ textAlign: 'center', color: '#555', fontSize: 12, padding: 20 }}>No activity yet</div>
-                )}
-                {timeline.map(l => {
-                  const isComment = l.action === 'staff_comment';
-                  const actionColor = l.action?.startsWith('protocol_violation') ? '#f87171'
-                    : l.action === 'confirmed' ? '#3b82f6'
-                    : l.action === 'dispatched' ? '#a855f7'
-                    : l.action === 'delivered' ? '#22c55e'
-                    : l.action === 'cancelled' ? '#ef4444'
-                    : gold;
-                  return (
-                    <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : '#0f0f0f', border: `1px solid ${border}`, borderRadius: 7 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', color: actionColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>
-                        {isComment ? '💬' : '•'}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: actionColor, fontWeight: 600 }}>
-                          {(l.action || '').replace(/_/g, ' ')}
+                {(() => {
+                  // Apr 2026 — Hide webhook entries (Shopify sync noise).
+                  // Action prefix `webhook:` waale entries staff ke liye useless
+                  // hain. Sirf meaningful events dikhayenge: confirmations,
+                  // status changes, comments, dispatches, etc.
+                  const visibleTimeline = timeline.filter(l => !(l.action || '').startsWith('webhook:'));
+
+                  if (visibleTimeline.length === 0) {
+                    return <div style={{ textAlign: 'center', color: '#555', fontSize: 12, padding: 20 }}>No activity yet</div>;
+                  }
+
+                  return visibleTimeline.map(l => {
+                    const isComment = l.action === 'staff_comment';
+                    // Owner = jis user ne yeh comment likhi (apne email se match)
+                    const isOwnComment = isComment && l.performed_by_email && l.performed_by_email === userEmail;
+                    const isEditing = editingId === l.id;
+                    const wasEdited = !!l.edited_at;
+
+                    const actionColor = l.action?.startsWith('protocol_violation') ? '#f87171'
+                      : l.action === 'confirmed' ? '#3b82f6'
+                      : l.action === 'dispatched' ? '#a855f7'
+                      : l.action === 'delivered' ? '#22c55e'
+                      : l.action === 'cancelled' ? '#ef4444'
+                      : gold;
+
+                    return (
+                      <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : '#0f0f0f', border: `1px solid ${border}`, borderRadius: 7 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', color: actionColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>
+                          {isComment ? '💬' : '•'}
                         </div>
-                        {l.notes && <div style={{ fontSize: 13, color: '#ccc', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l.notes}</div>}
-                        <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-                          {l.performed_by || 'System'} · {formatShortDate(l.performed_at)}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* Header row: action label + edit/delete (own comments only) */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                            <div style={{ fontSize: 12, color: actionColor, fontWeight: 600 }}>
+                              {(l.action || '').replace(/_/g, ' ')}
+                              {wasEdited && (
+                                <span style={{ marginLeft: 6, fontSize: 10, color: '#888', fontWeight: 400, fontStyle: 'italic' }}>
+                                  (edited)
+                                </span>
+                              )}
+                            </div>
+                            {isOwnComment && !isEditing && (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  onClick={() => startEditComment(l)}
+                                  disabled={actionBusy}
+                                  title="Edit"
+                                  style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.color = gold; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
+                                  ✏️
+                                </button>
+                                <button
+                                  onClick={() => deleteComment(l.id)}
+                                  disabled={actionBusy}
+                                  title="Delete"
+                                  style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a0000'; e.currentTarget.style.color = '#ef4444'; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
+                                  🗑
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Body: textarea (edit mode) ya plain text */}
+                          {isEditing ? (
+                            <div style={{ marginTop: 6 }}>
+                              <textarea
+                                value={editingText}
+                                onChange={e => setEditingText(e.target.value)}
+                                rows={2}
+                                style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                              />
+                              <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
+                                <button onClick={cancelEditComment} disabled={actionBusy}
+                                  style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 5, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                  Cancel
+                                </button>
+                                <button onClick={saveEditComment} disabled={actionBusy || !editingText.trim()}
+                                  style={{ background: gold, border: 'none', color: '#000', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: (actionBusy || !editingText.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !editingText.trim()) ? 0.5 : 1 }}>
+                                  {actionBusy ? '...' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            l.notes && <div style={{ fontSize: 13, color: '#ccc', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l.notes}</div>
+                          )}
+
+                          <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+                            {l.performed_by || 'System'} · {formatShortDate(l.performed_at)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </Card>
           </div>
