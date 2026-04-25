@@ -484,7 +484,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState(''); // debounced version used by API
-  const [filter, setFilter] = useState({ type: null, value: null }); // unified filter
+  // Apr 2026 — Default tab: Unfulfilled (operational view "kya pack karna hai").
+  // User can switch to "All Orders" anytime by clicking that tab.
+  const [filter, setFilter] = useState({ type: 'fulfillment', value: 'unfulfilled' });
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
