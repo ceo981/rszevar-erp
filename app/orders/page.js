@@ -809,6 +809,7 @@ export default function OrdersPage() {
         <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
           {[
             { label: 'All Orders', value: null, color: gold, count: globalCounts.pending + globalCounts.confirmed + globalCounts.on_packing + globalCounts.packed + globalCounts.dispatched + globalCounts.delivered + globalCounts.attempted + globalCounts.hold + globalCounts.rto + globalCounts.cancelled },
+            { label: '📦 Unfulfilled', value: 'unfulfilled', filterType: 'fulfillment', color: '#f59e0b', count: globalCounts.unfulfilled || 0, tooltip: 'Shopify side pe abhi tak fulfill nahi hue — yahi pack karne hain' },
             { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending },
             { label: 'Confirmed',  value: 'confirmed',  color: '#3b82f6', count: globalCounts.confirmed },
             { label: 'On Packing', value: 'on_packing', color: '#f59e0b', count: globalCounts.on_packing },
