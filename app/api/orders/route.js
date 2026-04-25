@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
 
 export async function GET(request) {
   try {
@@ -30,21 +31,26 @@ export async function GET(request) {
 
       // Fallback: shopify_raw.line_items for old orders where order_items
       // was never backfilled. Needed so drawer/single-page can show images.
+      // FIX Apr 2026 — Filter out items removed via Shopify Order Edit
+      // (current_quantity === 0). See lib/shopify.js#isActiveLineItem.
       if (rows.length === 0) {
         const { data: orderRow } = await supabase
           .from('orders')
           .select('shopify_raw')
           .eq('id', order_id)
           .maybeSingle();
-        const rawItems = orderRow?.shopify_raw?.line_items || [];
-        rows = rawItems.map(it => ({
-          title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
-          sku: it.sku || null,
-          quantity: it.quantity,
-          unit_price: parseFloat(it.price) || 0,
-          total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
-          image_url: it.image?.src || null,
-        }));
+        const rawItems = (orderRow?.shopify_raw?.line_items || []).filter(isActiveLineItem);
+        rows = rawItems.map(it => {
+          const qty = getEffectiveQuantity(it);
+          return {
+            title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+            sku: it.sku || null,
+            quantity: qty,
+            unit_price: parseFloat(it.price) || 0,
+            total_price: (parseFloat(it.price) || 0) * qty,
+            image_url: it.image?.src || null,
+          };
+        });
       }
 
       // Enrich: items jinka image_url null ho, products table se SKU match karke image lao
