@@ -137,10 +137,16 @@ export async function GET(request) {
       // tak fulfill nahi hua. JSONB query: shopify_raw.fulfillment_status null
       // hai (no fulfillment) ya 'partial' (kuch items reh gaye). Yeh ERP status
       // ke alag hai — yahan Shopify ki nazar se filter ho raha.
-      // Cancelled orders exclude karte hain — operational tab hai "kya pack
-      // karna hai" ke liye, cancelled ko show karna noise hota.
+      //
+      // 3 exclusions for clean operational view:
+      //   (a) ERP status cancelled — local cancel
+      //   (b) Shopify cancelled_at set — Shopify side cancelled (catches
+      //       orphan orders jahan webhook miss ho gaya aur ERP status update
+      //       nahi hua)
+      //   (c) fulfillment_status null/partial — kya Shopify ne fulfill kiya
       if (fulfillment === 'unfulfilled') {
         q = q.neq('status', 'cancelled')
+             .is('shopify_raw->>cancelled_at', null)
              .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
       }
       if (dateFrom) q = q.gte('created_at', dateFrom);
@@ -243,11 +249,11 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
-      // FIX Apr 2026 — Shopify "unfulfilled" count (excluding cancelled).
-      // Cancelled orders technically be unfulfilled too lekin operational
-      // count mein rehna chahiye to "kya pack karna hai" wo hi dikhe.
+      // FIX Apr 2026 — Shopify "unfulfilled" count (operational view).
+      // Match karta hai applyFilters mein wala logic — 3 exclusions.
       supabase.from('orders').select('*', { count: 'exact', head: true })
         .neq('status', 'cancelled')
+        .is('shopify_raw->>cancelled_at', null)
         .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
     ]);
 
