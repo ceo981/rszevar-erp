@@ -42,153 +42,6 @@ const PAYMENT_CONFIG = {
   refunded: { label: 'Refunded', color: '#fbbf24', bg: '#fbbf2422' },
 };
 
-function DraftOrderModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({
-    customer_name: '', customer_phone: '', customer_address: '', customer_city: '', note: '', source: 'WhatsApp',
-  });
-  const [items, setItems] = useState([]);
-  const [productSearch, setProductSearch] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const searchProducts = async (q) => {
-    if (!q || q.length < 2) { setSearchResults([]); return; }
-    setSearching(true);
-    const r = await fetch(`/api/products?search=${encodeURIComponent(q)}&view=flat&limit=10`);
-    const d = await r.json();
-    setSearchResults(d.products || []);
-    setSearching(false);
-  };
-
-  const addItem = (product) => {
-    const existing = items.find(i => i.shopify_variant_id === product.shopify_variant_id);
-    if (existing) {
-      setItems(items.map(i => i.shopify_variant_id === product.shopify_variant_id ? { ...i, quantity: i.quantity + 1 } : i));
-    } else {
-      setItems([...items, { ...product, quantity: 1, price: product.selling_price }]);
-    }
-    setProductSearch('');
-    setSearchResults([]);
-  };
-
-  const create = async () => {
-    if (!form.customer_name || !form.customer_phone) { setMsg('❌ Name aur phone zaroori hai'); return; }
-    if (items.length === 0) { setMsg('❌ Kam az kam 1 product add karo'); return; }
-    setCreating(true);
-    try {
-      const r = await fetch('/api/orders/draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, line_items: items }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        // Shopify draft order directly open karo — wahan se shipping, discount, create order
-        const shopifyDraftUrl = `https://rszevar.myshopify.com/admin/draft_orders/${d.draft_order_id}`;
-        window.open(shopifyDraftUrl, '_blank');
-        onCreated?.();
-        onClose();
-      } else setMsg('❌ ' + d.error);
-    } catch(e) { setMsg('❌ ' + e.message); }
-    setCreating(false);
-  };
-
-  const inpStyle = { width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 540, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, color: '#a855f7' }}>+ Draft Order (WhatsApp)</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-          {[['Customer Name *', 'customer_name'], ['Phone *', 'customer_phone'], ['City', 'customer_city']].map(([lbl, key]) => (
-            <div key={key}>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>{lbl}</div>
-              <input value={form[key]} onChange={e => setForm(f => ({...f, [key]: e.target.value}))} style={inpStyle} />
-            </div>
-          ))}
-          <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Source</div>
-            <select value={form.source} onChange={e => setForm(f => ({...f, source: e.target.value}))} style={inpStyle}>
-              {['WhatsApp', 'Facebook', 'Instagram', 'Walk-in', 'Phone Call'].map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Address</div>
-          <input value={form.customer_address} onChange={e => setForm(f => ({...f, customer_address: e.target.value}))} style={inpStyle} />
-        </div>
-
-        {/* Product Search */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Products Add Karo</div>
-          <div style={{ position: 'relative' }}>
-            <input value={productSearch}
-              onChange={e => { setProductSearch(e.target.value); searchProducts(e.target.value); }}
-              placeholder="SKU ya naam se search karo..."
-              style={{ ...inpStyle, borderColor: '#a855f7' }} />
-            {(searchResults.length > 0 || searching) && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 7, zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
-                {searching ? <div style={{ padding: 10, color: '#555', fontSize: 12 }}>Searching...</div> :
-                  searchResults.map(p => (
-                    <div key={p.id} onClick={() => addItem(p)}
-                      style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: `1px solid #222`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#252525'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                      <div>
-                        <div style={{ fontSize: 12, color: '#e2e8f0' }}>{p.title}</div>
-                        <div style={{ fontSize: 10, color: '#555' }}>{p.sku}</div>
-                      </div>
-                      <div style={{ color: gold, fontSize: 12, fontWeight: 600 }}>Rs {(p.selling_price || 0).toLocaleString()}</div>
-                    </div>
-                  ))
-                }
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Items list */}
-        {items.length > 0 && (
-          <div style={{ marginBottom: 12, background: '#111', borderRadius: 8, padding: 10 }}>
-            {items.map((item, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < items.length - 1 ? `1px solid #222` : 'none' }}>
-                <div style={{ flex: 1, fontSize: 12, color: '#e2e8f0' }}>{item.title}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input type="number" min="1" value={item.quantity}
-                    onChange={e => setItems(items.map((it, j) => j === i ? {...it, quantity: parseInt(e.target.value) || 1} : it))}
-                    style={{ width: 50, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 12, textAlign: 'center' }} />
-                  <div style={{ color: gold, fontSize: 12, width: 80, textAlign: 'right' }}>Rs {((item.price || 0) * item.quantity).toLocaleString()}</div>
-                  <button onClick={() => setItems(items.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}>✕</button>
-                </div>
-              </div>
-            ))}
-            <div style={{ textAlign: 'right', marginTop: 8, fontWeight: 700, color: gold }}>
-              Total: Rs {items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0).toLocaleString()}
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Note (optional)</div>
-          <input value={form.note} onChange={e => setForm(f => ({...f, note: e.target.value}))} placeholder="Customer ne kya kaha..." style={inpStyle} />
-        </div>
-
-        {msg && <div style={{ marginBottom: 10, fontSize: 13, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
-        <button onClick={create} disabled={creating}
-          style={{ width: '100%', background: '#a855f7', color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-          {creating ? 'Creating...' : '🚀 Shopify Draft Order Create Karo'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function StatusBadge({ status }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
   return (
@@ -636,7 +489,6 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [showDraft, setShowDraft] = useState(false);
   // FIX: cleaning state + button removed — /api/orders/cleanup endpoint doesn't exist (404)
   const [syncMsg, setSyncMsg] = useState(null);
   const [lastSync, setLastSync] = useState(null);
@@ -884,7 +736,6 @@ export default function OrdersPage() {
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
-      {showDraft && <DraftOrderModal onClose={() => setShowDraft(false)} onCreated={() => { load(); setShowDraft(false); }} />}
       {selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onRefresh={() => load()} performer={performer} />}
 
       {/* Bulk action modals */}
@@ -1035,11 +886,6 @@ export default function OrdersPage() {
         />
 
         <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
-
-        <button onClick={() => setShowDraft(true)}
-          style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid #a855f7', color: '#a855f7', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          + Quick Draft
-        </button>
 
         <Link href="/orders/create"
           style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: '1px solid #22c55e', color: '#000', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
