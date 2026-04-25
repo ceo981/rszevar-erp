@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { canTransition } from '@/lib/order-status';
-import { updateShopifyOrderTags } from '@/lib/shopify';
+import { updateShopifyOrderTags, isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,20 +48,24 @@ async function computePackingCredits(supabase, order_id) {
   }, 0);
 
   // Tier 2: shopify_raw fallback
+  // FIX Apr 2026 — Filter out items removed via Shopify Order Edit
+  // (current_quantity === 0). Bina filter ke removed items bhi packing
+  // credit mein count ho jate thay, packer ko zyada Rs credit milta tha.
+  // Use getEffectiveQuantity for partial reductions (qty 3 → 2).
   if (totalItems === 0 || totalAmount === 0) {
     const { data: ordRaw } = await supabase
       .from('orders')
       .select('shopify_raw')
       .eq('id', order_id)
       .maybeSingle();
-    const rawItems = ordRaw?.shopify_raw?.line_items || [];
+    const rawItems = (ordRaw?.shopify_raw?.line_items || []).filter(isActiveLineItem);
     if (totalItems === 0) {
-      totalItems = rawItems.reduce((s, i) => s + (parseInt(i.quantity) || 1), 0);
+      totalItems = rawItems.reduce((s, i) => s + getEffectiveQuantity(i), 0);
     }
     if (totalAmount === 0) {
       totalAmount = rawItems.reduce((s, i) => {
         const price = parseFloat(i.price) || 0;
-        const qty = parseInt(i.quantity) || 1;
+        const qty = getEffectiveQuantity(i);
         return s + price * qty;
       }, 0);
     }
