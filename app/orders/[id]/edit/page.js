@@ -27,6 +27,7 @@ import OrderDrawer, {
   StatusBadge, PaymentBadge, fmt, timeAgo,
   gold, card, border, STATUS_CONFIG,
 } from '../../_components/OrderDrawer';
+import { openCourierBooking } from '@/lib/courier-booking-urls';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
 function formatFullDate(iso) {
@@ -554,8 +555,8 @@ export default function SingleOrderPage() {
                     <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
                     <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
                     <div style={{ height: 1, background: border, margin: '4px 0' }} />
-                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => comingSoon('Manual courier booking', 5)} />
-                    <MenuItem icon="🚚" label="Book at Leopards" onClick={() => comingSoon('Manual courier booking', 5)} />
+                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
+                    <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
                   </div>
                 )}
               </div>
