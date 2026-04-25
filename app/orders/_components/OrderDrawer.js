@@ -15,6 +15,13 @@ export const gold   = '#c9a96e';
 export const card   = '#141414';
 export const border = '#222';
 
+// Statuses jahan normal cancel block hota hai (post-dispatch zone).
+// Frontend uses this to show "Force cancel (admin)" checkbox for super_admin
+// only when the order is in one of these states. Backend has same set —
+// duplicated here taa ke frontend bhi correct UI dikha sake bina extra
+// API call ke.
+export const NO_CANCEL_FROM_UI = new Set(['dispatched', 'delivered', 'rto', 'returned', 'refunded']);
+
 // ─── Shared helpers ──────────────────────────────────────────────────────
 export const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 export const timeAgo = iso => {
@@ -124,6 +131,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     pieces: 1,
   });
   const [cancelReason, setCancelReason] = useState('');
+  // Apr 2026 — Super-admin force cancel flag for post-dispatch overrides
+  // (RTO/dispatched/delivered cleanup scenarios)
+  const [forceCancel, setForceCancel] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
     customer_name: order.customer_name || '',
@@ -417,7 +427,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     }
     setLoading(false);
   };
-  const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason }, '✅ Order cancelled');
+  const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason, force: forceCancel }, '✅ Order cancelled');
   
   const saveEdit = async () => {
     setLoading(true); setMsg('');
@@ -1003,8 +1013,26 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
                   <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
                     placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+
+                  {/* Apr 2026 — Force cancel option for super_admin only.
+                      Allows cancelling RTO/dispatched/delivered orders for
+                      cleanup scenarios (e.g., orphan orders out-of-sync with
+                      Shopify, or admin discretion calls). Activity log captures
+                      this clearly so audit trail mein force override visible hai. */}
+                  {isCEO && (NO_CANCEL_FROM_UI.has(s)) && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer' }} />
+                      <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4 }}>
+                        <strong>Force cancel (admin override)</strong><br/>
+                        <span style={{ color: '#999', fontSize: 10 }}>
+                          Status '{s}' se cancel hoga. RTO/dispatch ke liye normal flow allowed nahi — yeh sirf cleanup ke liye hai.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+
                   <button onClick={cancel} disabled={loading} style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
-                    Cancel Order
+                    {forceCancel ? '⚡ Force Cancel Order' : 'Cancel Order'}
                   </button>
                 </div>
               )}
