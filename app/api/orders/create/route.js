@@ -88,13 +88,15 @@ function buildShopifyPayload(body) {
       li.price = String(item.unit_price);
     }
 
-    // Per-line discount (Shopify Draft Order API supports this)
+    // Per-line discount (Shopify Draft Order API supports this).
+    // CRITICAL: `amount` field NOT pass karna — Shopify khud calculate karta
+    // hai value + value_type + line subtotal se. Manually pass karne se
+    // Shopify literal use kar sakta hai (e.g., 0 → koi discount nahi).
     if (item.discount && item.discount.value > 0) {
       li.applied_discount = {
         title: item.discount.title || 'Manual discount',
         value_type: item.discount.type === 'percentage' ? 'percentage' : 'fixed_amount',
         value: String(item.discount.value),
-        amount: String(item.discount.amount || 0),
         description: item.discount.description || 'ERP manual discount',
       };
     }
@@ -142,13 +144,13 @@ function buildShopifyPayload(body) {
     };
   }
 
-  // Order-level discount (line-level discount se alag)
+  // Order-level discount (line-level discount se alag).
+  // Same fix as line-level: `amount` field NOT pass — Shopify auto-calculates.
   if (order_discount && order_discount.value > 0) {
     draftOrder.applied_discount = {
       title: order_discount.title || 'Order discount',
       value_type: order_discount.type === 'percentage' ? 'percentage' : 'fixed_amount',
       value: String(order_discount.value),
-      amount: String(order_discount.amount || 0),
       description: order_discount.description || 'ERP order discount',
     };
   }
