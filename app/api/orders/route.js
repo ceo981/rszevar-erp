@@ -105,6 +105,7 @@ export async function GET(request) {
     const type = searchParams.get('type');         // wholesale | international | walkin
     const payment = searchParams.get('payment');   // paid | unpaid | refunded
     const review = searchParams.get('review');     // wa_cancelled (whatsapp cancel review)
+    const fulfillment = searchParams.get('fulfillment'); // unfulfilled — Shopify side (NEW)
     const dateFrom = searchParams.get('from');
     const dateTo = searchParams.get('to');
     const sort = searchParams.get('sort') || 'created_at';
@@ -131,6 +132,16 @@ export async function GET(request) {
       if (review === 'wa_cancelled') {
         // WhatsApp-cancelled orders pending team review
         q = q.eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]');
+      }
+      // FIX Apr 2026 — Shopify "unfulfilled" filter: order Shopify side pe abhi
+      // tak fulfill nahi hua. JSONB query: shopify_raw.fulfillment_status null
+      // hai (no fulfillment) ya 'partial' (kuch items reh gaye). Yeh ERP status
+      // ke alag hai — yahan Shopify ki nazar se filter ho raha.
+      // Cancelled orders exclude karte hain — operational tab hai "kya pack
+      // karna hai" ke liye, cancelled ko show karna noise hota.
+      if (fulfillment === 'unfulfilled') {
+        q = q.neq('status', 'cancelled')
+             .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
       }
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
@@ -211,6 +222,7 @@ export async function GET(request) {
       { count: gPaid },
       { count: gUnpaid },
       { count: gWaCancelled },
+      { count: gUnfulfilled },
     ] = await Promise.all([
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
@@ -231,6 +243,12 @@ export async function GET(request) {
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
+      // FIX Apr 2026 — Shopify "unfulfilled" count (excluding cancelled).
+      // Cancelled orders technically be unfulfilled too lekin operational
+      // count mein rehna chahiye to "kya pack karna hai" wo hi dikhe.
+      supabase.from('orders').select('*', { count: 'exact', head: true })
+        .neq('status', 'cancelled')
+        .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
     ]);
 
     const globalCounts = {
@@ -253,6 +271,7 @@ export async function GET(request) {
       paid: gPaid || 0,
       unpaid: gUnpaid || 0,
       wa_cancelled: gWaCancelled || 0,
+      unfulfilled: gUnfulfilled || 0,
     };
 
     // ── Batch-fetch assignments for these orders ──
