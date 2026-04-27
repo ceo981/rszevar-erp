@@ -478,8 +478,12 @@ export async function POST(request) {
     const netSettlement = totalCOD - totalDeliveryCharges - totalTaxes;
 
     // Map to actual courier_settlements schema columns
+    // FIX Apr 27 2026: courier_name enum lowercase only ('leopards', 'kangaroo', 'postex')
+    // Code mein 'Leopards' / 'Kangaroo' / 'PostEx' (PascalCase) use hote hain — yahaan
+    // lowercase karna zaroori hai warna INSERT silently fail ho jaata hai aur
+    // courier_settlements table mein record nahi jaata.
     const { error: settlementErr } = await supabase.from('courier_settlements').insert({
-      courier,
+      courier: courier.toLowerCase(),
       invoice_number: referenceNo || null,
       invoice_date: settledAt || null,
       settlement_period_start: settledAt || null,
@@ -505,8 +509,14 @@ export async function POST(request) {
       updated_at: now,
     });
 
+    // FIX Apr 27 2026: Surface INSERT errors to frontend instead of silent fail.
+    // Pehle yeh sirf console.error tha — agar settlement insert fail hota tha
+    // toh user ko success message milta tha lekin history mein record dikhta nahi tha.
+    // Ab errors array mein add ho jata hai jo frontend message mein dikhega.
+    let settlementSaveError = null;
     if (settlementErr) {
       console.error('[settlement-upload] courier_settlements insert error:', settlementErr.message);
+      settlementSaveError = `Settlement record save nahi ho saka: ${settlementErr.message}`;
     }
 
     return NextResponse.json({
@@ -522,8 +532,10 @@ export async function POST(request) {
       skipped: skipped.length,
       total_parsed: parsed.orders.length,
       meta: parsed.meta,
-      errors: errors.length > 0 ? errors : undefined,
-      message: `✅ ${paidCount} orders paid marked, ${rtoCount} RTO marked — ${courier} settlement complete!${errors.length > 0 ? ` ⚠️ ${errors[0]}` : ''}`,
+      errors: [...(errors || []), ...(settlementSaveError ? [settlementSaveError] : [])].length > 0
+        ? [...(errors || []), ...(settlementSaveError ? [settlementSaveError] : [])]
+        : undefined,
+      message: `✅ ${paidCount} orders paid marked, ${rtoCount} RTO marked — ${courier} settlement complete!${settlementSaveError ? ` ⚠️ ${settlementSaveError}` : (errors.length > 0 ? ` ⚠️ ${errors[0]}` : '')}`,
     });
 
   } catch (err) {
