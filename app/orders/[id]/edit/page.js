@@ -290,6 +290,129 @@ function DiscountModal({ item, onClose, onApply }) {
   );
 }
 
+// ─── Custom Item Modal ───────────────────────────────────────────────────────
+// Shopify-style "Add custom item" — for off-catalog products / custom prices.
+// Maps to stageAddCustomItem in lib/shopify-order-edit.js
+function CustomItemModal({ onClose, onAdd }) {
+  const [title, setTitle] = useState('');
+  const [price, setPrice] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [taxable, setTaxable] = useState(false);          // PK no sales tax — default off
+  const [physical, setPhysical] = useState(true);         // jewelry needs shipping
+  const titleRef = useRef(null);
+
+  useEffect(() => { titleRef.current?.focus(); }, []);
+
+  const valid = title.trim() && parseFloat(price) > 0 && parseInt(quantity) >= 1;
+
+  const apply = () => {
+    if (!valid) return;
+    onAdd({
+      title: title.trim(),
+      price: parseFloat(price),
+      quantity: parseInt(quantity),
+      taxable,
+      requires_shipping: physical,
+    });
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      zIndex: 3100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 20,
+    }}>
+      <div style={{
+        background: card, border: `1px solid ${border}`, borderRadius: 12,
+        width: 560, maxWidth: '100%',
+      }}>
+        <div style={{
+          padding: '16px 20px', borderBottom: `1px solid ${border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Add custom item</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+              Item name <span style={{ color: '#e8a76d' }}>*</span>
+            </div>
+            <input ref={titleRef} type="text" value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Custom bridal set / Repair charges"
+              style={inpStyle} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+                Price (Rs) <span style={{ color: '#e8a76d' }}>*</span>
+              </div>
+              <input type="number" min="0" step="0.01" value={price}
+                onChange={e => setPrice(e.target.value)}
+                placeholder="0.00" style={inpStyle} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Quantity</div>
+              <input type="number" min="1" value={quantity}
+                onChange={e => setQuantity(e.target.value)}
+                style={inpStyle} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 13, color: '#ccc', cursor: 'pointer', padding: '6px 0',
+            }}>
+              <input type="checkbox" checked={taxable}
+                onChange={e => setTaxable(e.target.checked)}
+                style={{ cursor: 'pointer' }} />
+              Item is taxable
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              fontSize: 13, color: '#ccc', cursor: 'pointer', padding: '6px 0',
+            }}>
+              <input type="checkbox" checked={physical}
+                onChange={e => setPhysical(e.target.checked)}
+                style={{ cursor: 'pointer' }} />
+              Item is a physical product (needs shipping)
+            </label>
+          </div>
+
+          {price && parseFloat(price) > 0 && parseInt(quantity) >= 1 && (
+            <div style={{
+              marginTop: 10, padding: '8px 12px', borderRadius: 5,
+              background: 'rgba(201,169,110,0.06)',
+              border: `1px solid rgba(201,169,110,0.2)`,
+              fontSize: 12, color: '#aaa',
+              display: 'flex', justifyContent: 'space-between',
+            }}>
+              <span>Line total ({quantity} × {fmt(price)})</span>
+              <span style={{ color: gold, fontWeight: 600 }}>
+                {fmt(parseFloat(price) * parseInt(quantity))}
+              </span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+            <button onClick={onClose} style={btnGhost}>Cancel</button>
+            <button onClick={apply} disabled={!valid}
+              style={{
+                ...btnPrimary,
+                opacity: valid ? 1 : 0.4,
+                cursor: valid ? 'pointer' : 'not-allowed',
+              }}>Add item</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function OrderEditPage() {
   const { id } = useParams();
@@ -309,6 +432,7 @@ export default function OrderEditPage() {
   const [hasChanges, setHasChanges] = useState(false);
 
   const [showPicker, setShowPicker] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
   const [discountFor, setDiscountFor] = useState(null); // item being discounted
 
   const [reason, setReason] = useState('');
@@ -417,6 +541,16 @@ export default function OrderEditPage() {
         quantity: v.quantity || 1,
       }, `${v.title || 'Product'} add ho raha hai...`);
     }
+  };
+
+  const addCustomItem = async (payload) => {
+    await stage('add_custom', {
+      title: payload.title,
+      price: payload.price,
+      quantity: payload.quantity,
+      taxable: payload.taxable,
+      requires_shipping: payload.requires_shipping,
+    }, `Custom item "${payload.title}" add ho raha hai...`);
   };
 
   const applyDiscount = async (item, payload) => {
@@ -568,12 +702,20 @@ export default function OrderEditPage() {
         {/* ── Left column: items + shipping ── */}
         <div>
           <Card title="Items" right={
-            <button onClick={() => setShowPicker(true)} disabled={busy} style={{
-              background: 'transparent', border: `1px solid ${gold}`, color: gold,
-              borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500,
-              cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
-              fontFamily: 'inherit',
-            }}>+ Add product</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => setShowCustom(true)} disabled={busy} style={{
+                background: 'transparent', border: `1px solid ${border}`, color: '#ccc',
+                borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
+                fontFamily: 'inherit',
+              }}>+ Custom item</button>
+              <button onClick={() => setShowPicker(true)} disabled={busy} style={{
+                background: 'transparent', border: `1px solid ${gold}`, color: gold,
+                borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500,
+                cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
+                fontFamily: 'inherit',
+              }}>+ Add product</button>
+            </div>
           }>
             {calcOrder.items.length === 0 ? (
               <div style={{ padding: 20, textAlign: 'center', color: '#666', fontSize: 12 }}>
@@ -776,6 +918,9 @@ export default function OrderEditPage() {
 
       {showPicker && (
         <ProductPicker onClose={() => setShowPicker(false)} onAdd={addProducts} />
+      )}
+      {showCustom && (
+        <CustomItemModal onClose={() => setShowCustom(false)} onAdd={addCustomItem} />
       )}
       {discountFor && (
         <DiscountModal item={discountFor} onClose={() => setDiscountFor(null)}
