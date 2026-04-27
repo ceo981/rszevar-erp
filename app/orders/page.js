@@ -807,24 +807,34 @@ export default function OrdersPage() {
       </div>
 
       {/* ── Status Tabs ── */}
-      <div style={{ marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
-        <div style={{ display: 'flex', gap: 4, minWidth: 'max-content' }}>
+      {/* Apr 27 2026 redesign:
+          - flex-wrap: wide screens 1 row, narrow screens auto-wraps to 2 rows
+          - Logical sequence: Overview → Active Workflow → Side States → Payment → Closed/Exception
+          - groupStart flag: extra left margin between groups for visual separation
+          - Tighter padding (8/12 vs 9/14) to fit more on one row */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, rowGap: 6, alignItems: 'flex-end' }}>
           {[
+            // ── Overview ──
             { label: 'All Orders', value: null, color: gold, count: globalCounts.pending + globalCounts.confirmed + globalCounts.on_packing + globalCounts.packed + globalCounts.dispatched + globalCounts.delivered + globalCounts.attempted + globalCounts.hold + globalCounts.rto + globalCounts.cancelled },
-            { label: '📦 Unfulfilled', value: 'unfulfilled', filterType: 'fulfillment', color: '#f59e0b', count: globalCounts.unfulfilled || 0, tooltip: 'Shopify side pe abhi tak fulfill nahi hue — yahi pack karne hain' },
-            { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending },
+            { label: '📦 Unfulfilled', value: 'unfulfilled', filterType: 'fulfillment', color: '#f59e0b', count: globalCounts.unfulfilled || 0, tooltip: 'Shopify side pe abhi tak fulfill nahi hue — yahi pack karne hain', groupStart: true },
+            // ── Active Workflow (forward flow) ──
+            { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending, groupStart: true },
             { label: 'Confirmed',  value: 'confirmed',  color: '#3b82f6', count: globalCounts.confirmed },
             { label: 'On Packing', value: 'on_packing', color: '#f59e0b', count: globalCounts.on_packing },
             { label: 'Packed',     value: 'packed',     color: '#06b6d4', count: globalCounts.packed },
             { label: 'Dispatched', value: 'dispatched', color: '#a855f7', count: globalCounts.dispatched },
             { label: 'Delivered',  value: 'delivered',  color: '#22c55e', count: globalCounts.delivered },
-            { label: 'Attempted',  value: 'attempted',  color: '#f97316', count: globalCounts.attempted },
+            // ── Side States (delivery exceptions) ──
+            { label: 'Attempted',  value: 'attempted',  color: '#f97316', count: globalCounts.attempted, groupStart: true },
             { label: 'Hold',       value: 'hold',       color: '#64748b', count: globalCounts.hold },
             { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
-            { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled },
-            { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
+            // ── Payment ──
+            { label: '⏳ Pending Payment', value: 'pending_payment', filterType: 'payment_state', color: '#f59e0b', count: globalCounts.pending_payment || 0, tooltip: 'Order delivered ho chuka hai lekin courier se abhi paisa nahi aaya', groupStart: true },
             { label: '💰 Paid',           value: 'paid',            filterType: 'payment_state', color: '#10b981', count: globalCounts.paid || 0, tooltip: 'Courier ne payment settle kar di — paisa account mein aagaya' },
-            { label: '⏳ Pending Payment', value: 'pending_payment', filterType: 'payment_state', color: '#f59e0b', count: globalCounts.pending_payment || 0, tooltip: 'Order delivered ho chuka hai lekin courier se abhi paisa nahi aaya' },
+            // ── Closed / Exceptions ──
+            { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled, groupStart: true },
+            { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
           ].map(tab => {
             const tabFilterType = tab.filterType || 'status';
             const isActive = tab.value === null
@@ -844,7 +854,7 @@ export default function OrdersPage() {
                   borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
                   color: isActive ? tab.color : '#555',
                   borderRadius: '8px 8px 0 0',
-                  padding: '9px 14px',
+                  padding: '8px 12px',
                   fontSize: 12,
                   fontWeight: isActive ? 600 : 400,
                   cursor: 'pointer',
@@ -854,6 +864,7 @@ export default function OrdersPage() {
                   whiteSpace: 'nowrap',
                   fontFamily: 'inherit',
                   transition: 'all 0.15s',
+                  marginLeft: tab.groupStart ? 8 : 0,
                 }}
               >
                 {tab.label}
