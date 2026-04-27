@@ -165,9 +165,6 @@ export default function SingleOrderPage() {
   const [timeline, setTimeline] = useState([]);
   const [packingStaff, setPackingStaff] = useState([]);
   const [showDrawer, setShowDrawer] = useState(false);
-  // Apr 2026 — Track if drawer should open in edit mode (Edit button click).
-  // OrderDrawer accepts `defaultEditMode` prop to start in edit form view.
-  const [drawerEditMode, setDrawerEditMode] = useState(false);
   const [msg, setMsg] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -633,13 +630,8 @@ export default function SingleOrderPage() {
                 </HeaderBtn>
               )}
 
-              {/* Apr 2026 — Edit button now opens drawer in edit mode.
-                  Pehle yeh /orders/[id]/edit pe navigate karta tha lekin woh
-                  page actually broken duplicate hai (just a stale copy of this
-                  page without real edit functionality). OrderDrawer mein actual
-                  edit form hai (customer name/phone/address/city/notes) jo
-                  /api/orders/edit endpoint use karta hai. */}
-              <HeaderBtn onClick={() => { setDrawerEditMode(true); setShowDrawer(true); }} title="Edit order details (customer info, address, notes)">
+              {/* Edit — goes to Shopify-style line items edit page */}
+              <HeaderBtn onClick={() => router.push(`/orders/${id}/edit`)} title="Edit order line items (add/remove/qty/discount/shipping)">
                 ✏️ Edit
               </HeaderBtn>
 
@@ -1444,11 +1436,10 @@ export default function SingleOrderPage() {
       {showDrawer && (
         <OrderDrawer
           order={order}
-          onClose={() => { setShowDrawer(false); setDrawerEditMode(false); }}
+          onClose={() => setShowDrawer(false)}
           onRefresh={refreshAll}
           performer={performer}
           variant="drawer"
-          defaultEditMode={drawerEditMode}
         />
       )}
     </div>
