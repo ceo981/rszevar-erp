@@ -107,18 +107,31 @@ export async function POST(request) {
             orderData.payment_status = existing.payment_status;
           }
 
-          // confirmed → on_packing auto-transition when Shopify tracking exists.
-          // Ye sirf tab chalta hai jab existing.status 'confirmed' hai — yaani
-          // order abhi packing workflow mein enter nahi hua. Agar confirmed
-          // hai AND Shopify pe tracking create ho gayi, matlab shopify side
-          // pe fulfillment ban gayi → packing start ho gayi.
-          if (existing.status === 'confirmed') {
-            const fulfillments = shopifyOrder.fulfillments || [];
-            const hasTracking = fulfillments.some(
-              f => f.tracking_number && f.status !== 'cancelled'
-            );
-            if (hasTracking) orderData.status = 'on_packing';
-          }
+          // FIX Apr 27 2026 — REMOVED buggy auto-promotion block
+          // ────────────────────────────────────────────────────────────────
+          // Pehle yahan ek block tha jo `confirmed` orders ko detect karta
+          // tha ke unke Shopify side pe tracking number hai aur unhe
+          // auto-promote karke `on_packing` kar deta tha.
+          //
+          // Yeh do reasons se GALAT tha:
+          //
+          //   1. ARCHITECTURE RULE: on_packing sirf MANUAL set hota hai —
+          //      jab packer khud ko assign karta hai (assign route ya
+          //      bulk route se). Sync ko status workflow mein interfere
+          //      nahi karna chahiye.
+          //
+          //   2. LOGIC FLAW: Agar Shopify pe tracking hai, matlab order
+          //      pehle hi DISPATCHED ho chuka hai (courier app se booking
+          //      ho gayi). `on_packing` set karna reality ke khilaf hai.
+          //
+          // Webhook handler (lib/shopify-webhook.js line 144) is case ko
+          // safely handle karta hai — woh status touch hi nahi karta aur
+          // protocol violation log karta hai. Sync ko bhi yeh same safe
+          // behavior follow karna chahiye.
+          //
+          // Bug effect: Aaj subha (Apr 27) manual sync ne kaafi old orders
+          // ko galat se on_packing mein dal diya tha. Recovery SQL alag
+          // file mein hai.
         }
 
         ordersToUpsert.push(orderData);
