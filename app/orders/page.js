@@ -823,6 +823,8 @@ export default function OrdersPage() {
             { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
             { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled },
             { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
+            { label: '💰 Paid',           value: 'paid',            filterType: 'payment_state', color: '#10b981', count: globalCounts.paid || 0, tooltip: 'Courier ne payment settle kar di — paisa account mein aagaya' },
+            { label: '⏳ Pending Payment', value: 'pending_payment', filterType: 'payment_state', color: '#f59e0b', count: globalCounts.pending_payment || 0, tooltip: 'Order delivered ho chuka hai lekin courier se abhi paisa nahi aaya' },
           ].map(tab => {
             const tabFilterType = tab.filterType || 'status';
             const isActive = tab.value === null
