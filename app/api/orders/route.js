@@ -106,6 +106,10 @@ export async function GET(request) {
     const payment = searchParams.get('payment');   // paid | unpaid | refunded
     const review = searchParams.get('review');     // wa_cancelled (whatsapp cancel review)
     const fulfillment = searchParams.get('fulfillment'); // unfulfilled — Shopify side (NEW)
+    // Apr 27 2026 — Payment state filter (Paid / Pending Payment tabs)
+    //   paid             → payment_status='paid' (settled by courier)
+    //   pending_payment  → status='delivered' AND payment_status != 'paid' (delivered but money pending)
+    const payment_state = searchParams.get('payment_state');
     const dateFrom = searchParams.get('from');
     const dateTo = searchParams.get('to');
     const sort = searchParams.get('sort') || 'created_at';
@@ -148,6 +152,13 @@ export async function GET(request) {
         q = q.neq('status', 'cancelled')
              .is('shopify_raw->>cancelled_at', null)
              .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
+      }
+      // Apr 27 2026 — Payment state filter
+      if (payment_state === 'paid') {
+        q = q.eq('payment_status', 'paid');
+      } else if (payment_state === 'pending_payment') {
+        // Delivered + courier ne abhi paisa settle nahi kiya
+        q = q.eq('status', 'delivered').neq('payment_status', 'paid');
       }
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
@@ -229,6 +240,7 @@ export async function GET(request) {
       { count: gUnpaid },
       { count: gWaCancelled },
       { count: gUnfulfilled },
+      { count: gPendingPayment },
     ] = await Promise.all([
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
@@ -255,6 +267,10 @@ export async function GET(request) {
         .neq('status', 'cancelled')
         .is('shopify_raw->>cancelled_at', null)
         .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
+      // Apr 27 2026 — Pending Payment count (delivered but payment NOT received yet)
+      supabase.from('orders').select('*', { count: 'exact', head: true })
+        .eq('status', 'delivered')
+        .neq('payment_status', 'paid'),
     ]);
 
     const globalCounts = {
@@ -278,6 +294,7 @@ export async function GET(request) {
       unpaid: gUnpaid || 0,
       wa_cancelled: gWaCancelled || 0,
       unfulfilled: gUnfulfilled || 0,
+      pending_payment: gPendingPayment || 0,
     };
 
     // ── Batch-fetch assignments for these orders ──
