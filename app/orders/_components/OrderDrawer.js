@@ -78,7 +78,7 @@ export function PaymentBadge({ payment_status }) {
 }
 
 // ─── OrderDrawer (the main export) ───────────────────────────────────────
-export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultEditMode = false }) {
+export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer' }) {
   const isPage = variant === 'page';
   const { profile } = useUser();
   const userRole    = profile?.role || '';
@@ -135,17 +135,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   // Apr 2026 — Super-admin force cancel flag for post-dispatch overrides
   // (RTO/dispatched/delivered cleanup scenarios)
   const [forceCancel, setForceCancel] = useState(false);
-  const [editMode, setEditMode] = useState(defaultEditMode);
-  // Apr 2026 — Agar parent ne defaultEditMode=true bheja hai (e.g., page.js
-  // ka Edit button click), toh drawer mount hote hi edit mode mein khulega
-  // aur tab "actions" pe set ho jayega taa ke Edit form turant visible ho.
-  useEffect(() => {
-    if (defaultEditMode) {
-      setEditMode(true);
-      setTab('actions');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
     customer_name: order.customer_name || '',
     customer_phone: order.customer_phone || '',
