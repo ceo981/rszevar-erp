@@ -383,6 +383,18 @@ export async function POST(request) {
       google_gender,
       google_condition,
       google_mpn,
+      // M2.J — AI Enhance product metafields (rszevar namespace)
+      // Sent by /inventory/new page when user clicks Apply in AI Enhance modal,
+      // then clicks Create Product. Mirrors PATCH route field set.
+      ai_faqs,                          // array of { q, a }
+      ai_mf_occasion,                   // array of strings
+      ai_mf_set_contents,               // array of strings
+      ai_mf_stone_type,                 // array of strings
+      ai_mf_material,                   // single string
+      ai_mf_color_finish,               // single string
+      // M2.J — enhancement tracking. When set, the ai_enhancements row will be
+      // marked as pushed at the end of this request.
+      ai_enhancement_id,
     } = body;
 
     if (!title || !String(title).trim()) {
@@ -642,6 +654,41 @@ export async function POST(request) {
     }
     if (googleResults.length > 0) results.google_metafields = googleResults;
 
+    // ── Step 3.6: AI Enhance product metafields (M2.J) ─────────────────────
+    // rszevar namespace — same shape as inventory-list push flow.
+    const aiMetafieldMap = [
+      { param: ai_faqs,             mf_key: 'faqs',         type: 'json',                          kind: 'json'   },
+      { param: ai_mf_occasion,      mf_key: 'occasion',     type: 'list.single_line_text_field',   kind: 'list'   },
+      { param: ai_mf_set_contents,  mf_key: 'set_contents', type: 'list.single_line_text_field',   kind: 'list'   },
+      { param: ai_mf_stone_type,    mf_key: 'stone_type',   type: 'list.single_line_text_field',   kind: 'list'   },
+      { param: ai_mf_material,      mf_key: 'material',     type: 'single_line_text_field',        kind: 'string' },
+      { param: ai_mf_color_finish,  mf_key: 'color_finish', type: 'single_line_text_field',        kind: 'string' },
+    ];
+
+    const aiMetaResults = [];
+    for (const mf of aiMetafieldMap) {
+      if (mf.param === undefined || mf.param === null) continue;
+      let stringValue;
+      if (mf.kind === 'list') {
+        if (!Array.isArray(mf.param) || mf.param.length === 0) continue;
+        stringValue = JSON.stringify(mf.param.map(v => String(v).trim()).filter(Boolean));
+      } else if (mf.kind === 'json') {
+        if (!Array.isArray(mf.param) || mf.param.length === 0) continue;
+        stringValue = JSON.stringify(mf.param);
+      } else {
+        if (typeof mf.param !== 'string' || !mf.param.trim()) continue;
+        stringValue = mf.param.trim();
+      }
+      try {
+        await postProductMetafield(newProductId, 'rszevar', mf.mf_key, stringValue, mf.type);
+        aiMetaResults.push({ key: mf.mf_key, success: true });
+      } catch (e) {
+        aiMetaResults.push({ key: mf.mf_key, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 120));
+    }
+    if (aiMetaResults.length > 0) results.ai_metafields = aiMetaResults;
+
     // ── Step 4: Collections via GraphQL productUpdate ─────────────────────
     if (Array.isArray(collections) && collections.length > 0) {
       try {
@@ -752,6 +799,57 @@ export async function POST(request) {
     }
 
     const anyError = Object.keys(errors).length > 0;
+
+    // ── Step 8: M2.J — mark ai_enhancements row as pushed ──
+    // For new products, "applied_via" is 'new' (vs 'editor' for existing).
+    if (ai_enhancement_id) {
+      try {
+        const supabase = createServerClient();   // local scope — outer try block's supabase has gone out of scope
+        const fieldsPushed = [];
+        if (typeof title === 'string')                  fieldsPushed.push('title');
+        if (typeof description_html === 'string' && description_html) fieldsPushed.push('description');
+        if (typeof seo_meta_title === 'string'     && seo_meta_title.trim())     fieldsPushed.push('meta_title');
+        if (typeof seo_meta_description === 'string' && seo_meta_description.trim()) fieldsPushed.push('meta_description');
+        if (typeof handle === 'string' && handle.trim())fieldsPushed.push('url_handle');
+        if (Array.isArray(tags) && tags.length > 0)     fieldsPushed.push('tags');
+        // Alt texts on new products go via images[].alt — count them
+        if (Array.isArray(images) && images.some(im => im && im.alt))
+                                                        fieldsPushed.push('alt_texts');
+        if (Array.isArray(ai_faqs) && ai_faqs.length > 0) fieldsPushed.push('faqs');
+        if (Array.isArray(ai_mf_occasion) && ai_mf_occasion.length > 0)         fieldsPushed.push('mf_occasion');
+        if (Array.isArray(ai_mf_set_contents) && ai_mf_set_contents.length > 0) fieldsPushed.push('mf_set_contents');
+        if (Array.isArray(ai_mf_stone_type) && ai_mf_stone_type.length > 0)     fieldsPushed.push('mf_stone_type');
+        if (typeof ai_mf_material === 'string'     && ai_mf_material.trim())     fieldsPushed.push('mf_material');
+        if (typeof ai_mf_color_finish === 'string' && ai_mf_color_finish.trim()) fieldsPushed.push('mf_color_finish');
+
+        await supabase
+          .from('ai_enhancements')
+          .update({
+            pushed_to_shopify: true,
+            pushed_at: new Date().toISOString(),
+            status: anyError ? 'partial' : 'pushed',
+            fields_pushed: fieldsPushed,
+            shopify_product_id: newProductId,   // bind enhancement to the new product
+            pushed_output: {
+              title: title || null,
+              body_html: description_html || null,
+              handle: handle || null,
+              tags: Array.isArray(tags) ? tags.join(', ') : null,
+              meta_title: seo_meta_title || null,
+              meta_description: seo_meta_description || null,
+              applied_via: 'new',
+            },
+            push_response: { results, errors },
+            push_error: anyError ? JSON.stringify(errors) : null,
+          })
+          .eq('id', ai_enhancement_id);
+        results.ai_enhancement_marked = { success: true };
+      } catch (e) {
+        console.warn('[POST] failed to mark ai_enhancement', e.message);
+        errors.ai_enhancement_marked = e.message;
+      }
+    }
+
     return NextResponse.json({
       success: true,           // Product was created — partial errors don't kill success
       partial: anyError,
