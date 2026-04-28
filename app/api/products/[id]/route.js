@@ -102,6 +102,23 @@ async function ensureInventoryTracking(variantId) {
   });
 }
 
+// ── M2.K — Convert weight + unit to grams ──
+function computeGrams(weight, unit) {
+  if (weight === undefined || weight === null || weight === '') return null;
+  const n = Number(weight);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const u = (unit || 'g').toLowerCase();
+  let g;
+  switch (u) {
+    case 'kg':  g = n * 1000;          break;
+    case 'oz':  g = n * 28.3495231;    break;
+    case 'lb':  g = n * 453.59237;     break;
+    case 'g':
+    default:    g = n;                 break;
+  }
+  return Math.round(g);
+}
+
 // ── Metafield helper (for SEO meta title/description) ──────────────────────
 async function upsertMetafield(productId, namespace, key, value, type = 'single_line_text_field') {
   if (!value) {
@@ -423,6 +440,22 @@ export async function PATCH(request, { params }) {
         if (v.compare_at_price !== undefined && v.compare_at_price !== null) variantPatch.compare_at_price = v.compare_at_price === '' ? null : String(v.compare_at_price);
         if (typeof v.sku === 'string') variantPatch.sku = v.sku;
         if (typeof v.barcode === 'string') variantPatch.barcode = v.barcode;
+        // M2.K — weight (frontend may send weight + weight_unit, OR just grams directly)
+        if (v.grams !== undefined && v.grams !== null && v.grams !== '') {
+          const g = Number(v.grams);
+          if (Number.isFinite(g) && g >= 0) {
+            variantPatch.grams = Math.round(g);
+            variantPatch.weight = Math.round(g) / 1000;
+            variantPatch.weight_unit = 'g';
+          }
+        } else if (v.weight !== undefined && v.weight !== null && v.weight !== '') {
+          const grams = computeGrams(v.weight, v.weight_unit);
+          if (grams !== null) {
+            variantPatch.grams = grams;
+            variantPatch.weight = grams / 1000;
+            variantPatch.weight_unit = 'g';
+          }
+        }
 
         const hasFieldChange = Object.keys(variantPatch).length > 0;
         const hasStockChange = v.stock !== undefined && v.stock !== null && v.stock !== '';
