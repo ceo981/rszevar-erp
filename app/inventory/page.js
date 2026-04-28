@@ -158,30 +158,160 @@ export default function InventoryPage() {
     setComputing(false);
   };
 
-  // Phase C — Sync SEO meta from Shopify (one-time per data drift)
+  // Phase C — Sync SEO meta from Shopify (chunked orchestration)
+  // Step 1: server fetches ALL data from Shopify GraphQL (~25-30s)
+  // Step 2: client chunks DB updates and saves with live progress
   const handleSyncSeoMeta = async () => {
-    setSyncingSeoMeta(true); setSeoResult(null);
+    setSyncingSeoMeta(true);
+    setSeoResult({ success: true, action: 'sync-meta', message: 'Fetching SEO meta from Shopify...', duration_ms: 0, in_progress: true });
+    const startTime = Date.now();
+
     try {
-      const res = await fetch('/api/products/seo-score/sync-meta', { method: 'POST' });
-      const data = await res.json();
-      setSeoResult({ ...data, action: 'sync-meta' });
-      if (data.success) await fetchProducts();
+      // Step 1: fetch from Shopify
+      const fetchRes = await fetch('/api/products/seo-score/sync-meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fetch' }),
+      });
+      const fetchData = await fetchRes.json();
+      if (!fetchData.success) throw new Error(fetchData.error || 'Fetch from Shopify failed');
+
+      const map = fetchData.map || {};
+      const entries = Object.entries(map).map(([pid, val]) => ({
+        shopify_product_id: pid,
+        title: val.title,
+        description: val.description,
+      }));
+
+      if (entries.length === 0) {
+        setSeoResult({ success: true, action: 'sync-meta', message: 'No products fetched from Shopify', duration_ms: Date.now() - startTime });
+        setSyncingSeoMeta(false);
+        return;
+      }
+
+      // Step 2: chunked DB updates
+      const CHUNK_SIZE = 100;
+      let totalProducts = 0;
+      let totalVariants = 0;
+      let totalWithBoth = 0;
+
+      for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        const chunk = entries.slice(i, i + CHUNK_SIZE);
+        const saveRes = await fetch('/api/products/seo-score/sync-meta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates: chunk }),
+        });
+        const saveData = await saveRes.json();
+        if (!saveData.success) throw new Error(`Save chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${saveData.error}`);
+
+        totalProducts += saveData.products_updated || 0;
+        totalVariants += saveData.variants_affected || 0;
+        totalWithBoth += saveData.with_both || 0;
+
+        const pct = Math.round((totalProducts / entries.length) * 100);
+        setSeoResult({
+          success: true,
+          action: 'sync-meta',
+          message: `Saving... ${totalProducts}/${entries.length} (${pct}%) — ${totalWithBoth} with both meta fields`,
+          duration_ms: Date.now() - startTime,
+          in_progress: true,
+        });
+      }
+
+      setSeoResult({
+        success: true,
+        action: 'sync-meta',
+        message: `${totalProducts} products updated (${totalVariants} variant rows). ${totalWithBoth} have both meta fields.`,
+        duration_ms: Date.now() - startTime,
+      });
+      await fetchProducts();
     } catch (e) {
-      setSeoResult({ success: false, error: e.message, action: 'sync-meta' });
+      setSeoResult({
+        success: false,
+        action: 'sync-meta',
+        error: e.message,
+        duration_ms: Date.now() - startTime,
+      });
     }
     setSyncingSeoMeta(false);
   };
 
-  // Phase C — Recompute SEO scores for all products (deterministic JS engine)
+  // Phase C — Recompute SEO scores (chunked orchestration)
+  // Step 1: get list of all product IDs (lightweight call)
+  // Step 2: process in 100-product chunks with live progress
   const handleRecomputeSeo = async () => {
-    setRecomputingSeo(true); setSeoResult(null);
+    setRecomputingSeo(true);
+    setSeoResult({ success: true, action: 'recompute', message: 'Loading product list...', duration_ms: 0, in_progress: true });
+    const startTime = Date.now();
+
     try {
-      const res = await fetch('/api/products/seo-score/recompute', { method: 'POST' });
-      const data = await res.json();
-      setSeoResult({ ...data, action: 'recompute' });
-      if (data.success) await fetchProducts();
+      // Step 1: get list of product IDs
+      const listRes = await fetch('/api/products/seo-score/recompute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'list' }),
+      });
+      const listData = await listRes.json();
+      if (!listData.success) throw new Error(listData.error || 'Could not list products');
+
+      const ids = listData.product_ids || [];
+      if (ids.length === 0) {
+        setSeoResult({ success: true, action: 'recompute', message: 'No products to score', duration_ms: Date.now() - startTime });
+        setRecomputingSeo(false);
+        return;
+      }
+
+      // Step 2: process in chunks
+      const CHUNK_SIZE = 100;
+      let totalProcessed = 0;
+      const totalTiers = { green: 0, yellow: 0, red: 0 };
+      let scoreWeightedSum = 0;
+      let scoreWeightTotal = 0;
+
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const res = await fetch('/api/products/seo-score/recompute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product_ids: chunk }),
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(`Chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${data.error}`);
+
+        const proc = data.processed || 0;
+        totalProcessed += proc;
+        totalTiers.green += data.tier_distribution?.green || 0;
+        totalTiers.yellow += data.tier_distribution?.yellow || 0;
+        totalTiers.red += data.tier_distribution?.red || 0;
+        scoreWeightedSum += (data.avg_score || 0) * proc;
+        scoreWeightTotal += proc;
+
+        const pct = Math.round((totalProcessed / ids.length) * 100);
+        setSeoResult({
+          success: true,
+          action: 'recompute',
+          message: `Scoring... ${totalProcessed}/${ids.length} (${pct}%) — Green ${totalTiers.green}, Yellow ${totalTiers.yellow}, Red ${totalTiers.red}`,
+          duration_ms: Date.now() - startTime,
+          in_progress: true,
+        });
+      }
+
+      const avg = scoreWeightTotal ? Math.round(scoreWeightedSum / scoreWeightTotal) : 0;
+      setSeoResult({
+        success: true,
+        action: 'recompute',
+        message: `${totalProcessed} products scored — avg ${avg}/100. Distribution: ${totalTiers.green} green, ${totalTiers.yellow} yellow, ${totalTiers.red} red.`,
+        duration_ms: Date.now() - startTime,
+      });
+      await fetchProducts();
     } catch (e) {
-      setSeoResult({ success: false, error: e.message, action: 'recompute' });
+      setSeoResult({
+        success: false,
+        action: 'recompute',
+        error: e.message,
+        duration_ms: Date.now() - startTime,
+      });
     }
     setRecomputingSeo(false);
   };
@@ -275,14 +405,17 @@ export default function InventoryPage() {
       )}
       {seoResult && (
         <div style={{ padding: '12px 16px', marginBottom: 12, borderRadius: 'var(--radius)', background: seoResult.success ? 'var(--green-dim)' : 'var(--red-dim)', border: `1px solid ${seoResult.success ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'}`, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: seoResult.success ? 'var(--green)' : 'var(--red)' }}>
+          <span style={{ color: seoResult.success ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {seoResult.in_progress && <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>}
             {seoResult.success
-              ? (seoResult.action === 'sync-meta'
-                  ? `✅ ${seoResult.message} (${(seoResult.duration_ms/1000).toFixed(1)}s)`
+              ? (seoResult.in_progress
+                  ? seoResult.message
                   : `✅ ${seoResult.message} (${(seoResult.duration_ms/1000).toFixed(1)}s)`)
               : `❌ ${seoResult.error}`}
           </span>
-          <button onClick={() => setSeoResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+          {!seoResult.in_progress && (
+            <button onClick={() => setSeoResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+          )}
         </div>
       )}
 
