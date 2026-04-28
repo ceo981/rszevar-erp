@@ -74,6 +74,11 @@ export default function InventoryPage() {
   const [computeResult, setComputeResult] = useState(null);
   const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);   const [seoFilter, setSeoFilter] = useState('all');
 
+  // Phase C — SEO sync + recompute state
+  const [syncingSeoMeta, setSyncingSeoMeta] = useState(false);
+  const [recomputingSeo, setRecomputingSeo] = useState(false);
+  const [seoResult, setSeoResult] = useState(null);
+
   const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
   const revCol = abcWindow === '180d' ? 'revenue_180d' : 'revenue_90d';
   const soldCol = abcWindow === '180d' ? 'units_sold_180d' : 'units_sold_90d';
@@ -153,6 +158,34 @@ export default function InventoryPage() {
     setComputing(false);
   };
 
+  // Phase C — Sync SEO meta from Shopify (one-time per data drift)
+  const handleSyncSeoMeta = async () => {
+    setSyncingSeoMeta(true); setSeoResult(null);
+    try {
+      const res = await fetch('/api/products/seo-score/sync-meta', { method: 'POST' });
+      const data = await res.json();
+      setSeoResult({ ...data, action: 'sync-meta' });
+      if (data.success) await fetchProducts();
+    } catch (e) {
+      setSeoResult({ success: false, error: e.message, action: 'sync-meta' });
+    }
+    setSyncingSeoMeta(false);
+  };
+
+  // Phase C — Recompute SEO scores for all products (deterministic JS engine)
+  const handleRecomputeSeo = async () => {
+    setRecomputingSeo(true); setSeoResult(null);
+    try {
+      const res = await fetch('/api/products/seo-score/recompute', { method: 'POST' });
+      const data = await res.json();
+      setSeoResult({ ...data, action: 'recompute' });
+      if (data.success) await fetchProducts();
+    } catch (e) {
+      setSeoResult({ success: false, error: e.message, action: 'recompute' });
+    }
+    setRecomputingSeo(false);
+  };
+
   const handleSort = (field) => { setSortConfig(prev => ({ sort: field, order: prev.sort === field && prev.order === 'asc' ? 'desc' : 'asc' })); setPage(1); };
   const handleAbcFilter = (cls) => { setAbcFilter(cls); setPage(1); };
   const handleSmartPreset = (preset) => {
@@ -206,6 +239,14 @@ export default function InventoryPage() {
             <span style={{ display: 'inline-block', animation: computing ? 'spin 1s linear infinite' : 'none' }}>📊</span>
             {computing ? 'Computing...' : 'Compute ABC'}
           </button>
+          <button onClick={handleSyncSeoMeta} disabled={syncingSeoMeta} title="Fetch meta_title + meta_description from Shopify (one-time per data drift)" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: syncingSeoMeta ? 'var(--border)' : 'transparent', color: syncingSeoMeta ? 'var(--text3)' : '#a78bfa', border: `1px solid ${syncingSeoMeta ? 'var(--border)' : '#a78bfa'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: syncingSeoMeta ? 'wait' : 'pointer' }}>
+            <span style={{ display: 'inline-block', animation: syncingSeoMeta ? 'spin 1s linear infinite' : 'none' }}>📥</span>
+            {syncingSeoMeta ? 'Syncing meta...' : 'Sync SEO Meta'}
+          </button>
+          <button onClick={handleRecomputeSeo} disabled={recomputingSeo} title="Recompute SEO scores for all products using transparent JS engine" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: recomputingSeo ? 'var(--border)' : 'transparent', color: recomputingSeo ? 'var(--text3)' : '#4ade80', border: `1px solid ${recomputingSeo ? 'var(--border)' : '#4ade80'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: recomputingSeo ? 'wait' : 'pointer' }}>
+            <span style={{ display: 'inline-block', animation: recomputingSeo ? 'spin 1s linear infinite' : 'none' }}>🎯</span>
+            {recomputingSeo ? 'Scoring...' : 'Recompute SEO'}
+          </button>
           <button onClick={handleSyncCollections} disabled={syncingCollections} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: syncingCollections ? 'var(--border)' : 'transparent', color: syncingCollections ? 'var(--text3)' : 'var(--cyan)', border: `1px solid ${syncingCollections ? 'var(--border)' : 'var(--cyan)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: syncingCollections ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: syncingCollections ? 'spin 1s linear infinite' : 'none' }}>🏷️</span>
             {syncingCollections ? 'Syncing...' : 'Sync Collections'}
@@ -230,6 +271,18 @@ export default function InventoryPage() {
             {computeResult.success ? `✅ ABC computed — ${computeResult.orders_processed} orders, ${computeResult.unique_skus_with_sales} SKUs (${computeResult.duration_ms}ms)` : `❌ ${computeResult.error}`}
           </span>
           <button onClick={() => setComputeResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+      {seoResult && (
+        <div style={{ padding: '12px 16px', marginBottom: 12, borderRadius: 'var(--radius)', background: seoResult.success ? 'var(--green-dim)' : 'var(--red-dim)', border: `1px solid ${seoResult.success ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'}`, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: seoResult.success ? 'var(--green)' : 'var(--red)' }}>
+            {seoResult.success
+              ? (seoResult.action === 'sync-meta'
+                  ? `✅ ${seoResult.message} (${(seoResult.duration_ms/1000).toFixed(1)}s)`
+                  : `✅ ${seoResult.message} (${(seoResult.duration_ms/1000).toFixed(1)}s)`)
+              : `❌ ${seoResult.error}`}
+          </span>
+          <button onClick={() => setSeoResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
       )}
 
