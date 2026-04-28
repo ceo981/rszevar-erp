@@ -440,6 +440,17 @@ export async function PATCH(request, { params }) {
         if (v.compare_at_price !== undefined && v.compare_at_price !== null) variantPatch.compare_at_price = v.compare_at_price === '' ? null : String(v.compare_at_price);
         if (typeof v.sku === 'string') variantPatch.sku = v.sku;
         if (typeof v.barcode === 'string') variantPatch.barcode = v.barcode;
+        // M2.K — image_id (per-variant image assignment). null/0/'' detaches.
+        if (v.image_id !== undefined) {
+          if (v.image_id === null || v.image_id === '' || v.image_id === 0) {
+            variantPatch.image_id = null;
+          } else {
+            const imgIdNum = Number(v.image_id);
+            if (Number.isFinite(imgIdNum) && imgIdNum > 0) {
+              variantPatch.image_id = imgIdNum;
+            }
+          }
+        }
         // M2.K — weight (frontend may send weight + weight_unit, OR just grams directly)
         if (v.grams !== undefined && v.grams !== null && v.grams !== '') {
           const g = Number(v.grams);
