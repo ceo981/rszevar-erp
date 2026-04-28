@@ -578,6 +578,14 @@ function buildDiff(original, draft) {
         change.grams = v.weight === '' ? 0 : v.weight;   // value is already in grams (column header says "Weight (g)")
         changed = true;
       }
+      // M2.K — image_id diff (per-variant image assignment)
+      // Note: orig.image_id is computed from URL match on load (see loadProduct).
+      const origImgId = (orig.image_id == null || orig.image_id === '') ? null : Number(orig.image_id);
+      const newImgId  = (v.image_id == null || v.image_id === '')       ? null : Number(v.image_id);
+      if (origImgId !== newImgId) {
+        change.image_id = newImgId;   // null means detach
+        changed = true;
+      }
       if (changed) variantsUpdate.push(change);
     }
     if (variantsUpdate.length > 0) diff.variants_update = variantsUpdate;
@@ -857,6 +865,156 @@ function BulkEditModal({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// M2.K — VariantImagePicker (editor page)
+// Shows a circular thumbnail of the current variant image. Clicking opens a
+// modal with all product images; user picks one (or "no image"). Selection
+// updates parent via onSelect(imageId | null).
+//
+// Props:
+//   images        — draft.images_data (array of { id, src, alt })
+//   selectedId    — currently assigned image id (number/string) or null
+//   onSelect      — (imageId | null) => void
+//   size          — circle px (default 36)
+//   variantLabel  — for modal header
+// ────────────────────────────────────────────────────────────────────────────
+function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLabel }) {
+  const [open, setOpen] = useState(false);
+  const selected = (images || []).find(i => String(i.id) === String(selectedId));
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [open]);
+
+  const circleStyle = {
+    width: size, height: size, borderRadius: '50%',
+    border: `1.5px solid ${selectedId ? gold : border}`,
+    background: bgPage, overflow: 'hidden', flexShrink: 0,
+    cursor: (images && images.length > 0) ? 'pointer' : 'not-allowed',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 12, color: text3,
+    transition: 'border-color 0.15s, transform 0.1s',
+    padding: 0,
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => images && images.length > 0 && setOpen(true)}
+        title={images?.length ? 'Click to pick image' : 'No images uploaded yet'}
+        style={circleStyle}
+        onMouseDown={e => e.preventDefault()}
+      >
+        {selected ? (
+          <img src={selected.src} alt={selected.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        ) : (
+          <span>+</span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 320,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+        >
+          <div style={{
+            background: card, border: `1px solid ${border}`, borderRadius: 10,
+            width: '100%', maxWidth: 560, maxHeight: '85vh',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+          }}>
+            <div style={{
+              padding: '12px 18px', borderBottom: `1px solid ${border}`,
+              background: 'rgba(201,169,110,0.04)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: gold, textTransform: 'uppercase', letterSpacing: 2 }}>Variant Image</div>
+                <div style={{ fontSize: 13, color: text1, marginTop: 2 }}>{variantLabel || 'Pick an image'}</div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{
+                background: 'none', border: 'none', color: text3, fontSize: 24, cursor: 'pointer', padding: '0 6px',
+              }}>×</button>
+            </div>
+            <div style={{ padding: 18, overflowY: 'auto', flex: 1 }}>
+              {/* No image option */}
+              <button
+                type="button"
+                onClick={() => { onSelect(null); setOpen(false); }}
+                style={{
+                  width: '100%', padding: '10px 14px', marginBottom: 12,
+                  background: !selectedId ? 'rgba(201,169,110,0.1)' : bgPage,
+                  border: `1px solid ${!selectedId ? gold : border}`,
+                  borderRadius: 6,
+                  color: !selectedId ? gold : text2,
+                  fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}
+              >
+                <span style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  border: `1px dashed ${border}`, background: bgPage,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, color: text3,
+                }}>×</span>
+                <span style={{ flex: 1, textAlign: 'left' }}>No image (use product default)</span>
+                {!selectedId && <span style={{ fontSize: 14 }}>✓</span>}
+              </button>
+              {/* Image grid */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10,
+              }}>
+                {(images || []).map(img => {
+                  const isSelected = String(img.id) === String(selectedId);
+                  return (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => { onSelect(img.id); setOpen(false); }}
+                      title={img.alt || `Image ${img.position || ''}`}
+                      style={{
+                        width: '100%', aspectRatio: '1 / 1',
+                        border: `2px solid ${isSelected ? gold : border}`,
+                        borderRadius: 8, overflow: 'hidden',
+                        background: bgPage, padding: 0, cursor: 'pointer',
+                        position: 'relative',
+                        boxShadow: isSelected ? `0 0 0 3px rgba(201,169,110,0.2)` : 'none',
+                      }}
+                    >
+                      <img src={img.src} alt={img.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute', top: 4, right: 4,
+                          background: gold, color: '#080808', borderRadius: '50%',
+                          width: 20, height: 20, fontSize: 12, fontWeight: 700,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>✓</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {(images?.length || 0) === 0 && (
+                <div style={{ padding: 30, color: text3, fontSize: 13, textAlign: 'center' }}>
+                  No images uploaded yet. Upload images first via the Media card.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ────────────────────────────────────────────────────────────────────────────
 export default function ProductEditPage() {
@@ -922,10 +1080,18 @@ export default function ProductEditPage() {
         setError(data.error || 'Failed to load product');
       } else {
         setProduct(data.product);
+        // M2.K — derive each variant's image_id by matching image_url against images_data[].src
+        // This avoids needing schema changes; the link is reconstructed client-side.
+        const imgs = data.product.images_data || [];
+        const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
+        const variantsWithImageId = (data.product.variants || []).map(v => {
+          const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
+          return { ...v, image_id: matched ? Number(matched) : null };
+        });
         setDraft({
           ...data.product,
-          images_data: [...(data.product.images_data || [])],
-          variants: (data.product.variants || []).map(v => ({ ...v })),
+          images_data: [...imgs],
+          variants: variantsWithImageId,
           images_to_add: [],   // M2.D — staged uploads
         });
       }
@@ -1051,10 +1217,16 @@ export default function ProductEditPage() {
 
   const handleDiscard = () => {
     if (!confirm('Discard all changes?')) return;
+    // M2.K — re-derive image_id from URL match on discard too
+    const imgs = product.images_data || [];
+    const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
     setDraft({
       ...product,
-      images_data: [...(product.images_data || [])],
-      variants: (product.variants || []).map(v => ({ ...v })),
+      images_data: [...imgs],
+      variants: (product.variants || []).map(v => {
+        const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
+        return { ...v, image_id: matched ? Number(matched) : null };
+      }),
       images_to_add: [],
     });
     setSaveResult(null);
@@ -1651,6 +1823,7 @@ export default function ProductEditPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)' }}>
+                      <th style={{ textAlign: 'left',  padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 56 }}>Image</th>
                       <th style={{ textAlign: 'left',  padding: '10px 12px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Variant</th>
                       {canViewFinancial && (
                         <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 110 }}>Price</th>
@@ -1667,6 +1840,15 @@ export default function ProductEditPage() {
                   <tbody>
                     {draft.variants.map(v => (
                       <tr key={v.id} style={{ borderBottom: `1px solid ${border}` }}>
+                        <td style={{ padding: '8px' }}>
+                          <VariantImagePicker
+                            images={draft.images_data || []}
+                            selectedId={v.image_id}
+                            onSelect={(imgId) => setVariantField(v.shopify_variant_id, 'image_id', imgId)}
+                            size={36}
+                            variantLabel={v.variant_label}
+                          />
+                        </td>
                         <td style={{ padding: '8px 12px', color: text1 }}>{v.variant_label}</td>
                         {canViewFinancial && (
                           <td style={{ padding: '8px' }}>
