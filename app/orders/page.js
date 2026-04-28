@@ -487,6 +487,11 @@ export default function OrdersPage() {
   // Apr 2026 — Default tab: Unfulfilled (operational view "kya pack karna hai").
   // User can switch to "All Orders" anytime by clicking that tab.
   const [filter, setFilter] = useState({ type: 'fulfillment', value: 'unfulfilled' });
+  // Apr 28 2026 — Date range filter. By default both empty = no date filter.
+  // User select karega to backend ko `from` aur `to` params bhejtay hain
+  // jo orders list AND tab counts dono ko narrow karte hain.
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [selected, setSelected] = useState(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -528,6 +533,8 @@ export default function OrdersPage() {
       const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (filter.type && filter.value) params.append(filter.type, filter.value);
+      if (dateRange.from) params.append('from', dateRange.from);
+      if (dateRange.to) params.append('to', dateRange.to);
       const r = await fetch(`/api/orders?${params}`, { signal: controller.signal });
       const d = await r.json();
 
@@ -548,7 +555,7 @@ export default function OrdersPage() {
     }
     // Sirf latest request hi loading state ko off karegi
     if (requestId === requestIdRef.current) setLoading(false);
-  }, [page, debouncedSearch, filter]);
+  }, [page, debouncedSearch, filter, dateRange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -781,6 +788,121 @@ export default function OrdersPage() {
             )}
           </p>
         </div>
+
+        {/* Apr 28 2026 — Date range filter (right-aligned, before sync msg).
+            Default: empty (no filter, all dates). When user picks a date,
+            tab counts AND list both narrow to that range. */}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {(dateRange.from || dateRange.to) && (
+            <div style={{
+              fontSize: 11, color: gold, fontWeight: 600,
+              padding: '5px 10px', background: 'rgba(201,169,110,0.1)',
+              border: `1px solid ${gold}55`, borderRadius: 6,
+            }}>
+              📅 {dateRange.from || '...'} → {dateRange.to || 'today'}
+              <button onClick={() => { setDateRange({ from: '', to: '' }); setPage(1); }}
+                title="Clear date filter"
+                style={{
+                  background: 'transparent', border: 'none', color: gold,
+                  fontSize: 13, cursor: 'pointer', marginLeft: 6, padding: 0,
+                  fontFamily: 'inherit',
+                }}>✕</button>
+            </div>
+          )}
+          <button onClick={() => setShowDatePicker(s => !s)}
+            style={{
+              background: showDatePicker ? `${gold}22` : '#0a0a0a',
+              border: `1px solid ${showDatePicker ? gold : border}`,
+              color: showDatePicker ? gold : '#bbb',
+              borderRadius: 7, padding: '7px 12px', fontSize: 12,
+              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+            📅 Date Filter
+          </button>
+
+          {showDatePicker && (
+            <>
+              {/* Backdrop */}
+              <div onClick={() => setShowDatePicker(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+              {/* Picker */}
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                background: card, border: `1px solid ${border}`, borderRadius: 10,
+                padding: 16, zIndex: 51, minWidth: 320,
+                boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5', marginBottom: 12 }}>
+                  Filter orders by date
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>From</div>
+                  <input type="date" value={dateRange.from}
+                    onChange={e => setDateRange(r => ({ ...r, from: e.target.value }))}
+                    style={{
+                      width: '100%', background: '#0a0a0a', border: `1px solid ${border}`,
+                      color: '#fff', borderRadius: 6, padding: '8px 10px',
+                      fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
+                      colorScheme: 'dark',
+                    }} />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>To</div>
+                  <input type="date" value={dateRange.to}
+                    onChange={e => setDateRange(r => ({ ...r, to: e.target.value }))}
+                    style={{
+                      width: '100%', background: '#0a0a0a', border: `1px solid ${border}`,
+                      color: '#fff', borderRadius: 6, padding: '8px 10px',
+                      fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box',
+                      colorScheme: 'dark',
+                    }} />
+                </div>
+
+                {/* Quick presets */}
+                <div style={{ fontSize: 10, color: '#666', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick presets</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+                  {(() => {
+                    const today = new Date();
+                    const fmt = (d) => d.toISOString().split('T')[0];
+                    const presets = [
+                      { label: 'Today', from: fmt(today), to: fmt(today) },
+                      { label: 'Yesterday', from: fmt(new Date(today.getTime() - 86400000)), to: fmt(new Date(today.getTime() - 86400000)) },
+                      { label: 'Last 7 days', from: fmt(new Date(today.getTime() - 6 * 86400000)), to: fmt(today) },
+                      { label: 'Last 30 days', from: fmt(new Date(today.getTime() - 29 * 86400000)), to: fmt(today) },
+                      { label: 'This month', from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), to: fmt(today) },
+                      { label: 'Last month', from: fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1)), to: fmt(new Date(today.getFullYear(), today.getMonth(), 0)) },
+                    ];
+                    return presets.map(p => (
+                      <button key={p.label} onClick={() => setDateRange({ from: p.from, to: p.to })}
+                        style={{
+                          background: '#0a0a0a', border: `1px solid ${border}`,
+                          color: '#aaa', borderRadius: 5, padding: '5px 9px',
+                          fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>{p.label}</button>
+                    ));
+                  })()}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  <button onClick={() => { setDateRange({ from: '', to: '' }); setPage(1); }}
+                    style={{
+                      background: 'transparent', border: `1px solid ${border}`,
+                      color: '#888', borderRadius: 6, padding: '7px 14px',
+                      fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>Clear</button>
+                  <button onClick={() => { setShowDatePicker(false); setPage(1); }}
+                    style={{
+                      background: gold, border: 'none', color: '#000',
+                      borderRadius: 6, padding: '7px 18px',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                    }}>Apply</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         {syncMsg && (
           <div style={{
             padding: '8px 14px',
