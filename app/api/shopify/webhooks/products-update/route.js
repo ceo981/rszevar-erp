@@ -23,13 +23,16 @@ const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_TOKEN  = process.env.SHOPIFY_ACCESS_TOKEN;
 const GRAPHQL_VERSION = '2025-01';
 
-// M2.B hotfix — REST product payload doesn't include collections, so fetch
-// them via a tiny GraphQL call and stamp on every variant row before upsert
-async function fetchProductCollections(productId) {
+// M2.B hotfix v2 — REST product payload doesn't carry SEO meta or collections.
+// Fetch both in a single GraphQL call and stamp on variant rows so the
+// webhook upsert refreshes those columns too. Best-effort — webhook still
+// succeeds if this fails.
+async function fetchProductExtras(productId) {
   if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) return null;
   const query = `
-    query getProductCollections($id: ID!) {
+    query getProductExtras($id: ID!) {
       product(id: $id) {
+        seo { title description }
         collections(first: 50) { edges { node { handle title } } }
       }
     }
@@ -45,8 +48,18 @@ async function fetchProductCollections(productId) {
   if (!res.ok) return null;
   const json = await res.json();
   if (json.errors) return null;
-  const edges = json?.data?.product?.collections?.edges || [];
-  return edges.map(e => ({ handle: e.node.handle, title: e.node.title }));
+  const node = json?.data?.product;
+  if (!node) return null;
+  return {
+    seo: {
+      title: node.seo?.title ?? null,
+      description: node.seo?.description ?? null,
+    },
+    collections: (node.collections?.edges || []).map(e => ({
+      handle: e.node.handle,
+      title: e.node.title,
+    })),
+  };
 }
 
 function tryHmac(rawBody, hmacHeader, secret) {
@@ -125,17 +138,24 @@ export async function POST(request) {
     return NextResponse.json({ success: true, skipped: 'no_variants' });
   }
 
-  // M2.B hotfix — also pull collections via GraphQL and stamp on variant rows
-  // (best-effort; webhook still succeeds if this fails)
-  let collectionsFetched = null;
+  // M2.B hotfix v2 — pull SEO + collections via GraphQL and stamp on variant
+  // rows so the upsert refreshes those columns too (best-effort)
+  let extrasFetched = null;
   try {
-    const colls = await fetchProductCollections(shopifyProduct.id);
-    if (Array.isArray(colls)) {
-      for (const v of variants) v.collections = colls;
-      collectionsFetched = colls.length;
+    const extras = await fetchProductExtras(shopifyProduct.id);
+    if (extras) {
+      for (const v of variants) {
+        v.seo_meta_title       = extras.seo.title;
+        v.seo_meta_description = extras.seo.description;
+        v.collections          = extras.collections;
+      }
+      extrasFetched = {
+        seo: !!(extras.seo.title || extras.seo.description),
+        collections: extras.collections.length,
+      };
     }
   } catch (e) {
-    console.error('[webhook:products] collections fetch failed:', e.message);
+    console.error('[webhook:products] extras fetch failed:', e.message);
   }
 
   const supabase = createServerClient();
@@ -149,12 +169,12 @@ export async function POST(request) {
   }
 
   const elapsed = Date.now() - startTime;
-  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} collections_synced=${collectionsFetched ?? 'skip'} elapsed_ms=${elapsed}`);
+  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} extras=${JSON.stringify(extrasFetched)} elapsed_ms=${elapsed}`);
 
   return NextResponse.json({
     success: true,
     product: shopifyProduct.title,
     variants_synced: variants.length,
-    collections_synced: collectionsFetched,
+    extras: extrasFetched,
   });
 }
