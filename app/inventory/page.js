@@ -83,6 +83,10 @@ export default function InventoryPage() {
   const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
   const revCol = abcWindow === '180d' ? 'revenue_180d' : 'revenue_90d';
   const soldCol = abcWindow === '180d' ? 'units_sold_180d' : 'units_sold_90d';
+  // Phase D M2.A — parent-row aggregates for grouped view
+  const parentAbcCol  = abcWindow === '180d' ? 'parent_abc_180d'        : 'parent_abc_90d';
+  const parentRevCol  = abcWindow === '180d' ? 'parent_revenue_180d'    : 'parent_revenue_90d';
+  const parentSoldCol = abcWindow === '180d' ? 'parent_units_sold_180d' : 'parent_units_sold_90d';
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -634,10 +638,10 @@ export default function InventoryPage() {
                           <span style={{ padding: '3px 10px', borderRadius: 4, background: getStockBg(group.total_stock), color: getStockColor(group.total_stock), fontWeight: 600, fontSize: 12 }}>{group.total_stock}</span>
                           {group.has_out_of_stock && <span title="Some variants out of stock" style={{ marginLeft: 6, fontSize: 10, color: 'var(--red)' }}>⚠</span>}
                         </td>
-                        <td style={{ padding: '10px', color: 'var(--text3)' }}>—</td>
-                        <td style={{ padding: '10px' }}><SeoBadge score={group.variants[0]?.seo_score} tier={group.variants[0]?.seo_tier} /></td>
-                        <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
-                        <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
+                        <td style={{ padding: '10px' }}>{group[parentAbcCol] ? <AbcBadge value={group[parentAbcCol]} /> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
+                        <td style={{ padding: '10px' }}><SeoBadge score={group.parent_seo_score} tier={group.parent_seo_tier} /></td>
+                        {canViewFinancial && <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{group[parentRevCol] ? `Rs ${Number(group[parentRevCol]).toLocaleString()}` : '—'}</td>}
+                        <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>{group[parentSoldCol] || 0}</td>
                         <td style={{ padding: '10px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: group.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: group.is_active ? 'var(--green)' : 'var(--text3)' }}>{group.is_active ? 'Active' : 'Draft'}</span>
