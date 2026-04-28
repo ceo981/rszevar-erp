@@ -2,18 +2,28 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 
 // ============================================================================
-// RS ZEVAR ERP — Sync SEO Meta from Shopify (Phase C)
+// RS ZEVAR ERP — Sync SEO Meta from Shopify (Phase C — chunked, Apr 28 2026)
 // Route: POST /api/products/seo-score/sync-meta
 // ----------------------------------------------------------------------------
-// Why: Shopify's `seo.title` (= global.title_tag metafield) and
-//      `seo.description` (= global.description_tag) are NOT in the products
-//      REST endpoint that transformProducts() consumes. We fetch them via
-//      GraphQL bulk query and write to seo_meta_title / seo_meta_description
-//      columns added in Phase A.
+// MODES (POST body discriminator)
+//   {} or { action: "fetch" }       → fetch from Shopify GraphQL, return map
+//                                      (no DB writes — ~25-30s)
+//   { updates: [...] }                → apply DB updates for these products
+//                                      (max 100 per call)
 //
-// Pagination: 50 products per page (GraphQL cost limit-friendly), ~25 pages
-//             for ~1230 products. With 300ms throttle between pages, total
-//             ~25-30s — fits within Vercel 60s function limit.
+// WHY CHUNKED?
+//   First version did GraphQL fetch + 1230 sequential DB updates in one call.
+//   The DB update loop alone took 100ms × 1230 = 2 minutes. Hit Vercel 60s
+//   function timeout (504 Gateway Timeout).
+//
+//   New design: Server does the slow Shopify fetch (must be server-side for
+//   token security) and returns the data. Client chunks DB updates and shows
+//   progress.
+//
+// CALL ORDER (frontend orchestration)
+//   1. POST {} → returns { map: { product_id: { title, description } } }
+//   2. Frontend chunks the map and calls POST { updates: [...] } repeatedly
+//      with 100 entries per call until done.
 // ============================================================================
 
 export const runtime = 'nodejs';
@@ -69,106 +79,7 @@ function extractGid(gid) {
   return parts[parts.length - 1];
 }
 
-export async function POST() {
-  const startTime = Date.now();
-
-  if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
-    return NextResponse.json({
-      success: false,
-      error: 'Shopify credentials not configured',
-    }, { status: 500 });
-  }
-
-  try {
-    const supabase = createServerClient();
-
-    // ── Step 1: Fetch all products' SEO fields from Shopify ──
-    const seoMap = new Map(); // shopify_product_id → { title, description }
-    let cursor = null;
-    let hasNextPage = true;
-    let pageCount = 0;
-    const MAX_PAGES = 30; // 1500 product safety cap
-
-    while (hasNextPage && pageCount < MAX_PAGES) {
-      const result = await shopifyGraphQL(PRODUCTS_SEO_QUERY, { cursor });
-      const connection = result.data?.products;
-      if (!connection) break;
-
-      for (const edge of connection.edges || []) {
-        const productId = extractGid(edge.node.id);
-        if (productId) {
-          seoMap.set(productId, {
-            title: edge.node.seo?.title || null,
-            description: edge.node.seo?.description || null,
-          });
-        }
-      }
-
-      hasNextPage = connection.pageInfo?.hasNextPage || false;
-      cursor = connection.pageInfo?.endCursor || null;
-      pageCount++;
-
-      // Throttle between pages (Shopify GraphQL cost limit ~100/sec)
-      if (hasNextPage) await new Promise(r => setTimeout(r, 300));
-    }
-
-    // ── Step 2: Update DB rows ──
-    // Each Shopify product has multiple variant rows in our DB; update all
-    // variants sharing the same shopify_product_id with same meta values.
-    let productsUpdated = 0;
-    let variantsAffected = 0;
-    let withTitle = 0;
-    let withDescription = 0;
-    let bothPresent = 0;
-    const errors = [];
-
-    for (const [productId, seo] of seoMap.entries()) {
-      const { error, count } = await supabase
-        .from('products')
-        .update({
-          seo_meta_title: seo.title,
-          seo_meta_description: seo.description,
-        }, { count: 'exact' })
-        .eq('shopify_product_id', productId);
-
-      if (error) {
-        errors.push({ productId, error: error.message });
-      } else {
-        productsUpdated++;
-        variantsAffected += (count || 0);
-        if (seo.title) withTitle++;
-        if (seo.description) withDescription++;
-        if (seo.title && seo.description) bothPresent++;
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `${productsUpdated} products updated (${variantsAffected} variant rows). ${bothPresent} have both meta fields, ${withTitle} have title only, ${withDescription} have description only.`,
-      stats: {
-        total_fetched: seoMap.size,
-        products_updated: productsUpdated,
-        variants_affected: variantsAffected,
-        with_meta_title: withTitle,
-        with_meta_description: withDescription,
-        with_both: bothPresent,
-        with_neither: seoMap.size - Math.max(withTitle, withDescription),
-      },
-      pages_fetched: pageCount,
-      errors_sample: errors.slice(0, 3),
-      duration_ms: Date.now() - startTime,
-    });
-  } catch (err) {
-    console.error('[seo-score/sync-meta]', err);
-    return NextResponse.json({
-      success: false,
-      error: err.message,
-      duration_ms: Date.now() - startTime,
-    }, { status: 500 });
-  }
-}
-
-// GET — quick status (last sync time + coverage)
+// ── GET: coverage status ────────────────────────────────────────────────────
 export async function GET() {
   try {
     const supabase = createServerClient();
@@ -187,5 +98,157 @@ export async function GET() {
     });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+// ── POST: discriminated by body ─────────────────────────────────────────────
+export async function POST(request) {
+  const startTime = Date.now();
+
+  if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
+    return NextResponse.json({
+      success: false,
+      error: 'Shopify credentials not configured',
+    }, { status: 500 });
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const { action, updates } = body;
+
+    // ─── MODE 1: Apply DB updates for a chunk ──────────────────────────────
+    if (Array.isArray(updates)) {
+      if (updates.length === 0) {
+        return NextResponse.json({
+          success: true,
+          mode: 'save',
+          products_updated: 0,
+          variants_affected: 0,
+          duration_ms: Date.now() - startTime,
+        });
+      }
+      if (updates.length > 200) {
+        return NextResponse.json({
+          success: false,
+          error: 'Max 200 updates per chunk request',
+        }, { status: 400 });
+      }
+
+      const supabase = createServerClient();
+
+      // Run updates in parallel with concurrency 10
+      const CONCURRENCY = 10;
+      let productsUpdated = 0;
+      let variantsAffected = 0;
+      let withTitle = 0;
+      let withDescription = 0;
+      let bothPresent = 0;
+      const errors = [];
+
+      for (let i = 0; i < updates.length; i += CONCURRENCY) {
+        const batch = updates.slice(i, i + CONCURRENCY);
+        const settled = await Promise.allSettled(batch.map(u =>
+          supabase
+            .from('products')
+            .update({
+              seo_meta_title: u.title || null,
+              seo_meta_description: u.description || null,
+            }, { count: 'exact' })
+            .eq('shopify_product_id', String(u.shopify_product_id))
+        ));
+
+        for (let j = 0; j < settled.length; j++) {
+          const s = settled[j];
+          const u = batch[j];
+          if (s.status === 'fulfilled' && !s.value.error) {
+            productsUpdated++;
+            variantsAffected += (s.value.count || 0);
+            if (u.title) withTitle++;
+            if (u.description) withDescription++;
+            if (u.title && u.description) bothPresent++;
+          } else {
+            const errMsg = s.status === 'rejected' ? s.reason?.message : s.value.error?.message;
+            errors.push({ shopify_product_id: u.shopify_product_id, error: errMsg });
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        mode: 'save',
+        chunk_size: updates.length,
+        products_updated: productsUpdated,
+        variants_affected: variantsAffected,
+        with_meta_title: withTitle,
+        with_meta_description: withDescription,
+        with_both: bothPresent,
+        errors_sample: errors.slice(0, 3),
+        duration_ms: Date.now() - startTime,
+      });
+    }
+
+    // ─── MODE 2: Fetch all SEO data from Shopify (default) ─────────────────
+    const seoMap = {}; // plain object so it serializes cleanly to JSON
+    let cursor = null;
+    let hasNextPage = true;
+    let pageCount = 0;
+    const MAX_PAGES = 30; // 1500 product safety cap
+
+    while (hasNextPage && pageCount < MAX_PAGES) {
+      const result = await shopifyGraphQL(PRODUCTS_SEO_QUERY, { cursor });
+      const connection = result.data?.products;
+      if (!connection) break;
+
+      for (const edge of connection.edges || []) {
+        const productId = extractGid(edge.node.id);
+        if (productId) {
+          seoMap[productId] = {
+            title: edge.node.seo?.title || null,
+            description: edge.node.seo?.description || null,
+          };
+        }
+      }
+
+      hasNextPage = connection.pageInfo?.hasNextPage || false;
+      cursor = connection.pageInfo?.endCursor || null;
+      pageCount++;
+
+      if (hasNextPage) await new Promise(r => setTimeout(r, 300));
+    }
+
+    // Stats for the fetched data
+    const ids = Object.keys(seoMap);
+    let withTitle = 0;
+    let withDescription = 0;
+    let withBoth = 0;
+    for (const id of ids) {
+      const e = seoMap[id];
+      if (e.title) withTitle++;
+      if (e.description) withDescription++;
+      if (e.title && e.description) withBoth++;
+    }
+
+    return NextResponse.json({
+      success: true,
+      mode: 'fetch',
+      map: seoMap,
+      stats: {
+        total_fetched: ids.length,
+        with_meta_title: withTitle,
+        with_meta_description: withDescription,
+        with_both: withBoth,
+        with_neither: ids.length - Math.max(withTitle, withDescription),
+      },
+      pages_fetched: pageCount,
+      duration_ms: Date.now() - startTime,
+    });
+
+  } catch (err) {
+    console.error('[seo-score/sync-meta]', err);
+    return NextResponse.json({
+      success: false,
+      error: err.message,
+      duration_ms: Date.now() - startTime,
+    }, { status: 500 });
   }
 }
