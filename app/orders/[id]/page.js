@@ -178,6 +178,10 @@ export default function SingleOrderPage() {
   const [forceCancel, setForceCancel] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
+  // Apr 27 2026 — Track which tab to open drawer on. 'customer' jab kebab
+  // menu se khule, 'actions' jab dispatch button etc. se khule.
+  const [drawerInitialTab, setDrawerInitialTab] = useState('actions');
+
   // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
   const [openMenu, setOpenMenu] = useState(null);
 
@@ -567,7 +571,7 @@ export default function SingleOrderPage() {
   } else if (order.status === 'confirmed' || order.status === 'on_packing') {
     primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
   } else if (order.status === 'packed') {
-    primaryAction = { label: '🚚 Dispatch Order', onClick: () => setShowDrawer(true) };
+    primaryAction = { label: '🚚 Dispatch Order', onClick: () => { setDrawerInitialTab('actions'); setShowDrawer(true); } };
   }
 
   const statusOptions = Object.keys(STATUS_CONFIG).filter(s => s !== order.status && s !== 'cancelled');
@@ -1379,7 +1383,7 @@ export default function SingleOrderPage() {
                         boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                       }}>
                         <button
-                          onClick={() => { setOpenMenu(null); setShowDrawer(true); }}
+                          onClick={() => { setOpenMenu(null); setDrawerInitialTab('customer'); setShowDrawer(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -1387,7 +1391,7 @@ export default function SingleOrderPage() {
                           ✏️ Edit contact information
                         </button>
                         <button
-                          onClick={() => { setOpenMenu(null); setShowDrawer(true); }}
+                          onClick={() => { setOpenMenu(null); setDrawerInitialTab('customer'); setShowDrawer(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -1495,7 +1499,7 @@ export default function SingleOrderPage() {
         </div>
       </div>
 
-      {/* Drawer overlay — opens on Edit button click */}
+      {/* Drawer overlay — opens on Edit/Dispatch button click */}
       {showDrawer && (
         <OrderDrawer
           order={order}
@@ -1503,6 +1507,7 @@ export default function SingleOrderPage() {
           onRefresh={refreshAll}
           performer={performer}
           variant="drawer"
+          defaultTab={drawerInitialTab}
         />
       )}
     </div>
