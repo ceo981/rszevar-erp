@@ -48,7 +48,7 @@ function formatShortDate(iso) {
 }
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────
-function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false }) {
+function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false, right = null }) {
   return (
     <div style={{
       background: card,
@@ -68,6 +68,7 @@ function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowV
           background: 'rgba(201,169,110,0.03)',
         }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>{title}</div>
+          {right}
         </div>
       )}
       <div style={{ padding: noPadBody ? 0 : pad }}>{children}</div>
@@ -986,11 +987,9 @@ export default function SingleOrderPage() {
               {/* Inline secondary actions — preserved exactly */}
               {!isCancelled && (
                 <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => { setShowDrawer(true); }}
-                    style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    ✏️ Edit customer info
-                  </button>
+                  {/* Apr 27 2026 — "✏️ Edit customer info" button moved to
+                      Customer card sidebar (Shopify-style "..." menu).
+                      See Customer card below. */}
                   <div style={{ position: 'relative' }}>
                     <button
                       onClick={() => setShowStatusMenu(v => !v)}
@@ -1336,7 +1335,71 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Customer */}
-            <Card title="Customer">
+            {/* Apr 27 2026 — Shopify-style "..." kebab menu in Customer Card.
+                Replaces the inline "Edit customer info" button that used to
+                sit in the secondary actions row. Click "..." to get options
+                that all open the existing edit drawer. */}
+            <Card title="Customer" overflowVisible right={
+              !isCancelled && (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === 'customer-edit' ? null : 'customer-edit'); }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#888',
+                      fontSize: 18,
+                      cursor: 'pointer',
+                      padding: '2px 8px',
+                      borderRadius: 5,
+                      lineHeight: 1,
+                      fontFamily: 'inherit',
+                    }}
+                    title="Customer actions"
+                    onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >⋯</button>
+                  {openMenu === 'customer-edit' && (
+                    <>
+                      {/* Backdrop to close on outside click */}
+                      <div
+                        onClick={() => setOpenMenu(null)}
+                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        right: 0,
+                        background: '#0f0f0f',
+                        border: `1px solid ${border}`,
+                        borderRadius: 8,
+                        padding: 4,
+                        minWidth: 220,
+                        zIndex: 50,
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                      }}>
+                        <button
+                          onClick={() => { setOpenMenu(null); setShowDrawer(true); }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          ✏️ Edit contact information
+                        </button>
+                        <button
+                          onClick={() => { setOpenMenu(null); setShowDrawer(true); }}
+                          style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          📍 Edit shipping address
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            }>
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
               {order.customer_order_count > 0 && (
                 <Link href={`/customers?phone=${encodeURIComponent(order.customer_phone || '')}`}
