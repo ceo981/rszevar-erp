@@ -1,9 +1,15 @@
 // ============================================================================
-// RS ZEVAR ERP — Single Product API (Phase D — Apr 28 2026)
+// RS ZEVAR ERP — Single Product API (Phase D M2.B — Apr 28 2026)
 // Route: /api/products/[id]   (id = shopify_product_id)
 // ----------------------------------------------------------------------------
 // GET    → fetch full product (parent fields + all variants)
 // PATCH  → save edits to Shopify, mirror to DB
+// ----------------------------------------------------------------------------
+// M2.B additions:
+//   - shopifyGraphQL helper (uses 2025-01 to match webhook version)
+//   - PATCH now accepts collections_join_ids + collections_leave_ids and
+//     fires productUpdate mutation to add/remove the product from collections
+//   - PATCH also accepts the new full collections array for DB mirror
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -17,7 +23,8 @@ export const maxDuration = 60;
 
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
-const API_VERSION = '2024-01';
+const API_VERSION = '2024-01';        // REST
+const GRAPHQL_VERSION = '2025-01';    // GraphQL (matches webhook + lib/shopify.js)
 
 // ── Shopify REST helper ─────────────────────────────────────────────────────
 async function shopifyRequest(endpoint, { method = 'GET', body = null } = {}) {
@@ -38,6 +45,30 @@ async function shopifyRequest(endpoint, { method = 'GET', body = null } = {}) {
     throw new Error(`Shopify ${method} ${endpoint} failed (${res.status}): ${errMsg}`);
   }
   return data;
+}
+
+// ── Shopify GraphQL helper (M2.B — for collections mutations) ───────────────
+async function shopifyGraphQL(query, variables = {}) {
+  const url = `https://${SHOPIFY_DOMAIN}/admin/api/${GRAPHQL_VERSION}/graphql.json`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Shopify GraphQL ${res.status}: ${text.slice(0, 400)}`);
+  }
+  let json;
+  try { json = JSON.parse(text); }
+  catch { throw new Error(`Shopify GraphQL non-JSON response: ${text.slice(0, 400)}`); }
+  if (json.errors) {
+    throw new Error(`GraphQL: ${json.errors.map(e => e.message).join('; ')}`);
+  }
+  return json;
 }
 
 // ── Metafield helper (for SEO meta title/description) ──────────────────────
@@ -183,6 +214,10 @@ export async function PATCH(request, { params }) {
       seo_meta_title,
       seo_meta_description,
       alt_texts,
+      // M2.B — collections multi-select
+      collections,                  // [{handle, title}] — full new state for DB mirror
+      collections_join_ids,         // [numeric collection ids] — to ADD product to
+      collections_leave_ids,        // [numeric collection ids] — to REMOVE product from
     } = body;
 
     // ── Step 1: Build core product update payload ──
@@ -239,6 +274,47 @@ export async function PATCH(request, { params }) {
       }
     }
 
+    // ── Step 2.5: Collections add/remove via GraphQL (M2.B) ──
+    // Editor sends numeric collection IDs computed via diff of master list.
+    // We translate to GIDs and fire a single productUpdate mutation.
+    const joinIds  = Array.isArray(collections_join_ids)  ? collections_join_ids.filter(Boolean)  : [];
+    const leaveIds = Array.isArray(collections_leave_ids) ? collections_leave_ids.filter(Boolean) : [];
+
+    if (joinIds.length > 0 || leaveIds.length > 0) {
+      try {
+        const productGid = `gid://shopify/Product/${productId}`;
+        const toJoin  = joinIds.map(cid  => `gid://shopify/Collection/${cid}`);
+        const toLeave = leaveIds.map(cid => `gid://shopify/Collection/${cid}`);
+
+        const mutation = `
+          mutation productUpdate($input: ProductInput!) {
+            productUpdate(input: $input) {
+              product { id }
+              userErrors { field message }
+            }
+          }
+        `;
+
+        const input = { id: productGid };
+        if (toJoin.length > 0)  input.collectionsToJoin  = toJoin;
+        if (toLeave.length > 0) input.collectionsToLeave = toLeave;
+
+        const data = await shopifyGraphQL(mutation, { input });
+        const userErrors = data?.data?.productUpdate?.userErrors || [];
+        if (userErrors.length > 0) {
+          throw new Error(userErrors.map(e => `${(e.field||[]).join('.')}: ${e.message}`).join('; '));
+        }
+
+        results.collections = {
+          success: true,
+          joined: toJoin.length,
+          left: toLeave.length,
+        };
+      } catch (e) {
+        errors.collections = e.message;
+      }
+    }
+
     // ── Step 3: Image alt texts ──
     if (Array.isArray(alt_texts) && alt_texts.length > 0) {
       const altResults = [];
@@ -279,6 +355,14 @@ export async function PATCH(request, { params }) {
     }
     if (typeof seo_meta_title === 'string') dbUpdate.seo_meta_title = seo_meta_title || null;
     if (typeof seo_meta_description === 'string') dbUpdate.seo_meta_description = seo_meta_description || null;
+
+    // M2.B — mirror collections to DB (strip id, store {handle, title} to match
+    // existing JSONB shape used by sync-collections route)
+    if (Array.isArray(collections)) {
+      dbUpdate.collections = collections
+        .filter(c => c && c.handle)
+        .map(c => ({ handle: c.handle, title: c.title || c.handle }));
+    }
 
     // Update images_data if alt texts changed
     if (Array.isArray(alt_texts) && alt_texts.length > 0) {
