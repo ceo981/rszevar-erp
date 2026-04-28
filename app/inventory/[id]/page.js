@@ -626,6 +626,9 @@ export default function ProductEditPage() {
   // flow into save when the API gains metafield write support (next phase).
   const [aiPendingExtras, setAiPendingExtras] = useState(null);
   const [aiAppliedFlash, setAiAppliedFlash] = useState(null); // { fields: string[] } | null
+  // M2.J — track enhancement_id from modal so we can mark the DB record as
+  // "pushed" once the user saves. Mirrors the inventory-list push flow's tracking.
+  const [aiEnhancementId, setAiEnhancementId] = useState(null);
 
   // M2.I — Live SEO score (recomputes on every draft change, no DB call)
   const liveSeo = useMemo(() => {
@@ -699,7 +702,7 @@ export default function ProductEditPage() {
     return buildDiff(product, draft);
   }, [product, draft]);
 
-  const hasChanges = Object.keys(diff).length > 0;
+  const hasChanges = Object.keys(diff).length > 0 || !!aiPendingExtras || !!aiEnhancementId;
 
   // ── Warn on navigation if unsaved ─────────────────────────────────────────
   useEffect(() => {
@@ -747,6 +750,23 @@ export default function ProductEditPage() {
         body.collections = newColls.map(c => ({ handle: c.handle, title: c.title || c.handle }));
       }
 
+      // M2.J — Inject AI Enhance extras into save payload.
+      // These were applied via the AI Enhance modal (apply mode) and stored
+      // in aiPendingExtras until the user clicks Save.
+      if (aiPendingExtras) {
+        if (Array.isArray(aiPendingExtras.faqs))           body.ai_faqs           = aiPendingExtras.faqs;
+        if (Array.isArray(aiPendingExtras.mf_occasion))    body.ai_mf_occasion    = aiPendingExtras.mf_occasion;
+        if (Array.isArray(aiPendingExtras.mf_set_contents))body.ai_mf_set_contents= aiPendingExtras.mf_set_contents;
+        if (Array.isArray(aiPendingExtras.mf_stone_type))  body.ai_mf_stone_type  = aiPendingExtras.mf_stone_type;
+        if (typeof aiPendingExtras.mf_material === 'string')     body.ai_mf_material     = aiPendingExtras.mf_material;
+        if (typeof aiPendingExtras.mf_color_finish === 'string') body.ai_mf_color_finish = aiPendingExtras.mf_color_finish;
+      }
+
+      // M2.J — pass enhancement_id so server can mark ai_enhancements row pushed
+      if (aiEnhancementId) {
+        body.ai_enhancement_id = aiEnhancementId;
+      }
+
       const res = await fetch(`/api/products/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -755,6 +775,9 @@ export default function ProductEditPage() {
       const data = await res.json();
       setSaveResult(data);
       if (data.success || data.partial) {
+        // Clear AI state now that it's been written to Shopify + DB
+        setAiPendingExtras(null);
+        setAiEnhancementId(null);
         // Reload fresh data from DB (which now reflects Shopify)
         await loadProduct();
       }
@@ -773,6 +796,10 @@ export default function ProductEditPage() {
       images_to_add: [],
     });
     setSaveResult(null);
+    // M2.J — discard AI Enhance state along with form changes
+    setAiPendingExtras(null);
+    setAiEnhancementId(null);
+    setAiAppliedFlash(null);
   };
 
   // Pull fresh data from Shopify (safety net for missed webhooks)
@@ -854,6 +881,11 @@ export default function ProductEditPage() {
     // Queue extras (FAQs + metafields) for save once API supports them
     if (payload.extras && Object.keys(payload.extras).length > 0) {
       setAiPendingExtras(payload.extras);
+    }
+
+    // M2.J — capture enhancement_id so save handler can mark DB record
+    if (payload.enhancement_id) {
+      setAiEnhancementId(payload.enhancement_id);
     }
 
     // Brief flash notification
@@ -1062,7 +1094,7 @@ export default function ProductEditPage() {
         </div>
       )}
 
-      {/* M2.I — AI pending extras (FAQs + product metafields) */}
+      {/* M2.I/M2.J — AI pending extras (FAQs + product metafields) */}
       {aiPendingExtras && (
         <div style={{
           padding: '10px 14px',
@@ -1077,7 +1109,7 @@ export default function ProductEditPage() {
           alignItems: 'center',
         }}>
           <span>
-            ⏳ AI also generated extras (queued):
+            ⏳ AI also generated extras (will save with Save button):
             {Array.isArray(aiPendingExtras.faqs) && aiPendingExtras.faqs.length > 0 &&
               <span style={{ marginLeft: 6 }}>{aiPendingExtras.faqs.length} FAQ{aiPendingExtras.faqs.length !== 1 ? 's' : ''}</span>}
             {Array.isArray(aiPendingExtras.mf_occasion) && aiPendingExtras.mf_occasion.length > 0 &&
@@ -1088,7 +1120,6 @@ export default function ProductEditPage() {
               <span style={{ marginLeft: 6 }}>· Stone Type ({aiPendingExtras.mf_stone_type.length})</span>}
             {aiPendingExtras.mf_material && <span style={{ marginLeft: 6 }}>· Material</span>}
             {aiPendingExtras.mf_color_finish && <span style={{ marginLeft: 6 }}>· Color/Finish</span>}
-            <span style={{ marginLeft: 6, color: text3 }}>— will sync on next API upgrade (M2.J)</span>
           </span>
           <button onClick={() => setAiPendingExtras(null)} style={{ background: 'none', border: 'none', color: text3, cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
