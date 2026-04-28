@@ -639,89 +639,132 @@ function getGroupTotalStock(variants) {
   return variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
 }
 
-// ── Image picker for variant groups (M2.F) ─────────────────────────────────
-// Shows a clickable thumbnail. Click opens dropdown of uploaded images.
-function VariantImagePicker({ images, selectedId, onSelect, onClear }) {
+// ── Image picker for variant groups (M2.F + M2.H — modal-style, supports inheritance) ─
+// `selectedId`   = own assignment (null/undefined if not set)
+// `inheritedId`  = parent group's image (sub-variants inherit from group when not own-set)
+// Display priority: selectedId → inheritedId → null (show "+")
+// Modal opens at viewport center (escapes any overflow/clipping issues)
+function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear, size = 44, groupLabel }) {
   const [open, setOpen] = useState(false);
-  const selectedImg = images.find(i => i._id === selectedId);
+
+  const displayId = selectedId ?? inheritedId;
+  const displayImg = images.find(i => i._id === displayId);
+  const isInheriting = !selectedId && !!inheritedId;
+
+  const titleText = isInheriting
+    ? `Inherited from group — click to override`
+    : (displayImg ? 'Click to change image' : 'Click to pick image');
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
+    <>
       <button
-        onClick={() => setOpen(o => !o)}
-        title={selectedImg ? `Image: ${selectedImg.filename}` : 'Click to pick image for this color'}
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        title={titleText}
         style={{
-          width: 44, height: 44, padding: 0,
-          background: bgPage, border: `1px solid ${selectedImg ? gold : border}`,
+          width: size, height: size, padding: 0,
+          background: bgPage,
+          border: `1px ${isInheriting ? 'dashed' : 'solid'} ${displayImg ? gold : border}`,
           borderRadius: 6, cursor: 'pointer', overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          opacity: isInheriting ? 0.85 : 1,
+          flex: '0 0 auto',
         }}
       >
-        {selectedImg ? (
-          <img src={selectedImg.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {displayImg ? (
+          <img src={displayImg.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
-          <span style={{ color: text3, fontSize: 18, fontWeight: 300 }}>+</span>
+          <span style={{ color: text3, fontSize: size > 30 ? 18 : 14, fontWeight: 300 }}>+</span>
         )}
       </button>
 
       {open && (
-        <>
-          {/* Backdrop to close picker */}
-          <div onClick={() => setOpen(false)} style={{
-            position: 'fixed', inset: 0, zIndex: 90, background: 'transparent',
-          }} />
-          {/* Picker panel */}
-          <div style={{
-            position: 'absolute', top: 50, left: 0, zIndex: 100,
-            background: card, border: `1px solid ${border}`, borderRadius: 8,
-            padding: 10, width: 280, maxHeight: 320, overflowY: 'auto',
-            boxShadow: '0 6px 24px rgba(0,0,0,0.5)',
-          }}>
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: card,
+              border: `1px solid ${border}`,
+              borderRadius: 10,
+              padding: 20,
+              maxWidth: 540, width: '100%',
+              maxHeight: '85vh', overflowY: 'auto',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.7)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: text1, fontWeight: 600 }}>
+                Select image{groupLabel ? ` — ${groupLabel}` : ''}
+              </h3>
+              <button
+                onClick={() => setOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: text3, fontSize: 22, cursor: 'pointer', padding: 4, lineHeight: 1 }}
+              >×</button>
+            </div>
+
             {images.length === 0 ? (
-              <div style={{ color: text3, fontSize: 12, padding: 8, textAlign: 'center' }}>
-                Pehle Media card me images upload karo, phir yahan select kar sako ge.
+              <div style={{ color: text3, fontSize: 13, padding: 30, textAlign: 'center' }}>
+                Pehle Media card me images upload karo, phir yahan select kar sakoge.
               </div>
             ) : (
               <>
-                <div style={{ fontSize: 11, color: text3, marginBottom: 8 }}>
-                  Select an image for this color group:
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
                   {images.map(img => {
-                    const isSelected = img._id === selectedId;
+                    const isSelected     = img._id === selectedId;
+                    const isInheritedImg = !selectedId && img._id === inheritedId;
                     return (
                       <button
                         key={img._id}
                         onClick={() => { onSelect(img._id); setOpen(false); }}
+                        title={img.filename}
                         style={{
                           padding: 0, background: 'none',
-                          border: `2px solid ${isSelected ? gold : 'transparent'}`,
-                          borderRadius: 5, cursor: 'pointer', overflow: 'hidden',
-                          aspectRatio: '1/1',
+                          border: `2px solid ${isSelected ? gold : (isInheritedImg ? 'rgba(201,169,110,0.45)' : 'transparent')}`,
+                          borderRadius: 6, cursor: 'pointer', overflow: 'hidden',
+                          aspectRatio: '1/1', position: 'relative',
                         }}
                       >
                         <img src={img.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        {isSelected && (
+                          <div style={{ position: 'absolute', top: 4, right: 4, background: gold, color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>SELECTED</div>
+                        )}
+                        {isInheritedImg && (
+                          <div style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(255,255,255,0.92)', color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 600, letterSpacing: 0.3 }}>INHERITED</div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-                {selectedId && (
+
+                <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  {selectedId && (
+                    <button
+                      onClick={() => { onClear(); setOpen(false); }}
+                      style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${border}`, color: '#f87171', borderRadius: 5, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      {inheritedId ? '↺ Reset to group default' : 'Clear'}
+                    </button>
+                  )}
                   <button
-                    onClick={() => { onClear(); setOpen(false); }}
-                    style={{
-                      marginTop: 8, width: '100%', padding: '5px',
-                      background: 'transparent', border: `1px solid ${border}`,
-                      color: '#f87171', borderRadius: 4, fontSize: 11,
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}
-                  >Clear assignment</button>
-                )}
+                    onClick={() => setOpen(false)}
+                    style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${border}`, color: text2, borderRadius: 5, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </>
             )}
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -846,17 +889,19 @@ export default function NewProductPage() {
     }));
   };
 
-  // M2.F — assign an image to a color group
-  const setGroupImage = (groupKey, imageId) => {
+  // M2.F + M2.H — assign an image to a variant key (group key like "Black"
+  // OR composite sub-variant key like "Black|2.4"). Sub-variants without an
+  // own assignment inherit from their group's assignment at render/save time.
+  const setVariantAssignment = (key, imageId) => {
     setDraft(d => ({
       ...d,
-      variant_image_assignments: { ...d.variant_image_assignments, [groupKey]: imageId },
+      variant_image_assignments: { ...d.variant_image_assignments, [key]: imageId },
     }));
   };
-  const clearGroupImage = (groupKey) => {
+  const clearVariantAssignment = (key) => {
     setDraft(d => {
       const next = { ...d.variant_image_assignments };
-      delete next[groupKey];
+      delete next[key];
       return { ...d, variant_image_assignments: next };
     });
   };
@@ -941,13 +986,16 @@ export default function NewProductPage() {
         stock: v.stock,
       }));
 
-      // M2.F — Variant image assignments: { 'Black': image_index, 'green': image_index }
-      // Convert from _id (frontend) to array index (server-friendly)
+      // M2.F + M2.H — Variant image assignments. Keys can be:
+      //   - Group key:  "Black"           → applies to all sub-variants of that color
+      //   - Composite:  "Black|2.4|"      → overrides for that specific sub-variant
+      // Server resolves composite key first; falls back to group key.
+      // Convert _id refs (frontend) → array index (server-friendly).
       const assignments = {};
-      for (const [groupKey, imgId] of Object.entries(draft.variant_image_assignments || {})) {
+      for (const [key, imgId] of Object.entries(draft.variant_image_assignments || {})) {
         if (!imgId) continue;
         const idx = draft.images.findIndex(i => i._id === imgId);
-        if (idx >= 0) assignments[groupKey] = idx;
+        if (idx >= 0) assignments[key] = idx;
       }
       if (Object.keys(assignments).length > 0) {
         payload.variant_image_assignments = assignments;
@@ -1351,10 +1399,13 @@ export default function NewProductPage() {
 
                                 {/* Image picker for this group */}
                                 <VariantImagePicker
+                                  size={44}
                                   images={draft.images}
                                   selectedId={draft.variant_image_assignments[group.key]}
-                                  onSelect={(imgId) => setGroupImage(group.key, imgId)}
-                                  onClear={() => clearGroupImage(group.key)}
+                                  inheritedId={null}
+                                  onSelect={(imgId) => setVariantAssignment(group.key, imgId)}
+                                  onClear={() => clearVariantAssignment(group.key)}
+                                  groupLabel={group.label}
                                 />
 
                                 {/* Group label */}
@@ -1408,22 +1459,30 @@ export default function NewProductPage() {
                                       v => v.option1 === sv.option1 && v.option2 === sv.option2 && v.option3 === sv.option3
                                     );
                                     const mainPrice = draft.price || '';
+                                    // M2.H — composite key for sub-variant image override
+                                    const subKey = `${sv.option1 ?? ''}|${sv.option2 ?? ''}|${sv.option3 ?? ''}`;
+                                    const ownImg       = draft.variant_image_assignments[subKey];
+                                    const inheritedImg = draft.variant_image_assignments[group.key];
                                     return (
                                       <div key={sv.title} style={{
                                         display: 'grid',
-                                        gridTemplateColumns: '44px 44px 1fr 110px 90px 130px',
+                                        gridTemplateColumns: '44px 36px 1fr 110px 90px 130px',
                                         gap: 8, padding: '8px 10px',
                                         borderBottom: `1px solid ${border}`,
                                         alignItems: 'center',
                                         fontSize: 12,
                                       }}>
                                         <div /> {/* indent */}
-                                        <div style={{
-                                          width: 28, height: 28, borderRadius: 4,
-                                          border: `1px dashed ${border}`,
-                                          background: 'rgba(201,169,110,0.05)',
-                                        }} />
-                                        <div style={{ color: text2, paddingLeft: 8 }}>
+                                        <VariantImagePicker
+                                          size={32}
+                                          images={draft.images}
+                                          selectedId={ownImg}
+                                          inheritedId={inheritedImg}
+                                          onSelect={(imgId) => setVariantAssignment(subKey, imgId)}
+                                          onClear={() => clearVariantAssignment(subKey)}
+                                          groupLabel={`${group.label} / ${sv.option2 || ''}`}
+                                        />
+                                        <div style={{ color: text2, paddingLeft: 4 }}>
                                           <span style={{ color: text3, fontSize: 10, marginRight: 4 }}>
                                             {draft.options[1]?.name || 'Size'}:
                                           </span>
