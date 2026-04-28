@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================================
-// RS ZEVAR ERP — Add Product Page (Phase D M2.C + M2.D — Apr 28 2026)
+// RS ZEVAR ERP — Add Product Page (Phase D M2.C + M2.D + M2.I — Apr 28 2026)
 // Route: /inventory/new
 // ----------------------------------------------------------------------------
 // Blank-state form mirroring the editor layout. Creates product on Shopify
@@ -12,11 +12,18 @@
 //   - Inventory tracking toggle + initial stock for default variant
 //   - Variant options builder (up to 2 options, auto-generated variants matrix)
 //   - Google Shopping metafields card
+// M2.I additions:
+//   - AI Enhance button in Description card → opens modal in 'apply' mode
+//   - Generated content fills the new-product draft (no separate Shopify push)
+//   - Live SEO score card (recomputes on every keystroke)
+//   - Pending AI extras banner (FAQs + product metafields queued for save)
 // ============================================================================
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import AiEnhanceModal from '../_components/AiEnhanceModal';
+import { calculateSeoScore } from '../../../lib/seo-score';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
 const gold = '#c9a96e';
@@ -815,6 +822,34 @@ export default function NewProductPage() {
   const [allCollections, setAllCollections] = useState([]);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
 
+  // M2.I — AI Enhance state
+  const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);
+  const [aiPendingExtras, setAiPendingExtras] = useState(null);
+  const [aiAppliedFlash, setAiAppliedFlash] = useState(null);
+
+  // M2.I — Live SEO Score (recomputes on every draft change)
+  const liveSeo = useMemo(() => {
+    try {
+      return calculateSeoScore({
+        parent_title: draft.title || '',
+        description_html: draft.description_html || '',
+        tags: draft.tags || [],
+        handle: draft.handle || '',
+        seo_meta_title: draft.seo_meta_title || '',
+        seo_meta_description: draft.seo_meta_description || '',
+        // For new products, images_data uses the previewUrl/alt fields from staged uploads
+        images_data: (draft.images || []).map((img, i) => ({
+          id: img.id || `staged-${i}`,
+          src: img.previewUrl || img.src || '',
+          alt: img.alt || '',
+          position: i + 1,
+        })),
+      });
+    } catch (e) {
+      return null;
+    }
+  }, [draft]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -840,6 +875,47 @@ export default function NewProductPage() {
   }, [draft.title, handleManuallyEdited]);
 
   const setField = (k, v) => setDraft(d => ({ ...d, [k]: v }));
+
+  // M2.I — Apply AI-generated content into the new-product draft
+  const handleAiApply = (payload) => {
+    if (!payload || !payload.fields) return;
+    const f = payload.fields;
+    const applied = [];
+
+    setDraft(d => {
+      const next = { ...d };
+      if (typeof f.title === 'string')                  { next.title = f.title; applied.push('Title'); }
+      if (typeof f.description_html === 'string')       { next.description_html = f.description_html; applied.push('Description'); }
+      if (typeof f.seo_meta_title === 'string')         { next.seo_meta_title = f.seo_meta_title; applied.push('Meta Title'); }
+      if (typeof f.seo_meta_description === 'string')   { next.seo_meta_description = f.seo_meta_description; applied.push('Meta Description'); }
+      if (typeof f.handle === 'string' && f.handle)     { next.handle = f.handle; applied.push('URL Handle'); }
+      if (Array.isArray(f.tags))                        { next.tags = f.tags; applied.push('Tags'); }
+
+      // Image alt texts — match by 1-based position to draft.images
+      if (Array.isArray(f.alt_texts) && f.alt_texts.length > 0 && Array.isArray(d.images)) {
+        const imgs = [...d.images];
+        let touched = 0;
+        for (const at of f.alt_texts) {
+          const i = (at.position || 0) - 1;
+          if (i >= 0 && i < imgs.length) {
+            imgs[i] = { ...imgs[i], alt: at.alt || '' };
+            touched++;
+          }
+        }
+        if (touched > 0) {
+          next.images = imgs;
+          applied.push(`${touched} Image Alt${touched !== 1 ? 's' : ''}`);
+        }
+      }
+      return next;
+    });
+
+    if (payload.extras && Object.keys(payload.extras).length > 0) {
+      setAiPendingExtras(payload.extras);
+    }
+    setAiAppliedFlash({ fields: applied, ts: Date.now() });
+    setTimeout(() => setAiAppliedFlash(null), 4500);
+  };
 
   // M2.D — option/variant helpers
   const addOption = () => {
@@ -1097,6 +1173,54 @@ export default function NewProductPage() {
         </div>
       )}
 
+      {/* M2.I — AI Applied flash */}
+      {aiAppliedFlash && (
+        <div style={{
+          padding: '10px 14px', marginBottom: 14, borderRadius: 8,
+          background: 'rgba(201,169,110,0.08)',
+          border: `1px solid ${gold}`,
+          color: gold, fontSize: 13,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>
+            ✨ AI applied to form: <span style={{ color: text1, fontWeight: 600 }}>
+              {aiAppliedFlash.fields.length > 0 ? aiAppliedFlash.fields.join(', ') : 'no fields'}
+            </span>
+            <span style={{ marginLeft: 8, color: text3, fontSize: 11 }}>
+              · Click "Create Product" to push to Shopify
+            </span>
+          </span>
+          <button onClick={() => setAiAppliedFlash(null)} style={{ background: 'none', border: 'none', color: text3, cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      {/* M2.I — AI pending extras */}
+      {aiPendingExtras && (
+        <div style={{
+          padding: '10px 14px', marginBottom: 14, borderRadius: 8,
+          background: 'rgba(251,191,36,0.06)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          color: '#fbbf24', fontSize: 12,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>
+            ⏳ AI also generated extras (queued):
+            {Array.isArray(aiPendingExtras.faqs) && aiPendingExtras.faqs.length > 0 &&
+              <span style={{ marginLeft: 6 }}>{aiPendingExtras.faqs.length} FAQ{aiPendingExtras.faqs.length !== 1 ? 's' : ''}</span>}
+            {Array.isArray(aiPendingExtras.mf_occasion) && aiPendingExtras.mf_occasion.length > 0 &&
+              <span style={{ marginLeft: 6 }}>· Occasion ({aiPendingExtras.mf_occasion.length})</span>}
+            {Array.isArray(aiPendingExtras.mf_set_contents) && aiPendingExtras.mf_set_contents.length > 0 &&
+              <span style={{ marginLeft: 6 }}>· Set Contents ({aiPendingExtras.mf_set_contents.length})</span>}
+            {Array.isArray(aiPendingExtras.mf_stone_type) && aiPendingExtras.mf_stone_type.length > 0 &&
+              <span style={{ marginLeft: 6 }}>· Stone Type ({aiPendingExtras.mf_stone_type.length})</span>}
+            {aiPendingExtras.mf_material && <span style={{ marginLeft: 6 }}>· Material</span>}
+            {aiPendingExtras.mf_color_finish && <span style={{ marginLeft: 6 }}>· Color/Finish</span>}
+            <span style={{ marginLeft: 6, color: text3 }}>— will sync on next API upgrade (M2.J)</span>
+          </span>
+          <button onClick={() => setAiPendingExtras(null)} style={{ background: 'none', border: 'none', color: text3, cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
       {/* Two-column layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 20 }}>
         {/* LEFT */}
@@ -1115,16 +1239,39 @@ export default function NewProductPage() {
           <Card
             title="Description"
             right={
-              <div style={{ display: 'flex', gap: 4, background: bgPage, borderRadius: 6, padding: 2 }}>
-                {[{ v: 'edit', l: 'HTML' }, { v: 'preview', l: 'Preview' }].map(t => (
-                  <button key={t.v} onClick={() => setDescMode(t.v)}
-                    style={{
-                      padding: '4px 10px', background: descMode === t.v ? 'rgba(201,169,110,0.15)' : 'transparent',
-                      border: 'none', borderRadius: 4,
-                      color: descMode === t.v ? gold : text3,
-                      fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-                    }}>{t.l}</button>
-                ))}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={() => setAiEnhanceOpen(true)}
+                  title="Generate description, meta tags, alt texts, FAQs with AI"
+                  style={{
+                    padding: '5px 11px',
+                    background: 'linear-gradient(135deg, rgba(201,169,110,0.18), rgba(201,169,110,0.06))',
+                    border: `1px solid ${gold}`,
+                    borderRadius: 6,
+                    color: gold,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    letterSpacing: 0.3,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                  }}
+                >
+                  <span>✨</span><span>AI Enhance</span>
+                </button>
+                <div style={{ display: 'flex', gap: 4, background: bgPage, borderRadius: 6, padding: 2 }}>
+                  {[{ v: 'edit', l: 'HTML' }, { v: 'preview', l: 'Preview' }].map(t => (
+                    <button key={t.v} onClick={() => setDescMode(t.v)}
+                      style={{
+                        padding: '4px 10px', background: descMode === t.v ? 'rgba(201,169,110,0.15)' : 'transparent',
+                        border: 'none', borderRadius: 4,
+                        color: descMode === t.v ? gold : text3,
+                        fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                      }}>{t.l}</button>
+                  ))}
+                </div>
               </div>
             }>
             {descMode === 'edit' ? (
@@ -1620,6 +1767,67 @@ export default function NewProductPage() {
 
         {/* RIGHT */}
         <div>
+          {/* M2.I — Live SEO Score (recomputes on every keystroke) */}
+          {liveSeo && (
+            <Card
+              title="SEO Score (Live)"
+              right={
+                <span style={{
+                  fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 12,
+                  background: liveSeo.tier === 'green' ? 'rgba(74,222,128,0.15)' :
+                              liveSeo.tier === 'yellow' ? 'rgba(250,204,21,0.15)' :
+                                                          'rgba(248,113,113,0.15)',
+                  color: liveSeo.tier === 'green' ? '#4ade80' :
+                         liveSeo.tier === 'yellow' ? '#facc15' : '#f87171',
+                }}>
+                  {liveSeo.score}
+                </span>
+              }
+            >
+              <div style={{ marginBottom: 12 }}>
+                <div style={{
+                  height: 8, background: bgPage, borderRadius: 4, overflow: 'hidden',
+                  border: `1px solid ${border}`,
+                }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${liveSeo.score}%`,
+                    background: liveSeo.tier === 'green' ? '#4ade80' :
+                                liveSeo.tier === 'yellow' ? '#facc15' : '#f87171',
+                    transition: 'width 0.25s, background 0.25s',
+                  }} />
+                </div>
+                <div style={{ marginTop: 6, fontSize: 10, color: text3, textAlign: 'center' }}>
+                  {liveSeo.score} / 100 · {liveSeo.tier === 'green' ? 'Solid SEO' :
+                                            liveSeo.tier === 'yellow' ? 'Acceptable' : 'Needs work'}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6 }}>
+                {Object.entries(liveSeo.breakdown).map(([key, b]) => {
+                  const pct = b.max > 0 ? (b.points / b.max) : 1;
+                  const dotColor = pct >= 0.8 ? '#4ade80' : pct >= 0.5 ? '#facc15' : '#f87171';
+                  return (
+                    <div key={key} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      fontSize: 11, padding: '5px 8px',
+                      background: bgPage, borderRadius: 4, border: `1px solid ${border}`,
+                    }}
+                      title={b.note || ''}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor }} />
+                        <span style={{ color: text2 }}>{b.label}</span>
+                      </span>
+                      <span style={{ color: text3, fontFamily: 'monospace', fontSize: 10 }}>
+                        {b.points}/{b.max}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           <Card title="Status">
             <Select
               value={draft.status}
@@ -1767,6 +1975,29 @@ export default function NewProductPage() {
           </Card>
         </div>
       </div>
+
+      {/* M2.I — AI Enhance modal (apply mode) */}
+      {aiEnhanceOpen && (
+        <AiEnhanceModal
+          mode="apply"
+          product={{
+            shopify_product_id: null,                    // new product — no id yet
+            title: draft.title || 'New Product',
+            parent_title: draft.title || 'New Product',
+            image_url: draft.images?.[0]?.previewUrl || null,
+            category: draft.product_type || '',
+            vendor: draft.vendor || '',
+            selling_price: draft.price || null,
+            variants_summary: draft.use_variant_options
+              ? (draft.variants_generated || []).map(v => v.title).filter(Boolean).join(', ')
+              : '',
+            image_count: (draft.images?.length || 0),
+            current_description: draft.description_html || '',
+          }}
+          onClose={() => setAiEnhanceOpen(false)}
+          onApply={handleAiApply}
+        />
+      )}
     </div>
   );
 }
