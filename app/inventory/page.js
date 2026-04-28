@@ -370,15 +370,13 @@ export default function InventoryPage() {
           <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{total} products · Synced from Shopify</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a
-            href="https://admin.shopify.com/store/rszevar/products/new"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/inventory/new"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'var(--gold)', color: '#080808', border: 'none', borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textDecoration: 'none' }}
-            title="Add new product (in-ERP form coming next milestone — for now opens Shopify admin in new tab)"
+            title="Create a new product directly from ERP"
           >
             <span style={{ fontSize: 14, fontWeight: 800 }}>+</span> Add Product
-          </a>
+          </Link>
           <button onClick={handleComputeABC} disabled={computing} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: computing ? 'var(--border)' : 'transparent', color: computing ? 'var(--text3)' : 'var(--gold)', border: `1px solid ${computing ? 'var(--border)' : 'var(--gold)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: computing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: computing ? 'spin 1s linear infinite' : 'none' }}>📊</span>
             {computing ? 'Computing...' : 'Compute ABC'}
