@@ -1,25 +1,13 @@
 'use client';
 
 // ============================================================================
-// RS ZEVAR ERP — Single Product Editor (Phase D M2.B — Apr 28 2026)
+// RS ZEVAR ERP — Single Product Editor (Phase D M2.D — Apr 28 2026)
 // Route: /inventory/[id]   (id = shopify_product_id)
 // ----------------------------------------------------------------------------
-// Shopify-inspired full-page editor. Two-column layout:
-//   LEFT  (wide):   Title • Description • Media • Variants
-//   RIGHT (narrow): Status • Organization • Tags • SEO • Theme
-//
-// Save flow:
-//   - Edits accumulate in `draft` state
-//   - Sticky top bar shows "Unsaved changes — Discard / Save"
-//   - Save → PATCH /api/products/[id] → Shopify + DB mirror → reload
-//
-// M2.B updates:
-//   - Collections section is now an editable multi-select (search + chips)
-//   - Save resolves join/leave IDs from the master collections list and sends
-//     to the PATCH endpoint which fires Shopify GraphQL productUpdate
-//
-// Note: Variant editing (price/SKU/stock) and Add Variant / Custom Options
-// are scoped to Phase E. Variants stay read-only here.
+// M2.D additions:
+//   - Variants table is now editable (price/compare-at/SKU/stock per variant)
+//   - Media card supports image upload + delete (with client-side compression)
+//   - New "Google Shopping" card with age_group/gender/condition/MPN
 // ============================================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -390,6 +378,71 @@ function CollectionsPicker({ selected, available, onChange, loading }) {
   );
 }
 
+// ── Numeric input (M2.D — for variant prices/stock) ────────────────────────
+function NumInput({ value, onChange, placeholder, disabled, step = '0.01' }) {
+  return (
+    <input
+      type="number"
+      value={value === null || value === undefined ? '' : value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      step={step}
+      style={{
+        width: '100%',
+        padding: '6px 8px',
+        background: bgPage,
+        border: `1px solid ${border}`,
+        borderRadius: 4,
+        color: text1,
+        fontSize: 12,
+        fontFamily: 'monospace',
+        outline: 'none',
+      }}
+      onFocus={e => e.target.style.borderColor = gold}
+      onBlur={e => e.target.style.borderColor = border}
+    />
+  );
+}
+
+// ── Image compression for upload (M2.D) ─────────────────────────────────────
+const MAX_DIMENSION_EDIT = 2000;
+const JPEG_QUALITY_EDIT  = 0.85;
+const MAX_NEW_IMAGES     = 10;
+
+async function compressImageEdit(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_DIMENSION_EDIT || height > MAX_DIMENSION_EDIT) {
+          if (width >= height) {
+            height = Math.round(height * (MAX_DIMENSION_EDIT / width));
+            width = MAX_DIMENSION_EDIT;
+          } else {
+            width = Math.round(width * (MAX_DIMENSION_EDIT / height));
+            height = MAX_DIMENSION_EDIT;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY_EDIT);
+        const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        resolve({ base64, dataUrl, width, height });
+      };
+      img.onerror = () => reject(new Error('Failed to read image'));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Status badge ────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const config = {
@@ -456,6 +509,8 @@ function buildDiff(original, draft) {
   const fields = [
     'title', 'description_html', 'vendor', 'product_type', 'tags',
     'handle', 'shopify_status', 'seo_meta_title', 'seo_meta_description',
+    // M2.D — Google Shopping metafields
+    'google_age_group', 'google_gender', 'google_condition', 'google_mpn',
   ];
   for (const f of fields) {
     if (!isEqual(original[f], draft[f])) {
@@ -483,6 +538,55 @@ function buildDiff(original, draft) {
     }
   }
   if (altChanges.length > 0) diff.alt_texts = altChanges;
+
+  // M2.D — Variants update: detect any variant with changed price/compare/sku/stock
+  if (Array.isArray(draft.variants) && Array.isArray(original.variants)) {
+    const origVarMap = new Map(original.variants.map(v => [String(v.shopify_variant_id), v]));
+    const variantsUpdate = [];
+    for (const v of draft.variants) {
+      const orig = origVarMap.get(String(v.shopify_variant_id));
+      if (!orig) continue;
+      const change = { shopify_variant_id: v.shopify_variant_id, shopify_inventory_item_id: v.shopify_inventory_item_id };
+      let changed = false;
+      // Compare numerics — coerce both sides to numbers, treat null/undefined/empty as null
+      const num = (x) => (x === '' || x === null || x === undefined) ? null : Number(x);
+      if (num(v.selling_price) !== num(orig.selling_price)) {
+        change.price = v.selling_price === '' ? null : v.selling_price;
+        changed = true;
+      }
+      if (num(v.compare_at_price) !== num(orig.compare_at_price)) {
+        change.compare_at_price = v.compare_at_price === '' ? '' : v.compare_at_price;
+        changed = true;
+      }
+      if ((v.sku || '') !== (orig.sku || '')) {
+        change.sku = v.sku || '';
+        changed = true;
+      }
+      if (num(v.stock_quantity) !== num(orig.stock_quantity)) {
+        change.stock = v.stock_quantity === '' ? 0 : v.stock_quantity;
+        changed = true;
+      }
+      if (changed) variantsUpdate.push(change);
+    }
+    if (variantsUpdate.length > 0) diff.variants_update = variantsUpdate;
+  }
+
+  // M2.D — Image add (new uploads not yet in original)
+  if (Array.isArray(draft.images_to_add) && draft.images_to_add.length > 0) {
+    diff.images_to_add = draft.images_to_add.map(img => ({
+      filename: img.filename,
+      attachment: img.base64,
+      alt: img.alt || '',
+    }));
+  }
+
+  // M2.D — Image remove (ids from original.images_data not in draft.images_data)
+  const draftImgIds = new Set((draft.images_data || []).map(i => String(i.id)));
+  const removed = (original.images_data || [])
+    .filter(i => !draftImgIds.has(String(i.id)))
+    .map(i => i.id);
+  if (removed.length > 0) diff.images_to_remove = removed;
+
   return diff;
 }
 
@@ -520,7 +624,12 @@ export default function ProductEditPage() {
         setError(data.error || 'Failed to load product');
       } else {
         setProduct(data.product);
-        setDraft({ ...data.product, images_data: [...(data.product.images_data || [])] });
+        setDraft({
+          ...data.product,
+          images_data: [...(data.product.images_data || [])],
+          variants: (data.product.variants || []).map(v => ({ ...v })),
+          images_to_add: [],   // M2.D — staged uploads
+        });
       }
     } catch (e) {
       setError(e.message);
@@ -624,7 +733,12 @@ export default function ProductEditPage() {
 
   const handleDiscard = () => {
     if (!confirm('Discard all changes?')) return;
-    setDraft({ ...product, images_data: [...(product.images_data || [])] });
+    setDraft({
+      ...product,
+      images_data: [...(product.images_data || [])],
+      variants: (product.variants || []).map(v => ({ ...v })),
+      images_to_add: [],
+    });
     setSaveResult(null);
   };
 
@@ -663,6 +777,63 @@ export default function ProductEditPage() {
       images_data: (d.images_data || []).map(img =>
         String(img.id) === String(imageId) ? { ...img, alt } : img
       ),
+    }));
+  };
+
+  // M2.D — variant edit
+  const setVariantField = (variantId, field, value) => {
+    setDraft(d => ({
+      ...d,
+      variants: (d.variants || []).map(v =>
+        String(v.shopify_variant_id) === String(variantId) ? { ...v, [field]: value } : v
+      ),
+    }));
+  };
+
+  // M2.D — image upload (compress + stage)
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    const remaining = MAX_NEW_IMAGES - (draft.images_to_add?.length || 0);
+    if (remaining <= 0) {
+      alert(`Maximum ${MAX_NEW_IMAGES} new images per save. Save first, then upload more.`);
+      return;
+    }
+    const toProcess = files.slice(0, remaining);
+    const newImgs = [];
+    for (const file of toProcess) {
+      try {
+        const c = await compressImageEdit(file);
+        newImgs.push({
+          filename: file.name,
+          previewUrl: c.dataUrl,
+          base64: c.base64,
+          alt: '',
+          width: c.width,
+          height: c.height,
+          sizeKb: Math.round(c.base64.length * 3 / 4 / 1024),
+        });
+      } catch (err) {
+        alert(`Failed to process ${file.name}: ${err.message}`);
+      }
+    }
+    setDraft(d => ({ ...d, images_to_add: [...(d.images_to_add || []), ...newImgs] }));
+  };
+
+  const removeStagedImage = (idx) => {
+    setDraft(d => ({ ...d, images_to_add: (d.images_to_add || []).filter((_, i) => i !== idx) }));
+  };
+  const setStagedImageAlt = (idx, alt) => {
+    setDraft(d => ({ ...d, images_to_add: (d.images_to_add || []).map((img, i) => i === idx ? { ...img, alt } : img) }));
+  };
+
+  // M2.D — delete existing image (stage by removing from images_data)
+  const deleteExistingImage = (imageId) => {
+    if (!confirm('Delete this image? Will be removed from Shopify on Save.')) return;
+    setDraft(d => ({
+      ...d,
+      images_data: (d.images_data || []).filter(img => String(img.id) !== String(imageId)),
     }));
   };
 
@@ -854,31 +1025,52 @@ export default function ProductEditPage() {
           </Card>
 
           {/* Media */}
-          <Card title={`Media (${draft.images_data?.length || 0} images)`}>
-            {(!draft.images_data || draft.images_data.length === 0) ? (
+          <Card
+            title={`Media (${(draft.images_data?.length || 0) + (draft.images_to_add?.length || 0)} images)`}
+            right={
+              <label style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', background: 'transparent',
+                border: `1px solid ${gold}`, color: gold,
+                borderRadius: 5, fontSize: 11, fontWeight: 600,
+                cursor: 'pointer',
+              }}>
+                📷 Upload
+                <input type="file" multiple accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+              </label>
+            }
+          >
+            {((!draft.images_data || draft.images_data.length === 0) && (!draft.images_to_add || draft.images_to_add.length === 0)) ? (
               <div style={{ color: text3, fontSize: 13, textAlign: 'center', padding: 24 }}>
-                No images. Upload images in Shopify admin.
+                No images yet. Click Upload to add.
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {draft.images_data.map(img => (
+                {/* Existing Shopify images */}
+                {(draft.images_data || []).map(img => (
                   <div key={img.id} style={{ background: bgPage, border: `1px solid ${border}`, borderRadius: 8, padding: 10 }}>
                     <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
-                      <img
-                        src={img.src}
-                        alt={img.alt || ''}
-                        style={{
-                          position: 'absolute', top: 0, left: 0,
-                          width: '100%', height: '100%',
-                          objectFit: 'contain',
-                        }}
+                      <img src={img.src} alt={img.alt || ''}
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                       />
                       <div style={{
                         position: 'absolute', top: 6, left: 6,
-                        background: 'rgba(0,0,0,0.7)',
-                        color: gold, fontSize: 10, fontWeight: 600,
+                        background: 'rgba(0,0,0,0.7)', color: gold,
+                        fontSize: 10, fontWeight: 600,
                         padding: '2px 6px', borderRadius: 3,
                       }}>#{img.position}</div>
+                      <button
+                        onClick={() => deleteExistingImage(img.id)}
+                        title="Delete image"
+                        style={{
+                          position: 'absolute', top: 6, right: 6,
+                          background: 'rgba(0,0,0,0.7)', color: '#f87171',
+                          border: '1px solid rgba(248,113,113,0.5)',
+                          borderRadius: 4, padding: '2px 8px',
+                          fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                          lineHeight: 1,
+                        }}
+                      >×</button>
                     </div>
                     <Label>Alt text</Label>
                     <TextInput
@@ -888,52 +1080,119 @@ export default function ProductEditPage() {
                     />
                   </div>
                 ))}
+                {/* Staged uploads (not yet on Shopify) */}
+                {(draft.images_to_add || []).map((img, idx) => (
+                  <div key={`new-${idx}`} style={{
+                    background: bgPage,
+                    border: `1px solid rgba(74,222,128,0.4)`,
+                    borderRadius: 8, padding: 10,
+                  }}>
+                    <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                      <img src={img.previewUrl} alt={img.alt || ''}
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+                      />
+                      <div style={{
+                        position: 'absolute', top: 6, left: 6,
+                        background: 'rgba(74,222,128,0.85)', color: '#080808',
+                        fontSize: 10, fontWeight: 700,
+                        padding: '2px 6px', borderRadius: 3,
+                      }}>NEW · {img.sizeKb}KB</div>
+                      <button
+                        onClick={() => removeStagedImage(idx)}
+                        title="Remove (not yet uploaded)"
+                        style={{
+                          position: 'absolute', top: 6, right: 6,
+                          background: 'rgba(0,0,0,0.7)', color: '#f87171',
+                          border: '1px solid rgba(248,113,113,0.5)',
+                          borderRadius: 4, padding: '2px 8px',
+                          fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                          lineHeight: 1,
+                        }}
+                      >×</button>
+                    </div>
+                    <Label>Alt text</Label>
+                    <TextInput
+                      value={img.alt || ''}
+                      onChange={v => setStagedImageAlt(idx, v)}
+                      placeholder="Describe this image"
+                    />
+                  </div>
+                ))}
               </div>
             )}
           </Card>
 
-          {/* Variants (read-only in M1) */}
+          {/* Variants — editable (M2.D) */}
           <Card
             title={`Variants (${draft.variants?.length || 0})`}
-            right={<span style={{ fontSize: 11, color: text3 }}>Edit prices/SKU/stock in Shopify admin (Phase E coming)</span>}
+            right={<span style={{ fontSize: 11, color: text3 }}>Edit price, compare-at, SKU, stock — saves to Shopify on Save</span>}
             padBody={false}
           >
             {(!draft.variants || draft.variants.length === 0) ? (
               <div style={{ padding: 24, color: text3, fontSize: 13, textAlign: 'center' }}>No variants</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)' }}>
-                      <th style={{ textAlign: 'left', padding: '10px 14px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Variant</th>
-                      <th style={{ textAlign: 'left', padding: '10px 14px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>SKU</th>
+                      <th style={{ textAlign: 'left',  padding: '10px 12px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Variant</th>
                       {canViewFinancial && (
-                        <th style={{ textAlign: 'right', padding: '10px 14px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Price</th>
+                        <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 110 }}>Price</th>
                       )}
-                      <th style={{ textAlign: 'right', padding: '10px 14px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Stock</th>
-                      <th style={{ textAlign: 'left', padding: '10px 14px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>ABC</th>
+                      {canViewFinancial && (
+                        <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 110 }}>Compare-at</th>
+                      )}
+                      <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 130 }}>SKU</th>
+                      <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 90 }}>Stock</th>
+                      <th style={{ textAlign: 'left', padding: '10px 8px', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, width: 50 }}>ABC</th>
                     </tr>
                   </thead>
                   <tbody>
                     {draft.variants.map(v => (
                       <tr key={v.id} style={{ borderBottom: `1px solid ${border}` }}>
-                        <td style={{ padding: '10px 14px', color: text1 }}>{v.variant_label}</td>
-                        <td style={{ padding: '10px 14px', color: text2, fontFamily: 'monospace', fontSize: 12 }}>{v.sku || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: text1 }}>{v.variant_label}</td>
                         {canViewFinancial && (
-                          <td style={{ padding: '10px 14px', color: text1, textAlign: 'right', fontWeight: 600 }}>Rs {Number(v.selling_price || 0).toLocaleString()}</td>
+                          <td style={{ padding: '8px' }}>
+                            <NumInput
+                              value={v.selling_price ?? ''}
+                              onChange={val => setVariantField(v.shopify_variant_id, 'selling_price', val)}
+                              placeholder="0.00"
+                            />
+                          </td>
                         )}
-                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                          <span style={{
-                            padding: '2px 8px',
-                            borderRadius: 4,
-                            background: (v.stock_quantity || 0) === 0 ? 'rgba(248,113,113,0.12)' :
-                                        (v.stock_quantity || 0) <= 3 ? 'rgba(251,146,60,0.12)' : 'rgba(74,222,128,0.12)',
-                            color: (v.stock_quantity || 0) === 0 ? '#f87171' :
-                                   (v.stock_quantity || 0) <= 3 ? '#fb923c' : '#4ade80',
-                            fontSize: 12, fontWeight: 600,
-                          }}>{v.stock_quantity ?? 0}</span>
+                        {canViewFinancial && (
+                          <td style={{ padding: '8px' }}>
+                            <NumInput
+                              value={v.compare_at_price ?? ''}
+                              onChange={val => setVariantField(v.shopify_variant_id, 'compare_at_price', val)}
+                              placeholder="—"
+                            />
+                          </td>
+                        )}
+                        <td style={{ padding: '8px' }}>
+                          <input
+                            type="text"
+                            value={v.sku || ''}
+                            onChange={e => setVariantField(v.shopify_variant_id, 'sku', e.target.value)}
+                            placeholder="SKU"
+                            style={{
+                              width: '100%', padding: '6px 8px',
+                              background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+                              color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                            }}
+                            onFocus={e => e.target.style.borderColor = gold}
+                            onBlur={e => e.target.style.borderColor = border}
+                          />
                         </td>
-                        <td style={{ padding: '10px 14px', color: text2, fontSize: 12 }}>{v.abc_90d || '—'}</td>
+                        <td style={{ padding: '8px' }}>
+                          <NumInput
+                            value={v.stock_quantity ?? 0}
+                            onChange={val => setVariantField(v.shopify_variant_id, 'stock_quantity', val)}
+                            placeholder="0"
+                            step="1"
+                          />
+                        </td>
+                        <td style={{ padding: '8px', color: text2, fontSize: 11 }}>{v.abc_90d || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1039,6 +1298,61 @@ export default function ProductEditPage() {
               SEO score updated: {new Date(draft.seo_score_updated_at).toLocaleString()}
             </div>
           )}
+
+          {/* Google Shopping metafields (M2.D) */}
+          <Card title="Google Shopping" right={<span style={{ fontSize: 10, color: text3 }}>For Google Merchant feed</span>}>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Age Group</Label>
+              <Select
+                value={draft.google_age_group || ''}
+                onChange={v => setField('google_age_group', v)}
+                options={[
+                  { value: '',         label: '— not set —' },
+                  { value: 'adult',    label: 'Adult' },
+                  { value: 'all ages', label: 'All ages' },
+                  { value: 'kids',     label: 'Kids' },
+                  { value: 'newborn',  label: 'Newborn' },
+                  { value: 'infant',   label: 'Infant' },
+                  { value: 'toddler',  label: 'Toddler' },
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Gender</Label>
+              <Select
+                value={draft.google_gender || ''}
+                onChange={v => setField('google_gender', v)}
+                options={[
+                  { value: '',        label: '— not set —' },
+                  { value: 'female',  label: 'Female' },
+                  { value: 'male',    label: 'Male' },
+                  { value: 'unisex',  label: 'Unisex' },
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Condition</Label>
+              <Select
+                value={draft.google_condition || ''}
+                onChange={v => setField('google_condition', v)}
+                options={[
+                  { value: '',             label: '— not set —' },
+                  { value: 'new',          label: 'New' },
+                  { value: 'refurbished',  label: 'Refurbished' },
+                  { value: 'used',         label: 'Used' },
+                ]}
+              />
+            </div>
+            <div>
+              <Label hint="Manufacturer Part Number">MPN</Label>
+              <TextInput
+                value={draft.google_mpn || ''}
+                onChange={v => setField('google_mpn', v)}
+                placeholder="optional — e.g. RSZ-KS-001"
+                mono
+              />
+            </div>
+          </Card>
         </div>
       </div>
     </div>
