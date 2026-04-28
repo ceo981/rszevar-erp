@@ -1,39 +1,51 @@
 // ============================================================================
-// RS ZEVAR ERP — Auto Product Sync Webhook (Apr 28 2026 final)
-// Route: /api/shopify/webhooks/products-update
+// RS ZEVAR ERP — Single Product Refresh from Shopify (Phase D + M2.B hotfix v2)
+// Route: POST /api/products/[id]/refresh
 // ----------------------------------------------------------------------------
-// Multi-secret HMAC verification — supports BOTH:
-//   - Settings → Notifications webhooks (signed with ACCOUNT-level secret,
-//     stored in env var SHOPIFY_WEBHOOK_SECRET)
-//   - API-registered webhooks via custom app (signed with APP-level secret =
-//     custom app's "API secret key", stored in env var SHOPIFY_APP_WEBHOOK_SECRET)
+// Pulls ONE product fresh from Shopify and re-syncs to DB. Used as a safety
+// net when products/update webhook misses an event (or is not registered).
+// Much lighter than the full 1230-product "Sync from Shopify".
 //
-// Tries each configured secret in turn. First match wins.
+// Ensures EVERY editable field comes back fresh:
+//   REST product:         title, description, vendor, type, tags, handle,
+//                         status, images+alt, all variants (price/SKU/stock)
+//   GraphQL extras:       seo.title (→ seo_meta_title)
+//                         seo.description (→ seo_meta_description)
+//                         collections (→ collections JSONB)
+//
+// Both REST + GraphQL data is stamped on every variant row before a single
+// upsert, so the DB picks up everything atomically.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { createServerClient } from '@/lib/supabase';
-import { transformProducts } from '@/lib/shopify';
+// Relative imports to avoid Next.js 16 Turbopack alias issues on new files
+import { createServerClient } from '../../../../../lib/supabase.js';
+import { transformProducts } from '../../../../../lib/shopify.js';
+import { calculateSeoScore } from '../../../../../lib/seo-score.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
-const SHOPIFY_TOKEN  = process.env.SHOPIFY_ACCESS_TOKEN;
+const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
+const API_VERSION = '2024-01';
 const GRAPHQL_VERSION = '2025-01';
 
-// M2.B hotfix v2 — REST product payload doesn't carry SEO meta or collections.
-// Fetch both in a single GraphQL call and stamp on variant rows so the
-// webhook upsert refreshes those columns too. Best-effort — webhook still
-// succeeds if this fails.
+// ── GraphQL extras helper: SEO + collections in ONE call ───────────────────
+// Returns { seo: {title, description}, collections: [{handle, title}] }
+// or null on failure (caller decides whether to fail or proceed)
 async function fetchProductExtras(productId) {
-  if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) return null;
   const query = `
     query getProductExtras($id: ID!) {
       product(id: $id) {
-        seo { title description }
-        collections(first: 50) { edges { node { handle title } } }
+        seo {
+          title
+          description
+        }
+        collections(first: 50) {
+          edges { node { handle title } }
+        }
       }
     }
   `;
@@ -43,11 +55,14 @@ async function fetchProductExtras(productId) {
       'X-Shopify-Access-Token': SHOPIFY_TOKEN,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query, variables: { id: `gid://shopify/Product/${productId}` } }),
+    body: JSON.stringify({
+      query,
+      variables: { id: `gid://shopify/Product/${productId}` },
+    }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`GraphQL ${res.status}`);
   const json = await res.json();
-  if (json.errors) return null;
+  if (json.errors) throw new Error(json.errors.map(e => e.message).join('; '));
   const node = json?.data?.product;
   if (!node) return null;
   return {
@@ -62,119 +77,119 @@ async function fetchProductExtras(productId) {
   };
 }
 
-function tryHmac(rawBody, hmacHeader, secret) {
-  try {
-    const computed = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
-    const a = Buffer.from(computed);
-    const b = Buffer.from(hmacHeader);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
-
-function verifyHmac(rawBody, hmacHeader) {
-  if (!hmacHeader) {
-    return { valid: false, reason: 'header_missing' };
-  }
-
-  // Try secrets in order — Settings webhooks (account secret) first,
-  // then API-registered webhooks (app secret).
-  const candidates = [
-    { name: 'SHOPIFY_WEBHOOK_SECRET',      value: process.env.SHOPIFY_WEBHOOK_SECRET },
-    { name: 'SHOPIFY_APP_WEBHOOK_SECRET',  value: process.env.SHOPIFY_APP_WEBHOOK_SECRET },
-  ].filter(s => s.value);
-
-  if (candidates.length === 0) {
-    return { valid: false, reason: 'no_secrets_configured' };
-  }
-
-  for (const { name, value } of candidates) {
-    if (tryHmac(rawBody, hmacHeader, value)) {
-      return { valid: true, matched: name };
-    }
-  }
-
-  return {
-    valid: false,
-    reason: 'all_secrets_mismatched',
-    tried: candidates.map(c => c.name),
-  };
-}
-
-export async function POST(request) {
+export async function POST(request, { params }) {
   const startTime = Date.now();
-  const rawBody = await request.text();
-
-  const hmac        = request.headers.get('x-shopify-hmac-sha256');
-  const topic       = request.headers.get('x-shopify-topic')        || 'unknown';
-  const shopDomain  = request.headers.get('x-shopify-shop-domain')  || 'unknown';
-  const webhookId   = request.headers.get('x-shopify-webhook-id')   || 'none';
-
-  console.log(`[webhook:products] INCOMING — topic=${topic} shop=${shopDomain} webhook_id=${webhookId} body_bytes=${rawBody.length} hmac=${hmac ? 'present' : 'missing'}`);
-
-  const hmacResult = verifyHmac(rawBody, hmac);
-  if (!hmacResult.valid) {
-    console.log(`[webhook:products] HMAC FAIL — reason=${hmacResult.reason}${hmacResult.tried ? ' tried=' + hmacResult.tried.join(',') : ''}`);
-    return NextResponse.json({ error: 'Invalid HMAC' }, { status: 401 });
-  }
-
-  console.log(`[webhook:products] HMAC verified using ${hmacResult.matched}`);
-
-  let shopifyProduct;
   try {
-    shopifyProduct = JSON.parse(rawBody);
-  } catch (e) {
-    console.log('[webhook:products] REJECTED: invalid JSON —', e.message);
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
-
-  console.log(`[webhook:products] parsed product id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants=${shopifyProduct.variants?.length || 0} status=${shopifyProduct.status}`);
-
-  const variants = transformProducts(shopifyProduct);
-  if (variants.length === 0) {
-    console.log('[webhook:products] SKIPPED: no variants');
-    return NextResponse.json({ success: true, skipped: 'no_variants' });
-  }
-
-  // M2.B hotfix v2 — pull SEO + collections via GraphQL and stamp on variant
-  // rows so the upsert refreshes those columns too (best-effort)
-  let extrasFetched = null;
-  try {
-    const extras = await fetchProductExtras(shopifyProduct.id);
-    if (extras) {
-      for (const v of variants) {
-        v.seo_meta_title       = extras.seo.title;
-        v.seo_meta_description = extras.seo.description;
-        v.collections          = extras.collections;
-      }
-      extrasFetched = {
-        seo: !!(extras.seo.title || extras.seo.description),
-        collections: extras.collections.length,
-      };
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Product id required' }, { status: 400 });
     }
-  } catch (e) {
-    console.error('[webhook:products] extras fetch failed:', e.message);
+
+    if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) {
+      return NextResponse.json({
+        success: false,
+        error: 'Shopify credentials not configured',
+      }, { status: 500 });
+    }
+
+    // 1. Fetch single product from Shopify (REST — for variants/images/etc)
+    const url = `https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/products/${id}.json`;
+    const res = await fetch(url, {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      return NextResponse.json({
+        success: false,
+        error: `Shopify ${res.status}: ${text.slice(0, 200)}`,
+      }, { status: res.status === 404 ? 404 : 500 });
+    }
+
+    const data = await res.json();
+    const shopifyProduct = data.product;
+    if (!shopifyProduct) {
+      return NextResponse.json({
+        success: false,
+        error: 'Product not found in Shopify',
+      }, { status: 404 });
+    }
+
+    // 2. Transform → variant rows (Phase A: includes tags, description, handle, images, status)
+    const variants = transformProducts(shopifyProduct);
+    if (variants.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Product has no variants',
+      }, { status: 400 });
+    }
+
+    // 2.5 Fetch SEO + collections via GraphQL and stamp on every variant row
+    //     so the upsert refreshes those columns too. Best-effort — we don't
+    //     fail the whole refresh on this; we just log and surface the error.
+    let extrasError = null;
+    let seoSynced = false;
+    let collectionsCount = 0;
+    try {
+      const extras = await fetchProductExtras(id);
+      if (extras) {
+        for (const v of variants) {
+          v.seo_meta_title       = extras.seo.title;
+          v.seo_meta_description = extras.seo.description;
+          v.collections          = extras.collections;
+        }
+        seoSynced = true;
+        collectionsCount = extras.collections.length;
+      }
+    } catch (e) {
+      extrasError = e.message;
+      console.error('[refresh] extras fetch failed:', e.message);
+    }
+
+    // 3. Upsert to DB
+    const supabase = createServerClient();
+    const { error: upsertErr } = await supabase
+      .from('products')
+      .upsert(variants, { onConflict: 'shopify_variant_id' });
+
+    if (upsertErr) {
+      throw upsertErr;
+    }
+
+    // 4. Recompute SEO score for fresh data
+    let seoUpdate = null;
+    try {
+      const { score, tier } = calculateSeoScore(variants[0]);
+      const updatedAt = new Date().toISOString();
+      await supabase
+        .from('products')
+        .update({ seo_score: score, seo_tier: tier, seo_score_updated_at: updatedAt })
+        .eq('shopify_product_id', String(id));
+      seoUpdate = { score, tier };
+    } catch (e) {
+      // SEO recompute is best-effort; don't fail the refresh on its account
+      console.error('[refresh] seo recompute failed:', e.message);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Refreshed from Shopify — ${variants.length} variant(s), ${seoSynced ? 'SEO ✓' : 'SEO ✗'}, ${collectionsCount} collection(s)${extrasError ? ' (extras error: see logs)' : ''}`,
+      variants_synced: variants.length,
+      seo_synced: seoSynced,
+      collections_synced: collectionsCount,
+      extras_error: extrasError,
+      seo: seoUpdate,
+      duration_ms: Date.now() - startTime,
+    });
+  } catch (err) {
+    console.error('[POST /api/products/[id]/refresh]', err);
+    return NextResponse.json({
+      success: false,
+      error: err.message,
+      duration_ms: Date.now() - startTime,
+    }, { status: 500 });
   }
-
-  const supabase = createServerClient();
-  const { error } = await supabase
-    .from('products')
-    .upsert(variants, { onConflict: 'shopify_variant_id' });
-
-  if (error) {
-    console.error('[webhook:products] UPSERT FAILED:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const elapsed = Date.now() - startTime;
-  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} extras=${JSON.stringify(extrasFetched)} elapsed_ms=${elapsed}`);
-
-  return NextResponse.json({
-    success: true,
-    product: shopifyProduct.title,
-    variants_synced: variants.length,
-    extras: extrasFetched,
-  });
 }
