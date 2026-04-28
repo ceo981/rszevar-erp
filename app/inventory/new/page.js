@@ -826,6 +826,8 @@ export default function NewProductPage() {
   const [aiEnhanceOpen, setAiEnhanceOpen] = useState(false);
   const [aiPendingExtras, setAiPendingExtras] = useState(null);
   const [aiAppliedFlash, setAiAppliedFlash] = useState(null);
+  // M2.J — track enhancement_id from modal so server marks ai_enhancements row pushed
+  const [aiEnhancementId, setAiEnhancementId] = useState(null);
 
   // M2.I — Live SEO Score (recomputes on every draft change)
   const liveSeo = useMemo(() => {
@@ -912,6 +914,10 @@ export default function NewProductPage() {
 
     if (payload.extras && Object.keys(payload.extras).length > 0) {
       setAiPendingExtras(payload.extras);
+    }
+    // M2.J — capture enhancement_id so create handler can mark DB record
+    if (payload.enhancement_id) {
+      setAiEnhancementId(payload.enhancement_id);
     }
     setAiAppliedFlash({ fields: applied, ts: Date.now() });
     setTimeout(() => setAiAppliedFlash(null), 4500);
@@ -1047,6 +1053,20 @@ export default function NewProductPage() {
       google_condition: draft.google_condition || undefined,
       google_mpn:       draft.google_mpn       || undefined,
     };
+
+    // M2.J — Inject AI Enhance extras into payload
+    if (aiPendingExtras) {
+      if (Array.isArray(aiPendingExtras.faqs))            payload.ai_faqs            = aiPendingExtras.faqs;
+      if (Array.isArray(aiPendingExtras.mf_occasion))     payload.ai_mf_occasion     = aiPendingExtras.mf_occasion;
+      if (Array.isArray(aiPendingExtras.mf_set_contents)) payload.ai_mf_set_contents = aiPendingExtras.mf_set_contents;
+      if (Array.isArray(aiPendingExtras.mf_stone_type))   payload.ai_mf_stone_type   = aiPendingExtras.mf_stone_type;
+      if (typeof aiPendingExtras.mf_material === 'string')     payload.ai_mf_material     = aiPendingExtras.mf_material;
+      if (typeof aiPendingExtras.mf_color_finish === 'string') payload.ai_mf_color_finish = aiPendingExtras.mf_color_finish;
+    }
+    // M2.J — pass enhancement_id so server can mark ai_enhancements row pushed
+    if (aiEnhancementId) {
+      payload.ai_enhancement_id = aiEnhancementId;
+    }
 
     if (usingVariantOptions) {
       // Multi-variant flow — variant fields fall back to main values when empty
@@ -1194,7 +1214,7 @@ export default function NewProductPage() {
         </div>
       )}
 
-      {/* M2.I — AI pending extras */}
+      {/* M2.I/M2.J — AI pending extras */}
       {aiPendingExtras && (
         <div style={{
           padding: '10px 14px', marginBottom: 14, borderRadius: 8,
@@ -1204,7 +1224,7 @@ export default function NewProductPage() {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <span>
-            ⏳ AI also generated extras (queued):
+            ⏳ AI also generated extras (will save with Create Product):
             {Array.isArray(aiPendingExtras.faqs) && aiPendingExtras.faqs.length > 0 &&
               <span style={{ marginLeft: 6 }}>{aiPendingExtras.faqs.length} FAQ{aiPendingExtras.faqs.length !== 1 ? 's' : ''}</span>}
             {Array.isArray(aiPendingExtras.mf_occasion) && aiPendingExtras.mf_occasion.length > 0 &&
@@ -1215,7 +1235,6 @@ export default function NewProductPage() {
               <span style={{ marginLeft: 6 }}>· Stone Type ({aiPendingExtras.mf_stone_type.length})</span>}
             {aiPendingExtras.mf_material && <span style={{ marginLeft: 6 }}>· Material</span>}
             {aiPendingExtras.mf_color_finish && <span style={{ marginLeft: 6 }}>· Color/Finish</span>}
-            <span style={{ marginLeft: 6, color: text3 }}>— will sync on next API upgrade (M2.J)</span>
           </span>
           <button onClick={() => setAiPendingExtras(null)} style={{ background: 'none', border: 'none', color: text3, cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
