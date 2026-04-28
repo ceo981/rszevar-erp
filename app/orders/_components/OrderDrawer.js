@@ -78,7 +78,7 @@ export function PaymentBadge({ payment_status }) {
 }
 
 // ─── OrderDrawer (the main export) ───────────────────────────────────────
-export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer' }) {
+export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultTab = 'actions' }) {
   const isPage = variant === 'page';
   const { profile } = useUser();
   const userRole    = profile?.role || '';
@@ -100,7 +100,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
-  const [tab, setTab] = useState('actions');
+  const [tab, setTab] = useState(defaultTab);
   const [log, setLog] = useState([]);
   const [localStatus, setLocalStatus] = useState(order.status);
 
@@ -135,7 +135,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   // Apr 2026 — Super-admin force cancel flag for post-dispatch overrides
   // (RTO/dispatched/delivered cleanup scenarios)
   const [forceCancel, setForceCancel] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  // Apr 27 2026 — Removed `editMode` state. Customer info edit form ab
+  // hamesha Customer tab pe inline visible hai (toggle ki zaroorat nahi).
+  // editForm + saveEdit baqi hain — woh Customer tab ke inline form se use hote hain.
   const [editForm, setEditForm] = useState({
     customer_name: order.customer_name || '',
     customer_phone: order.customer_phone || '',
@@ -449,8 +451,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
       });
       const d = await r.json();
       if (d.success) {
-        setMsg('✅ Order updated!' + (d.warning ? ` ⚠️ ${d.warning}` : '') + (d.shopify_synced ? ' Shopify sync ✓' : ''));
-        setEditMode(false);
+        setMsg('✅ Customer info updated!' + (d.warning ? ` ⚠️ ${d.warning}` : '') + (d.shopify_synced ? ' Shopify sync ✓' : ''));
+        // Reset notes field after successful save
+        setEditForm(f => ({ ...f, notes: '' }));
         onRefresh();
       } else setMsg('❌ ' + d.error);
     } catch(e) { setMsg('❌ ' + e.message); }
@@ -753,50 +756,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           {tab === 'actions' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-              {/* ── Edit Order ── */}
-              {!editMode ? (
-                <button onClick={() => setEditMode(true)}
-                  style={{ background: 'transparent', border: `1px solid #f59e0b`, color: '#f59e0b', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                  ✏️ Edit Order (Address / Details)
-                </button>
-              ) : (
-                <div style={{ background: card, border: `1px solid #f59e0b`, borderRadius: 10, padding: 16 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 12 }}>✏️ Edit Order</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    {[
-                      ['Customer Name', 'customer_name'],
-                      ['Phone', 'customer_phone'],
-                      ['City', 'customer_city'],
-                    ].map(([lbl, key]) => (
-                      <div key={key}>
-                        <div style={{ fontSize: 10, color: '#555', marginBottom: 3 }}>{lbl}</div>
-                        <input value={editForm[key]} onChange={e => setEditForm(f => ({...f, [key]: e.target.value}))}
-                          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, color: '#555', marginBottom: 3 }}>Address</div>
-                    <input value={editForm.customer_address} onChange={e => setEditForm(f => ({...f, customer_address: e.target.value}))}
-                      style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
-                  </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, color: '#555', marginBottom: 3 }}>Note (Shopify pe bhi jayega)</div>
-                    <input value={editForm.notes} onChange={e => setEditForm(f => ({...f, notes: e.target.value}))}
-                      placeholder="Reason for edit..." style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '7px 10px', fontSize: 12, boxSizing: 'border-box' }} />
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={saveEdit} disabled={loading}
-                      style={{ flex: 1, background: '#f59e0b', color: '#000', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                      💾 Save + Sync Shopify
-                    </button>
-                    <button onClick={() => setEditMode(false)}
-                      style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 12, cursor: 'pointer' }}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Apr 27 2026 — "✏️ Edit Order (Address / Details)" button hata diya.
+                  Customer/address editing ab Customer tab pe inline form se hoti hai.
+                  Line items / products editing /orders/[id]/edit page se hoti hai. */}
 
               {/* ══════════════════════════════════════════════ */}
               {/* SHARJEEL (manager) + CEO — Confirm, Assign, Hold, Attempted */}
@@ -1206,28 +1168,53 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
           {tab === 'customer' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Customer Info Card */}
+              {/* Apr 27 2026 — Customer Info Edit (always-editable inline form).
+                  Pehle yahan read-only card tha aur edit ke liye Actions tab pe
+                  alag toggle button tha. Ab Shopify-style: form direct yahan
+                  hai, kebab menu se aate hi user can edit. */}
               <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
-                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>👤 Customer Info</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>👤 Edit Customer Info</span>
+                  <span style={{ fontSize: 9, color: '#444', textTransform: 'none', letterSpacing: 0 }}>Save Shopify pe bhi sync hota hai</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                   {[
-                    ['Name', order.customer_name || '—'],
-                    ['Phone', order.customer_phone || '—'],
-                    ['City', order.customer_city || '—'],
-                    ['Address', order.customer_address || '—'],
-                  ].map(([k, v]) => (
-                    <div key={k} style={{ gridColumn: k === 'Address' ? 'span 2' : 'auto' }}>
-                      <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>{k}</div>
-                      <div style={{ fontSize: 13, color: '#ccc', marginTop: 3 }}>{v}</div>
+                    ['Customer Name', 'customer_name'],
+                    ['Phone', 'customer_phone'],
+                    ['City', 'customer_city'],
+                  ].map(([lbl, key]) => (
+                    <div key={key} style={{ gridColumn: key === 'customer_name' ? 'span 2' : 'auto' }}>
+                      <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>{lbl}</div>
+                      <input value={editForm[key]} onChange={e => setEditForm(f => ({...f, [key]: e.target.value}))}
+                        style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
                     </div>
                   ))}
                 </div>
-                {/* Tags */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Shipping Address</div>
+                  <textarea value={editForm.customer_address} onChange={e => setEditForm(f => ({...f, customer_address: e.target.value}))}
+                    rows={2}
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Edit Reason (audit log mein save hoga)</div>
+                  <input value={editForm.notes} onChange={e => setEditForm(f => ({...f, notes: e.target.value}))}
+                    placeholder="e.g. Customer ne address change kaha"
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
+                </div>
+                <button onClick={saveEdit} disabled={loading}
+                  style={{ width: '100%', background: '#f59e0b', color: '#000', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: loading ? 0.5 : 1 }}>
+                  {loading ? '⟳ Saving...' : '💾 Save + Sync to Shopify'}
+                </button>
+                {/* Tags display below the form */}
                 {order.tags && Array.isArray(order.tags) && order.tags.length > 0 && (
-                  <div style={{ marginTop: 12, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {order.tags.map((tag, ti) => (
-                      <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
-                    ))}
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${border}` }}>
+                    <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>Tags</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {order.tags.map((tag, ti) => (
+                        <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
