@@ -4,11 +4,35 @@
 // RS ZEVAR ERP — AI Enhance Modal
 // File: app/inventory/_components/AiEnhanceModal.js
 //
+// Two operating modes:
+//   • 'push'  (default) — used from inventory list page. Generated content is
+//                          pushed directly to Shopify via /api/ai/push-to-shopify.
+//   • 'apply'           — used from product editor pages (/inventory/[id], /new).
+//                          Generated content is returned to the parent via
+//                          onApply(payload) instead of pushed. Parent updates
+//                          its draft state; user saves via the page's normal
+//                          save button (single-page workflow).
+//
 // Props:
-//   product        — { shopify_product_id, title (or parent_title), image_url,
-//                      category, vendor, selling_price, variants_summary, image_count }
+//   product        — { shopify_product_id (optional in apply mode for new product),
+//                      title (or parent_title), image_url, category, vendor,
+//                      selling_price, variants_summary, image_count,
+//                      current_description (optional, seeds AI prompt) }
+//   mode           — 'push' | 'apply'   (default 'push')
 //   onClose        — () => void
-//   onPushed       — (result) => void   // called after successful push
+//   onPushed       — (result) => void   // called after successful push   (push mode)
+//   onApply        — (payload) => void  // called when user clicks Apply  (apply mode)
+//                    payload shape:
+//                      {
+//                        fields: { title?, description_html?, seo_meta_title?,
+//                                  seo_meta_description?, handle?, tags?,
+//                                  alt_texts? : [{ position, alt }] },
+//                        extras: { faqs?, mf_occasion?, mf_set_contents?,
+//                                  mf_stone_type?, mf_material?, mf_color_finish? },
+//                        enhancement_id, cost_usd
+//                      }
+//                    Parent decides what to do with `extras` (e.g. queue them
+//                    for save via server-side metafield write).
 // =====================================================================
 
 import { useState, useEffect } from 'react';
@@ -37,7 +61,8 @@ const TONES = [
   { v: 'crisp',     l: 'Crisp & modern' },
 ];
 
-export default function AiEnhanceModal({ product, onClose, onPushed }) {
+export default function AiEnhanceModal({ product, onClose, onPushed, onApply, mode = 'push' }) {
+  const isApplyMode = mode === 'apply';
   // ── Input state ──
   const [facts, setFacts] = useState('');
   const [occasions, setOccasions] = useState([]);
@@ -46,7 +71,7 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
   const [tone, setTone] = useState('luxurious');
 
   // ── Flow state ──
-  const [step, setStep] = useState('input'); // input | generating | output | pushing | pushed
+  const [step, setStep] = useState('input'); // input | generating | output | pushing | pushed | applied
   const [error, setError] = useState(null);
 
   // ── Output state ──
@@ -195,6 +220,44 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
       setError(e.message);
       setStep('output');
     }
+  };
+
+  // ── Apply to parent form (apply mode) ──
+  // Builds a payload from current edited state and hands it to parent.
+  // No network call. Parent updates its draft, modal closes.
+  const handleApply = () => {
+    if (!generated) return;
+
+    // Resolve final values, honoring user's edits in the output column
+    const finalTitle = selectedTitleIdx === -1
+      ? (product.title || product.parent_title || '')
+      : (titleOverride || generated.title_suggestions?.[0]?.title || '');
+    const finalDesc = descEditMode ? descOverride : (generated.description_html || '');
+
+    // Visible fields — these flow into the form draft
+    const fields = {};
+    if (fieldsToPush.title)             fields.title = finalTitle;
+    if (fieldsToPush.description)       fields.description_html = finalDesc;
+    if (fieldsToPush.meta_title)        fields.seo_meta_title = generated.meta_title || '';
+    if (fieldsToPush.meta_description)  fields.seo_meta_description = generated.meta_description || '';
+    if (fieldsToPush.url_handle)        fields.handle = generated.url_handle || '';
+    if (fieldsToPush.tags)              fields.tags = activeTags || [];
+    if (fieldsToPush.alt_texts)         fields.alt_texts = generated.alt_texts || [];
+
+    // Extras — FAQs + 5 product metafields. Parent may queue these for save
+    // (requires server-side metafield write support; UI can ignore for now).
+    const extras = {};
+    if (fieldsToPush.faqs)              extras.faqs = activeFaqs || [];
+    if (fieldsToPush.mf_occasion)       extras.mf_occasion = activeOccasions || [];
+    if (fieldsToPush.mf_set_contents)   extras.mf_set_contents = activeSetContents || [];
+    if (fieldsToPush.mf_stone_type)     extras.mf_stone_type = activeStoneTypes || [];
+    if (fieldsToPush.mf_material)       extras.mf_material = activeMaterial || '';
+    if (fieldsToPush.mf_color_finish)   extras.mf_color_finish = activeColorFinish || '';
+
+    onApply && onApply({ fields, extras, enhancement_id: enhancementId, cost_usd: costUsd });
+    setStep('applied');
+    // Brief success flash, then close
+    setTimeout(() => onClose && onClose(), 350);
   };
 
   // ── Styles (matching existing dark theme) ──
@@ -423,10 +486,19 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
             borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
           }}>
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-              {step === 'pushed'
-                ? <span style={{ color: 'var(--green)' }}>✓ Pushed to Shopify successfully</span>
-                : `${Object.values(fieldsToPush).filter(Boolean).length} fields selected to push`
-              }
+              {step === 'pushed' && (
+                <span style={{ color: 'var(--green)' }}>✓ Pushed to Shopify successfully</span>
+              )}
+              {step === 'applied' && (
+                <span style={{ color: 'var(--green)' }}>✓ Applied to product form</span>
+              )}
+              {step !== 'pushed' && step !== 'applied' && (
+                <>
+                  {Object.values(fieldsToPush).filter(Boolean).length} field
+                  {Object.values(fieldsToPush).filter(Boolean).length !== 1 ? 's' : ''}{' '}
+                  {isApplyMode ? 'selected to apply' : 'selected to push'}
+                </>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={onClose} style={{
@@ -434,23 +506,40 @@ export default function AiEnhanceModal({ product, onClose, onPushed }) {
                 border: '1px solid var(--border)', borderRadius: 'var(--radius)',
                 color: 'var(--text2)', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer',
               }}>
-                {step === 'pushed' ? 'Close' : 'Cancel'}
+                {(step === 'pushed' || step === 'applied') ? 'Close' : 'Cancel'}
               </button>
-              {step !== 'pushed' && (
-                <button
-                  onClick={handlePush}
-                  disabled={step === 'pushing' || Object.values(fieldsToPush).filter(Boolean).length === 0}
-                  style={{
-                    padding: '10px 22px',
-                    background: step === 'pushing' ? 'var(--border)' : 'var(--green, #10b981)',
-                    color: step === 'pushing' ? 'var(--text3)' : '#fff',
-                    border: 'none', borderRadius: 'var(--radius)',
-                    fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-                    cursor: step === 'pushing' ? 'wait' : 'pointer',
-                    letterSpacing: 0.3,
-                  }}>
-                  {step === 'pushing' ? '⟳ Pushing...' : '→ Push to Shopify'}
-                </button>
+              {step !== 'pushed' && step !== 'applied' && (
+                isApplyMode ? (
+                  <button
+                    onClick={handleApply}
+                    disabled={Object.values(fieldsToPush).filter(Boolean).length === 0}
+                    style={{
+                      padding: '10px 22px',
+                      background: 'var(--gold)',
+                      color: '#080808',
+                      border: 'none', borderRadius: 'var(--radius)',
+                      fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      letterSpacing: 0.3,
+                    }}>
+                    ✓ Apply to Product
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePush}
+                    disabled={step === 'pushing' || Object.values(fieldsToPush).filter(Boolean).length === 0}
+                    style={{
+                      padding: '10px 22px',
+                      background: step === 'pushing' ? 'var(--border)' : 'var(--green, #10b981)',
+                      color: step === 'pushing' ? 'var(--text3)' : '#fff',
+                      border: 'none', borderRadius: 'var(--radius)',
+                      fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                      cursor: step === 'pushing' ? 'wait' : 'pointer',
+                      letterSpacing: 0.3,
+                    }}>
+                    {step === 'pushing' ? '⟳ Pushing...' : '→ Push to Shopify'}
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -767,7 +856,7 @@ function ChipsEditor({ values, setValues, chipColor = 'gold', placeholder }) {
         ))}
         {values.length === 0 && (
           <span style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>
-            No values — add below or uncheck "Push to Shopify"
+            No values — add below or uncheck "Include"
           </span>
         )}
       </div>
@@ -810,10 +899,12 @@ function Section({ title, icon, pushKey, fieldsToPush, toggleField, warning, chi
         <label style={{
           display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
           color: 'var(--text3)', cursor: 'pointer',
-        }}>
+        }}
+          title="Tick to include this field in apply/push action"
+        >
           <input type="checkbox" checked={!!fieldsToPush[pushKey]}
             onChange={() => toggleField(pushKey)} />
-          Push to Shopify
+          Include
         </label>
       </div>
       {children}
