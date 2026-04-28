@@ -94,6 +94,38 @@ async function fetchProductExtras(productId) {
   }
 }
 
+// ── Location ID helper (cached for this request) ───────────────────────────
+let _cachedLocationId = null;
+async function getPrimaryLocationId() {
+  if (_cachedLocationId) return _cachedLocationId;
+  const data = await shopifyREST('locations.json');
+  const loc = (data.locations || []).find(l => l.active) || data.locations?.[0];
+  if (!loc) throw new Error('No active Shopify location');
+  _cachedLocationId = String(loc.id);
+  return _cachedLocationId;
+}
+
+// ── Set inventory level for a variant ──────────────────────────────────────
+async function setInventoryLevel(inventoryItemId, locationId, qty) {
+  return shopifyREST('inventory_levels/set.json', {
+    method: 'POST',
+    body: {
+      location_id: Number(locationId),
+      inventory_item_id: Number(inventoryItemId),
+      available: Number(qty) || 0,
+    },
+  });
+}
+
+// ── Upsert product-level metafield (new product → just POST) ──────────────
+async function postProductMetafield(productId, namespace, key, value, type = 'single_line_text_field') {
+  if (!value || !String(value).trim()) return null;
+  return shopifyREST(`products/${productId}/metafields.json`, {
+    method: 'POST',
+    body: { metafield: { namespace, key, value: String(value), type } },
+  });
+}
+
 function groupByProduct(rows) {
   const groups = new Map();
   for (const r of rows) {
@@ -325,13 +357,28 @@ export async function POST(request) {
       tags,
       handle,
       status,
+      // Default-variant fields (used when no options/variants are sent)
       price,
       compare_at_price,
       sku,
+      // M2.D — inventory tracking
+      track_inventory,           // boolean
+      initial_stock,             // number — default variant initial qty
+      // SEO
       seo_meta_title,
       seo_meta_description,
+      // Collections
       collections,
+      // Images
       images,
+      // M2.D — variant options + variants
+      options,                   // [{name, values: [...]}]
+      variants_input,            // [{option1, option2?, price, compare_at_price, sku, stock}]
+      // M2.D — Google Shopping metafields (product level, "google" namespace)
+      google_age_group,
+      google_gender,
+      google_condition,
+      google_mpn,
     } = body;
 
     if (!title || !String(title).trim()) {
@@ -349,22 +396,49 @@ export async function POST(request) {
     if (typeof handle === 'string' && handle.trim()) productPayload.product.handle = handle.trim();
     productPayload.product.status = (status && ['active', 'draft', 'archived'].includes(status)) ? status : 'draft';
 
-    // Default variant (price/sku/compare-at)
-    const variant = {};
-    if (price !== undefined && price !== '' && price !== null) variant.price = String(price);
-    if (compare_at_price !== undefined && compare_at_price !== '' && compare_at_price !== null) variant.compare_at_price = String(compare_at_price);
-    if (sku !== undefined && sku !== '' && sku !== null) variant.sku = String(sku);
-    if (Object.keys(variant).length > 0) productPayload.product.variants = [variant];
+    // M2.D — Variant options + variants (multi-variant flow)
+    const useVariantOptions = Array.isArray(options) && options.length > 0
+      && Array.isArray(variants_input) && variants_input.length > 0;
+
+    if (useVariantOptions) {
+      // Multi-variant flow
+      productPayload.product.options = options
+        .filter(o => o && o.name && Array.isArray(o.values) && o.values.length > 0)
+        .map(o => ({ name: String(o.name).trim(), values: o.values.map(v => String(v).trim()).filter(Boolean) }));
+
+      productPayload.product.variants = variants_input.map(v => {
+        const variant = {};
+        if (v.option1 !== undefined) variant.option1 = String(v.option1);
+        if (v.option2 !== undefined && v.option2 !== null) variant.option2 = String(v.option2);
+        if (v.option3 !== undefined && v.option3 !== null) variant.option3 = String(v.option3);
+        if (v.price !== undefined && v.price !== '' && v.price !== null) variant.price = String(v.price);
+        if (v.compare_at_price !== undefined && v.compare_at_price !== '' && v.compare_at_price !== null) variant.compare_at_price = String(v.compare_at_price);
+        if (v.sku !== undefined && v.sku !== '' && v.sku !== null) variant.sku = String(v.sku);
+        if (track_inventory) variant.inventory_management = 'shopify';
+        return variant;
+      });
+    } else {
+      // Default-variant flow (single variant)
+      const variant = {};
+      if (price !== undefined && price !== '' && price !== null) variant.price = String(price);
+      if (compare_at_price !== undefined && compare_at_price !== '' && compare_at_price !== null) variant.compare_at_price = String(compare_at_price);
+      if (sku !== undefined && sku !== '' && sku !== null) variant.sku = String(sku);
+      if (track_inventory) variant.inventory_management = 'shopify';
+      if (Object.keys(variant).length > 0) productPayload.product.variants = [variant];
+    }
 
     let newProductId;
+    let createdShopifyProduct;
     try {
       const createRes = await shopifyREST('products.json', { method: 'POST', body: productPayload });
       if (!createRes.product?.id) throw new Error('Shopify did not return new product id');
       newProductId = String(createRes.product.id);
+      createdShopifyProduct = createRes.product;
       results.product_create = {
         success: true,
         id: newProductId,
         handle: createRes.product.handle,
+        variants: (createRes.product.variants || []).length,
       };
     } catch (e) {
       // Hard fail — without a product id, nothing else can proceed
@@ -374,6 +448,51 @@ export async function POST(request) {
         results,
         duration_ms: Date.now() - startTime,
       }, { status: 500 });
+    }
+
+    // ── Step 1.5: Set inventory levels (M2.D) ──────────────────────────────
+    if (track_inventory) {
+      try {
+        const locationId = await getPrimaryLocationId();
+        const createdVariants = createdShopifyProduct.variants || [];
+        const stockResults = [];
+
+        if (useVariantOptions) {
+          // Match each created variant to its variants_input entry by option1+option2
+          const inputByKey = new Map();
+          for (const vi of variants_input) {
+            const key = `${vi.option1 ?? ''}|${vi.option2 ?? ''}|${vi.option3 ?? ''}`;
+            inputByKey.set(key, vi);
+          }
+          for (const cv of createdVariants) {
+            const key = `${cv.option1 ?? ''}|${cv.option2 ?? ''}|${cv.option3 ?? ''}`;
+            const inp = inputByKey.get(key);
+            const qty = inp && inp.stock !== undefined && inp.stock !== '' ? Number(inp.stock) : 0;
+            try {
+              await setInventoryLevel(cv.inventory_item_id, locationId, qty);
+              stockResults.push({ variant_id: cv.id, qty, success: true });
+            } catch (e) {
+              stockResults.push({ variant_id: cv.id, qty, success: false, error: e.message });
+            }
+            await new Promise(r => setTimeout(r, 150));
+          }
+        } else {
+          // Single default variant → use initial_stock
+          const cv = createdVariants[0];
+          if (cv && cv.inventory_item_id) {
+            const qty = initial_stock !== undefined && initial_stock !== '' ? Number(initial_stock) : 0;
+            try {
+              await setInventoryLevel(cv.inventory_item_id, locationId, qty);
+              stockResults.push({ variant_id: cv.id, qty, success: true });
+            } catch (e) {
+              stockResults.push({ variant_id: cv.id, qty, success: false, error: e.message });
+            }
+          }
+        }
+        results.inventory_levels = stockResults;
+      } catch (e) {
+        errors.inventory_levels = e.message;
+      }
     }
 
     // ── Step 2: Upload images sequentially (best-effort) ───────────────────
@@ -421,6 +540,27 @@ export async function POST(request) {
         results.seo_meta_description = { success: true };
       } catch (e) { errors.seo_meta_description = e.message; }
     }
+
+    // ── Step 3.5: Google Shopping metafields (M2.D) ────────────────────────
+    // Product-level "google" namespace metafields. Used by Shopify's Google
+    // & YouTube channel for Google Merchant Center feed.
+    const googleFields = [
+      { key: 'age_group', value: google_age_group },
+      { key: 'gender',    value: google_gender },
+      { key: 'condition', value: google_condition },
+      { key: 'mpn',       value: google_mpn },
+    ];
+    const googleResults = [];
+    for (const f of googleFields) {
+      if (!f.value || !String(f.value).trim()) continue;
+      try {
+        await postProductMetafield(newProductId, 'google', f.key, f.value, 'single_line_text_field');
+        googleResults.push({ key: f.key, success: true });
+      } catch (e) {
+        googleResults.push({ key: f.key, success: false, error: e.message });
+      }
+    }
+    if (googleResults.length > 0) results.google_metafields = googleResults;
 
     // ── Step 4: Collections via GraphQL productUpdate ─────────────────────
     if (Array.isArray(collections) && collections.length > 0) {
