@@ -376,6 +376,8 @@ export async function POST(request) {
       // M2.D — variant options + variants
       options,                   // [{name, values: [...]}]
       variants_input,            // [{option1, option2?, price, compare_at_price, sku, stock}]
+      // M2.F — per-color image assignment: { 'Black': 0, 'green': 1 } (image array index)
+      variant_image_assignments,
       // M2.D — Google Shopping metafields (product level, "google" namespace)
       google_age_group,
       google_gender,
@@ -522,9 +524,13 @@ export async function POST(request) {
     }
 
     // ── Step 2: Upload images sequentially (best-effort) ───────────────────
+    // M2.F — Track uploaded image Shopify IDs by their original input index, so
+    // we can map variant_image_assignments to actual image IDs in Step 2.5.
+    const uploadedImageIdByIndex = {};
     if (Array.isArray(images) && images.length > 0) {
       const imageResults = [];
-      for (const img of images) {
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
         if (!img || !img.attachment) continue;
         try {
           const imgRes = await shopifyREST(`products/${newProductId}/images.json`, {
@@ -538,6 +544,7 @@ export async function POST(request) {
             },
           });
           imageResults.push({ filename: img.filename, success: true, id: imgRes.image?.id });
+          if (imgRes.image?.id) uploadedImageIdByIndex[i] = imgRes.image.id;
         } catch (e) {
           imageResults.push({ filename: img.filename, success: false, error: e.message });
         }
@@ -545,6 +552,38 @@ export async function POST(request) {
         await new Promise(r => setTimeout(r, 250));
       }
       results.images = imageResults;
+    }
+
+    // ── Step 2.5: Assign images to variant groups (M2.F) ──────────────────
+    // variant_image_assignments shape: { 'Black': 0, 'green': 1 } where number
+    // is the index into the images array. We map index → uploaded image ID,
+    // then PUT each variant whose option1 matches with image_id.
+    if (variant_image_assignments && typeof variant_image_assignments === 'object'
+        && Object.keys(variant_image_assignments).length > 0
+        && createdShopifyProduct.variants?.length > 0) {
+      const assignResults = [];
+      for (const cv of createdShopifyProduct.variants) {
+        const groupKey = cv.option1;
+        if (groupKey === undefined || groupKey === null) continue;
+        const imgIdx = variant_image_assignments[groupKey];
+        if (imgIdx === undefined || imgIdx === null) continue;
+        const shopifyImageId = uploadedImageIdByIndex[imgIdx];
+        if (!shopifyImageId) {
+          assignResults.push({ variant_id: cv.id, group: groupKey, success: false, error: 'image upload failed' });
+          continue;
+        }
+        try {
+          await shopifyREST(`variants/${cv.id}.json`, {
+            method: 'PUT',
+            body: { variant: { id: cv.id, image_id: shopifyImageId } },
+          });
+          assignResults.push({ variant_id: cv.id, group: groupKey, image_id: shopifyImageId, success: true });
+        } catch (e) {
+          assignResults.push({ variant_id: cv.id, group: groupKey, success: false, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      results.variant_image_assignments = assignResults;
     }
 
     // ── Step 3: SEO metafields ─────────────────────────────────────────────
