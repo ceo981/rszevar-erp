@@ -526,6 +526,7 @@ function generateVariantMatrix(options, existingVariants) {
     row.compare_at_price = prev?.compare_at_price ?? '';
     row.sku              = prev?.sku              ?? '';
     row.stock            = prev?.stock            ?? '';
+    row.weight           = prev?.weight           ?? '';     // M2.K — per-variant weight (in product weight_unit)
     return row;
   });
 }
@@ -776,6 +777,260 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// M2.K — Bulk Edit Modal
+// Apply a single field value to multiple variants at once.
+// Props:
+//   variants    — array of variant objects
+//   idKey       — which field to use as variant id (default 'shopify_variant_id')
+//   labelKey    — which field to display as variant label (default 'variant_label')
+//   onApply     — ({ variantIds, field, value, skuMode }) => void
+//   onClose     — () => void
+//   canViewFinancial — boolean (hides price/compare-at if false)
+// ────────────────────────────────────────────────────────────────────────────
+function BulkEditModal({
+  variants,
+  onApply,
+  onClose,
+  canViewFinancial,
+  idKey = 'shopify_variant_id',
+  labelKey = 'variant_label',
+  valueGetter,                          // optional (v, fieldKey) => current display value
+}) {
+  const [selectedIds, setSelectedIds] = useState(() => new Set(variants.map(v => String(v[idKey]))));
+  const [field, setField] = useState(canViewFinancial ? 'price' : 'sku');
+  const [value, setValue] = useState('');
+  const [skuMode, setSkuMode] = useState('replace'); // replace | prefix | suffix
+
+  const fieldOptions = [
+    ...(canViewFinancial ? [
+      { value: 'price', label: 'Price' },
+      { value: 'compare_at_price', label: 'Compare-at price' },
+    ] : []),
+    { value: 'sku',    label: 'SKU' },
+    { value: 'stock',  label: 'Stock quantity' },
+    { value: 'weight', label: 'Weight (g)' },
+  ];
+
+  const isAllSelected = selectedIds.size === variants.length && variants.length > 0;
+  const toggleAll = () => {
+    if (isAllSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(variants.map(v => String(v[idKey]))));
+  };
+  const toggleOne = (vid) => {
+    const next = new Set(selectedIds);
+    if (next.has(String(vid))) next.delete(String(vid));
+    else next.add(String(vid));
+    setSelectedIds(next);
+  };
+
+  const handleApply = () => {
+    if (selectedIds.size === 0) {
+      alert('Select at least one variant');
+      return;
+    }
+    if (field !== 'sku' && (value === '' || value === null || value === undefined)) {
+      alert('Enter a value to apply');
+      return;
+    }
+    if (field === 'sku' && skuMode === 'replace' && value === '') {
+      // allow empty replace — clears SKU on all selected
+    }
+    onApply({
+      variantIds: Array.from(selectedIds),
+      field,
+      value,
+      skuMode: field === 'sku' ? skuMode : null,
+    });
+  };
+
+  // Esc to close
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  const labelByField = {
+    price: 'Price',
+    compare_at_price: 'Compare-at',
+    sku: 'SKU',
+    stock: 'Stock',
+    weight: 'Weight',
+  };
+  const currentValueOf = valueGetter || ((v, fieldKey) => {
+    switch (fieldKey) {
+      case 'price':            return v.selling_price ?? '';
+      case 'compare_at_price': return v.compare_at_price ?? '';
+      case 'sku':              return v.sku ?? '';
+      case 'stock':            return v.stock_quantity ?? 0;
+      case 'weight':           return v.weight ?? 0;
+      default:                 return '';
+    }
+  });
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        background: card, border: `1px solid ${border}`, borderRadius: 10,
+        width: '100%', maxWidth: 720, maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 20px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: 'rgba(201,169,110,0.03)',
+        }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: gold, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 2 }}>
+              ✎ Bulk Edit
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: text1 }}>
+              {selectedIds.size} of {variants.length} variant{variants.length !== 1 ? 's' : ''} selected
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: 'none', border: 'none', color: text3,
+            fontSize: 26, cursor: 'pointer', padding: '0 8px',
+          }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          {/* Field selector + value input */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+            <div style={{ flex: 1 }}>
+              <Label>Field to update</Label>
+              <Select value={field} onChange={v => { setField(v); setValue(''); }} options={fieldOptions} />
+            </div>
+            {field === 'sku' && (
+              <div style={{ width: 140 }}>
+                <Label>Mode</Label>
+                <Select
+                  value={skuMode}
+                  onChange={setSkuMode}
+                  options={[
+                    { value: 'replace', label: 'Replace' },
+                    { value: 'prefix',  label: 'Prepend' },
+                    { value: 'suffix',  label: 'Append' },
+                  ]}
+                />
+              </div>
+            )}
+            <div style={{ flex: 1.5 }}>
+              <Label>{field === 'sku' && skuMode !== 'replace' ? `Text to ${skuMode === 'prefix' ? 'prepend' : 'append'}` : 'New value'}</Label>
+              {field === 'sku' ? (
+                <input
+                  type="text"
+                  value={value}
+                  onChange={e => setValue(e.target.value)}
+                  placeholder={skuMode === 'prefix' ? 'e.g. RSZ-' : skuMode === 'suffix' ? 'e.g. -2026' : 'Full SKU'}
+                  style={{
+                    width: '100%', padding: '9px 12px',
+                    background: bgPage, border: `1px solid ${border}`, borderRadius: 6,
+                    color: text1, fontSize: 13, fontFamily: 'monospace', outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              ) : (
+                <NumInput
+                  value={value}
+                  onChange={setValue}
+                  placeholder="0"
+                  step={field === 'stock' || field === 'weight' ? '1' : '0.01'}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Select all toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 12px', borderRadius: 6,
+            background: 'rgba(201,169,110,0.04)',
+            border: `1px solid ${border}`, marginBottom: 8,
+          }}>
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={toggleAll}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 12, fontWeight: 600, color: text2 }}>
+              {isAllSelected ? 'Deselect all' : 'Select all'}
+            </span>
+          </div>
+
+          {/* Variant list */}
+          <div style={{
+            border: `1px solid ${border}`, borderRadius: 6, overflow: 'hidden',
+          }}>
+            {variants.map((v, i) => {
+              const sid = String(v[idKey]);
+              const checked = selectedIds.has(sid);
+              return (
+                <label
+                  key={sid}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '9px 12px',
+                    borderBottom: i < variants.length - 1 ? `1px solid ${border}` : 'none',
+                    cursor: 'pointer',
+                    background: checked ? 'rgba(201,169,110,0.05)' : 'transparent',
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleOne(sid)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1, fontSize: 13, color: text1 }}>{v[labelKey]}</span>
+                  <span style={{
+                    fontSize: 11, color: text3, fontFamily: 'monospace',
+                    background: bgPage, padding: '2px 6px', borderRadius: 3,
+                  }}>
+                    {labelByField[field]}: {currentValueOf(v, field) || '—'}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '14px 20px',
+          borderTop: `1px solid ${border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: 'rgba(201,169,110,0.03)',
+        }}>
+          <div style={{ fontSize: 12, color: text3 }}>
+            Click <strong>Apply</strong>, then <strong>Save</strong> on page to push to Shopify
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn onClick={handleApply} primary disabled={selectedIds.size === 0}>
+              Apply to {selectedIds.size}
+            </Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ────────────────────────────────────────────────────────────────────────────
 export default function NewProductPage() {
@@ -807,6 +1062,9 @@ export default function NewProductPage() {
     variants_generated: [],       // generated from options
     variant_image_assignments: {}, // M2.F — { option1Value: imageId } - per-color image
     expanded_groups: {},          // M2.F — { option1Value: bool } - which groups are expanded
+    // M2.K — Weight (defaults applied to all variants; per-variant overrides via variant table)
+    weight: '',                   // number string (in weight_unit)
+    weight_unit: 'g',             // 'g' | 'kg' | 'oz' | 'lb'
     // M2.D — Google Shopping metafields
     google_age_group: '',
     google_gender: '',
@@ -828,6 +1086,9 @@ export default function NewProductPage() {
   const [aiAppliedFlash, setAiAppliedFlash] = useState(null);
   // M2.J — track enhancement_id from modal so server marks ai_enhancements row pushed
   const [aiEnhancementId, setAiEnhancementId] = useState(null);
+
+  // M2.K — Bulk Edit modal state
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   // M2.I — Live SEO Score (recomputes on every draft change)
   const liveSeo = useMemo(() => {
@@ -951,6 +1212,40 @@ export default function NewProductPage() {
       ...d,
       variants_generated: d.variants_generated.map((v, i) => i === idx ? { ...v, [field]: value } : v),
     }));
+  };
+
+  // M2.K — Bulk Edit apply for new product variants.
+  // Modal sends back stringified indices (since variants don't have shopify_variant_id yet).
+  // Field mapping: 'price'→'price', 'compare_at_price'→same, 'sku'→same,
+  // 'stock'→'stock', 'weight'→'weight'. (No selling_price translation needed
+  // since new-page variant rows already use 'price'.)
+  const handleBulkApply = ({ variantIds, field, value, skuMode }) => {
+    const idxSet = new Set((variantIds || []).map(s => Number(s)));
+    const FIELD_MAP = {
+      price:            'price',
+      compare_at_price: 'compare_at_price',
+      sku:              'sku',
+      stock:            'stock',
+      weight:           'weight',
+    };
+    const draftField = FIELD_MAP[field] || field;
+    setDraft(d => ({
+      ...d,
+      variants_generated: (d.variants_generated || []).map((v, i) => {
+        if (!idxSet.has(i)) return v;
+        let nextVal;
+        if (draftField === 'sku') {
+          const cur = v.sku || '';
+          if (skuMode === 'prefix')      nextVal = `${value}${cur}`;
+          else if (skuMode === 'suffix') nextVal = `${cur}${value}`;
+          else                           nextVal = value;
+        } else {
+          nextVal = value;
+        }
+        return { ...v, [draftField]: nextVal };
+      }),
+    }));
+    setBulkEditOpen(false);
   };
 
   // M2.F — broadcast a field's value to all variants in a group (by option1 value)
@@ -1080,6 +1375,9 @@ export default function NewProductPage() {
         compare_at_price: (v.compare_at_price !== '' && v.compare_at_price !== null && v.compare_at_price !== undefined) ? v.compare_at_price : (draft.compare_at_price || undefined),
         sku: v.sku || undefined,
         stock: v.stock,
+        // M2.K — variant-specific weight OR fall back to main weight
+        weight: (v.weight !== '' && v.weight !== null && v.weight !== undefined) ? v.weight : (draft.weight || undefined),
+        weight_unit: draft.weight_unit || 'g',
       }));
 
       // M2.F + M2.H — Variant image assignments. Keys can be:
@@ -1102,6 +1400,10 @@ export default function NewProductPage() {
       payload.compare_at_price = draft.compare_at_price !== '' ? draft.compare_at_price : undefined;
       payload.sku = draft.sku || undefined;
     }
+
+    // M2.K — Top-level weight (applies to default variant OR feeds variants_input fallback)
+    payload.weight      = draft.weight !== '' ? draft.weight : undefined;
+    payload.weight_unit = draft.weight_unit || 'g';
 
     try {
       const res = await fetch('/api/products', {
@@ -1438,19 +1740,72 @@ export default function NewProductPage() {
             )}
           </Card>
 
+          {/* M2.K — Shipping / Weight */}
+          <Card title="Shipping">
+            <Label hint="Default for all variants. Per-variant override possible in variants table.">Weight</Label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <NumInput
+                  value={draft.weight}
+                  onChange={v => setField('weight', v)}
+                  placeholder="0.0"
+                />
+              </div>
+              <div style={{ width: 100 }}>
+                <Select
+                  value={draft.weight_unit || 'g'}
+                  onChange={v => setField('weight_unit', v)}
+                  options={[
+                    { value: 'g',  label: 'g' },
+                    { value: 'kg', label: 'kg' },
+                    { value: 'oz', label: 'oz' },
+                    { value: 'lb', label: 'lb' },
+                  ]}
+                />
+              </div>
+            </div>
+            {draft.use_variant_options && (
+              <div style={{ marginTop: 10, padding: 10, background: 'rgba(201,169,110,0.05)', borderRadius: 5, fontSize: 11, color: text2 }}>
+                💡 Yeh weight <strong style={{ color: gold }}>default</strong> hai saare variants ke liye. Variant table me Weight column se individual override karen.
+              </div>
+            )}
+          </Card>
+
           {/* Variants & Inventory (M2.D — simplified, autofills from Pricing) */}
           <Card
             title="Variants & Inventory"
             right={
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: text2, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={draft.use_variant_options}
-                  onChange={e => toggleVariantOptions(e.target.checked)}
-                  style={{ accentColor: gold }}
-                />
-                This product has variants (size/color/etc)
-              </label>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {draft.use_variant_options && (draft.variants_generated?.length || 0) > 1 && (
+                  <button
+                    onClick={() => setBulkEditOpen(true)}
+                    title="Edit a single field across multiple variants at once"
+                    style={{
+                      padding: '5px 11px',
+                      background: 'rgba(201,169,110,0.08)',
+                      border: `1px solid ${gold}`,
+                      borderRadius: 6,
+                      color: gold,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      letterSpacing: 0.3,
+                    }}
+                  >
+                    ✎ Bulk Edit
+                  </button>
+                )}
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: text2, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.use_variant_options}
+                    onChange={e => toggleVariantOptions(e.target.checked)}
+                    style={{ accentColor: gold }}
+                  />
+                  This product has variants (size/color/etc)
+                </label>
+              </div>
             }
           >
             {/* Inventory tracking — applies to both single + multi variant flows */}
@@ -2015,6 +2370,29 @@ export default function NewProductPage() {
           }}
           onClose={() => setAiEnhanceOpen(false)}
           onApply={handleAiApply}
+        />
+      )}
+
+      {/* M2.K — Bulk Edit modal for new product variants */}
+      {bulkEditOpen && draft.use_variant_options && (draft.variants_generated?.length || 0) > 1 && (
+        <BulkEditModal
+          variants={draft.variants_generated.map((v, i) => ({ ...v, _idx: String(i), _label: v.title || `Variant ${i + 1}` }))}
+          idKey="_idx"
+          labelKey="_label"
+          canViewFinancial={true}
+          onClose={() => setBulkEditOpen(false)}
+          onApply={handleBulkApply}
+          valueGetter={(v, fieldKey) => {
+            // Map modal field names → variants_generated field names
+            switch (fieldKey) {
+              case 'price':            return v.price ?? '';
+              case 'compare_at_price': return v.compare_at_price ?? '';
+              case 'sku':              return v.sku ?? '';
+              case 'stock':            return v.stock ?? 0;
+              case 'weight':           return v.weight ?? 0;
+              default:                 return '';
+            }
+          }}
         />
       )}
     </div>
