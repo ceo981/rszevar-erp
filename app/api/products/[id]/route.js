@@ -71,6 +71,37 @@ async function shopifyGraphQL(query, variables = {}) {
   return json;
 }
 
+// ── Location ID helper (cached for this request) ───────────────────────────
+let _cachedLocationId = null;
+async function getPrimaryLocationId() {
+  if (_cachedLocationId) return _cachedLocationId;
+  const data = await shopifyRequest('locations.json');
+  const loc = (data.locations || []).find(l => l.active) || data.locations?.[0];
+  if (!loc) throw new Error('No active Shopify location');
+  _cachedLocationId = String(loc.id);
+  return _cachedLocationId;
+}
+
+// ── Set inventory level for a variant ──────────────────────────────────────
+async function setInventoryLevel(inventoryItemId, locationId, qty) {
+  return shopifyRequest('inventory_levels/set.json', {
+    method: 'POST',
+    body: {
+      location_id: Number(locationId),
+      inventory_item_id: Number(inventoryItemId),
+      available: Number(qty) || 0,
+    },
+  });
+}
+
+// ── Enable inventory tracking on a variant if not already ─────────────────
+async function ensureInventoryTracking(variantId) {
+  return shopifyRequest(`variants/${variantId}.json`, {
+    method: 'PUT',
+    body: { variant: { id: variantId, inventory_management: 'shopify' } },
+  });
+}
+
 // ── Metafield helper (for SEO meta title/description) ──────────────────────
 async function upsertMetafield(productId, namespace, key, value, type = 'single_line_text_field') {
   if (!value) {
@@ -126,6 +157,17 @@ export async function GET(request, { params }) {
     // First row carries all product-level fields (they're duplicated across variants by design)
     const first = rows[0];
 
+    // M2.D — fetch Google Shopping metafields (best-effort)
+    const googleMeta = { age_group: null, gender: null, condition: null, mpn: null };
+    try {
+      const metaRes = await shopifyRequest(`products/${productId}/metafields.json?namespace=google`);
+      for (const m of metaRes.metafields || []) {
+        if (m.key in googleMeta) googleMeta[m.key] = m.value;
+      }
+    } catch (e) {
+      // Silent — metafields are best-effort. Editor handles null values.
+    }
+
     const product = {
       shopify_product_id: productId,
       // Product-level fields
@@ -143,11 +185,17 @@ export async function GET(request, { params }) {
       seo_score: first.seo_score,
       seo_tier: first.seo_tier,
       seo_score_updated_at: first.seo_score_updated_at,
+      // M2.D — Google Shopping metafields
+      google_age_group: googleMeta.age_group || '',
+      google_gender:    googleMeta.gender    || '',
+      google_condition: googleMeta.condition || '',
+      google_mpn:       googleMeta.mpn       || '',
       // Variants (sorted by id for stable display)
       variants: rows
         .map(v => ({
           id: v.id,
           shopify_variant_id: v.shopify_variant_id,
+          shopify_inventory_item_id: v.shopify_inventory_item_id,
           title: v.title,
           variant_label: v.title && v.parent_title && v.title.startsWith(v.parent_title + ' - ')
             ? v.title.slice((v.parent_title + ' - ').length)
@@ -218,6 +266,16 @@ export async function PATCH(request, { params }) {
       collections,                  // [{handle, title}] — full new state for DB mirror
       collections_join_ids,         // [numeric collection ids] — to ADD product to
       collections_leave_ids,        // [numeric collection ids] — to REMOVE product from
+      // M2.D — variant edits
+      variants_update,              // [{shopify_variant_id, price?, compare_at_price?, sku?, stock?}]
+      // M2.D — image add/remove
+      images_to_add,                // [{filename, attachment, alt}]
+      images_to_remove,             // [shopify_image_id, ...]
+      // M2.D — Google Shopping metafields
+      google_age_group,
+      google_gender,
+      google_condition,
+      google_mpn,
     } = body;
 
     // ── Step 1: Build core product update payload ──
@@ -334,6 +392,133 @@ export async function PATCH(request, { params }) {
       results.alt_texts = altResults;
     }
 
+    // ── Step 3.1: Variant updates (M2.D — price/compare-at/SKU/stock per variant) ──
+    if (Array.isArray(variants_update) && variants_update.length > 0) {
+      const variantResults = [];
+      let locationId = null;
+
+      for (const v of variants_update) {
+        const vid = v.shopify_variant_id;
+        if (!vid) continue;
+
+        const variantPatch = {};
+        if (v.price !== undefined && v.price !== '' && v.price !== null) variantPatch.price = String(v.price);
+        if (v.compare_at_price !== undefined && v.compare_at_price !== null) variantPatch.compare_at_price = v.compare_at_price === '' ? null : String(v.compare_at_price);
+        if (typeof v.sku === 'string') variantPatch.sku = v.sku;
+        if (typeof v.barcode === 'string') variantPatch.barcode = v.barcode;
+
+        const hasFieldChange = Object.keys(variantPatch).length > 0;
+        const hasStockChange = v.stock !== undefined && v.stock !== null && v.stock !== '';
+
+        const r = { shopify_variant_id: vid, success: true };
+
+        // Field updates via PUT /variants/{id}
+        if (hasFieldChange) {
+          try {
+            await shopifyRequest(`variants/${vid}.json`, {
+              method: 'PUT',
+              body: { variant: { id: vid, ...variantPatch } },
+            });
+            r.fields_updated = Object.keys(variantPatch);
+          } catch (e) {
+            r.success = false;
+            r.error = e.message;
+          }
+        }
+
+        // Stock update via inventory_levels/set
+        if (hasStockChange && r.success) {
+          try {
+            // Need inventory_item_id for this variant — fetch if not provided
+            let invItemId = v.shopify_inventory_item_id;
+            if (!invItemId) {
+              const variantData = await shopifyRequest(`variants/${vid}.json`);
+              invItemId = variantData.variant?.inventory_item_id;
+              if (variantData.variant?.inventory_management !== 'shopify') {
+                // Enable tracking first
+                await ensureInventoryTracking(vid);
+              }
+            }
+            if (!invItemId) throw new Error('Could not resolve inventory_item_id');
+            if (!locationId) locationId = await getPrimaryLocationId();
+            await setInventoryLevel(invItemId, locationId, v.stock);
+            r.stock_set = Number(v.stock);
+          } catch (e) {
+            r.success = false;
+            r.stock_error = e.message;
+          }
+        }
+
+        variantResults.push(r);
+        await new Promise(r => setTimeout(r, 150));
+      }
+      results.variants_update = variantResults;
+    }
+
+    // ── Step 3.2: Image add (M2.D) ──
+    if (Array.isArray(images_to_add) && images_to_add.length > 0) {
+      const addResults = [];
+      for (const img of images_to_add) {
+        if (!img || !img.attachment) continue;
+        try {
+          const imgRes = await shopifyRequest(`products/${productId}/images.json`, {
+            method: 'POST',
+            body: {
+              image: {
+                attachment: img.attachment,
+                filename: img.filename || `image-${Date.now()}.jpg`,
+                alt: img.alt || '',
+              },
+            },
+          });
+          addResults.push({ filename: img.filename, success: true, id: imgRes.image?.id });
+        } catch (e) {
+          addResults.push({ filename: img.filename, success: false, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+      results.images_added = addResults;
+    }
+
+    // ── Step 3.2b: Image remove (M2.D) ──
+    if (Array.isArray(images_to_remove) && images_to_remove.length > 0) {
+      const removeResults = [];
+      for (const imgId of images_to_remove) {
+        if (!imgId) continue;
+        try {
+          await shopifyRequest(`products/${productId}/images/${imgId}.json`, { method: 'DELETE' });
+          removeResults.push({ image_id: imgId, success: true });
+        } catch (e) {
+          removeResults.push({ image_id: imgId, success: false, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 150));
+      }
+      results.images_removed = removeResults;
+    }
+
+    // ── Step 3.3: Google Shopping metafields (M2.D) ──
+    const googleFields = [
+      { key: 'age_group', value: google_age_group },
+      { key: 'gender',    value: google_gender },
+      { key: 'condition', value: google_condition },
+      { key: 'mpn',       value: google_mpn },
+    ];
+    const googleHasAny = googleFields.some(f => f.value !== undefined);
+    if (googleHasAny) {
+      const googleResults = [];
+      for (const f of googleFields) {
+        if (f.value === undefined) continue;   // not in payload — skip
+        try {
+          await upsertMetafield(productId, 'google', f.key, f.value, 'single_line_text_field');
+          googleResults.push({ key: f.key, success: true });
+        } catch (e) {
+          googleResults.push({ key: f.key, success: false, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      results.google_metafields = googleResults;
+    }
+
     // ── Step 4: Mirror to DB ──
     // Update DB based on what was successfully pushed. We DO NOT wait for
     // Shopify webhook — mirror immediately so UI shows fresh data on save.
@@ -393,6 +578,41 @@ export async function PATCH(request, { params }) {
         errors.db_mirror = updateErr.message;
       } else {
         results.db_mirror = { success: true, fields: Object.keys(dbUpdate) };
+      }
+    }
+
+    // ── Step 4.5: Full refetch when variant/image structure changed (M2.D) ──
+    // Variant edits change variant rows; image add/remove changes images_data.
+    // Shopify will fire products/update webhook for these, but to make the UI
+    // immediately consistent we do a quick refetch + upsert here.
+    const needsFullRefetch =
+      (Array.isArray(variants_update) && variants_update.length > 0) ||
+      (Array.isArray(images_to_add) && images_to_add.length > 0) ||
+      (Array.isArray(images_to_remove) && images_to_remove.length > 0);
+
+    if (needsFullRefetch) {
+      try {
+        // Lazy import — relative path counted from this route file
+        const { transformProducts } = await import('../../../../lib/shopify.js');
+        const fetchRes = await shopifyRequest(`products/${productId}.json`);
+        const variantRows = transformProducts(fetchRes.product);
+        // Preserve collections from existing DB row (transformProducts doesn't carry them)
+        const { data: existing } = await supabase
+          .from('products')
+          .select('collections')
+          .eq('shopify_product_id', productId)
+          .limit(1)
+          .maybeSingle();
+        if (existing?.collections) {
+          for (const v of variantRows) v.collections = existing.collections;
+        }
+        const { error: upErr } = await supabase
+          .from('products')
+          .upsert(variantRows, { onConflict: 'shopify_variant_id' });
+        if (upErr) errors.full_refetch = upErr.message;
+        else results.full_refetch = { success: true, variants: variantRows.length };
+      } catch (e) {
+        errors.full_refetch = e.message;
       }
     }
 
