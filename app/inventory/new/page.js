@@ -1,19 +1,17 @@
 'use client';
 
 // ============================================================================
-// RS ZEVAR ERP — Add Product Page (Phase D M2.C — Apr 28 2026)
+// RS ZEVAR ERP — Add Product Page (Phase D M2.C + M2.D — Apr 28 2026)
 // Route: /inventory/new
 // ----------------------------------------------------------------------------
 // Blank-state form mirroring the editor layout. Creates product on Shopify
 // (REST), uploads images (REST attachment base64), sets collections
 // (GraphQL), then redirects to /inventory/{newId} for further editing.
 //
-// Image upload flow:
-//   1. User picks files via <input type="file" multiple>
-//   2. Each file is downscaled client-side via canvas (max 2000px, JPEG 0.85)
-//      to keep payload under Vercel's 4.5MB body limit
-//   3. Base64 sent in single POST body
-//   4. Server uploads each to Shopify sequentially (250ms throttle)
+// M2.D additions:
+//   - Inventory tracking toggle + initial stock for default variant
+//   - Variant options builder (up to 2 options, auto-generated variants matrix)
+//   - Google Shopping metafields card
 // ============================================================================
 
 import { useState, useEffect, useMemo } from 'react';
@@ -464,6 +462,152 @@ function slugify(s) {
     .slice(0, 100);
 }
 
+// ── Numeric input (M2.D) ────────────────────────────────────────────────────
+function NumInput({ value, onChange, placeholder, disabled, step = '0.01' }) {
+  return (
+    <input
+      type="number"
+      value={value === null || value === undefined ? '' : value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      step={step}
+      style={{
+        width: '100%', padding: '6px 8px',
+        background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+        color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+      }}
+      onFocus={e => e.target.style.borderColor = gold}
+      onBlur={e => e.target.style.borderColor = border}
+    />
+  );
+}
+
+// ── Variant options builder (M2.D) ──────────────────────────────────────────
+// Cartesian product generator with field preservation across regenerations.
+// options = [{ name, values: [v1, v2, ...] }, ...]
+// existingVariants = [{ option1, option2?, price, compare_at_price, sku, stock }]
+function generateVariantMatrix(options, existingVariants) {
+  const cleanOpts = options.filter(o => o && o.name && Array.isArray(o.values) && o.values.length > 0);
+  if (cleanOpts.length === 0) return [];
+
+  // Build cartesian product
+  let combos = [[]];
+  for (const opt of cleanOpts) {
+    const next = [];
+    for (const combo of combos) {
+      for (const val of opt.values) next.push([...combo, val]);
+    }
+    combos = next;
+  }
+
+  const existingByKey = new Map(
+    (existingVariants || []).map(v => [`${v.option1 ?? ''}|${v.option2 ?? ''}|${v.option3 ?? ''}`, v])
+  );
+
+  return combos.map(combo => {
+    const row = {
+      option1: combo[0] ?? null,
+      option2: combo[1] ?? null,
+      option3: combo[2] ?? null,
+      title: combo.join(' / '),
+    };
+    const key = `${row.option1 ?? ''}|${row.option2 ?? ''}|${row.option3 ?? ''}`;
+    const prev = existingByKey.get(key);
+    row.price            = prev?.price            ?? '';
+    row.compare_at_price = prev?.compare_at_price ?? '';
+    row.sku              = prev?.sku              ?? '';
+    row.stock            = prev?.stock            ?? '';
+    return row;
+  });
+}
+
+// Option chip (with remove button)
+function ValueChip({ value, onRemove }) {
+  return (
+    <span style={{
+      background: 'rgba(201,169,110,0.12)',
+      border: '1px solid rgba(201,169,110,0.3)',
+      color: gold, fontSize: 12,
+      padding: '3px 6px 3px 10px', borderRadius: 4,
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+    }}>
+      {value}
+      <button onClick={onRemove} style={{
+        background: 'none', border: 'none', color: gold,
+        cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1, opacity: 0.7,
+      }}>×</button>
+    </span>
+  );
+}
+
+// Option row — name + values input
+function OptionRow({ option, onChange, onRemove }) {
+  const [valueInput, setValueInput] = useState('');
+
+  const addValue = () => {
+    const v = valueInput.trim();
+    if (!v || option.values.includes(v)) return;
+    onChange({ ...option, values: [...option.values, v] });
+    setValueInput('');
+  };
+  const removeValue = (v) => onChange({ ...option, values: option.values.filter(x => x !== v) });
+
+  return (
+    <div style={{
+      background: bgPage, border: `1px solid ${border}`,
+      borderRadius: 8, padding: 12, marginBottom: 10,
+    }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ flex: '0 0 140px' }}>
+          <Label>Option name</Label>
+          <TextInput
+            value={option.name}
+            onChange={v => onChange({ ...option, name: v })}
+            placeholder="e.g. Size"
+          />
+        </div>
+        <button onClick={onRemove} title="Remove option" style={{
+          marginTop: 26, background: 'transparent', border: `1px solid ${border}`,
+          color: '#f87171', borderRadius: 5, padding: '5px 10px',
+          fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+        }}>Remove</button>
+      </div>
+      <div>
+        <Label hint="Press Enter to add">Values</Label>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 5,
+          padding: '6px 8px', background: card,
+          border: `1px solid ${border}`, borderRadius: 6,
+          minHeight: 38, alignItems: 'center',
+        }}>
+          {option.values.map(v => (
+            <ValueChip key={v} value={v} onRemove={() => removeValue(v)} />
+          ))}
+          <input
+            type="text"
+            value={valueInput}
+            onChange={e => setValueInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addValue(); }
+              else if (e.key === 'Backspace' && !valueInput && option.values.length > 0) {
+                removeValue(option.values[option.values.length - 1]);
+              }
+            }}
+            onBlur={() => { if (valueInput.trim()) addValue(); }}
+            placeholder={option.values.length === 0 ? 'e.g. Small, Medium, Large' : ''}
+            style={{
+              flex: 1, minWidth: 100, background: 'transparent',
+              border: 'none', color: text1, fontSize: 13,
+              fontFamily: 'inherit', outline: 'none', padding: '4px',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ────────────────────────────────────────────────────────────────────────────
@@ -481,11 +625,24 @@ export default function NewProductPage() {
     status: 'draft',
     price: '',
     compare_at_price: '',
+    cost_per_item: '',           // M2.E — cost (Shopify inventory_item.cost)
     sku: '',
     seo_meta_title: '',
     seo_meta_description: '',
     collections: [],
     images: [],
+    // M2.D — inventory tracking
+    track_inventory: true,
+    initial_stock: '',
+    // M2.D — variant options
+    use_variant_options: false,
+    options: [],                  // [{name, values: []}] up to 2
+    variants_generated: [],       // generated from options
+    // M2.D — Google Shopping metafields
+    google_age_group: '',
+    google_gender: '',
+    google_condition: '',
+    google_mpn: '',
   });
   const [handleManuallyEdited, setHandleManuallyEdited] = useState(false);
   const [descMode, setDescMode] = useState('edit');   // edit | preview
@@ -522,6 +679,44 @@ export default function NewProductPage() {
 
   const setField = (k, v) => setDraft(d => ({ ...d, [k]: v }));
 
+  // M2.D — option/variant helpers
+  const addOption = () => {
+    if (draft.options.length >= 2) {
+      alert('Maximum 2 options supported (e.g. Size + Color).');
+      return;
+    }
+    setDraft(d => {
+      const newOpts = [...d.options, { name: '', values: [] }];
+      return { ...d, options: newOpts, variants_generated: generateVariantMatrix(newOpts, d.variants_generated) };
+    });
+  };
+  const updateOption = (idx, newOpt) => {
+    setDraft(d => {
+      const newOpts = d.options.map((o, i) => i === idx ? newOpt : o);
+      return { ...d, options: newOpts, variants_generated: generateVariantMatrix(newOpts, d.variants_generated) };
+    });
+  };
+  const removeOption = (idx) => {
+    setDraft(d => {
+      const newOpts = d.options.filter((_, i) => i !== idx);
+      return { ...d, options: newOpts, variants_generated: generateVariantMatrix(newOpts, d.variants_generated) };
+    });
+  };
+  const updateGeneratedVariant = (idx, field, value) => {
+    setDraft(d => ({
+      ...d,
+      variants_generated: d.variants_generated.map((v, i) => i === idx ? { ...v, [field]: value } : v),
+    }));
+  };
+  const toggleVariantOptions = (on) => {
+    setDraft(d => ({
+      ...d,
+      use_variant_options: on,
+      // when enabling, seed with one empty option to give user something to fill
+      options: on ? (d.options.length > 0 ? d.options : [{ name: '', values: [] }]) : d.options,
+    }));
+  };
+
   // Warn on navigation if anything entered
   const hasContent = draft.title.trim() || draft.description_html.trim() || draft.images.length > 0;
   useEffect(() => {
@@ -543,6 +738,11 @@ export default function NewProductPage() {
     setSaveResult(null);
 
     // Build payload — strip empty strings / preview URLs
+    const usingVariantOptions = draft.use_variant_options
+      && draft.options.length > 0
+      && draft.options.every(o => o.name && o.values.length > 0)
+      && draft.variants_generated.length > 0;
+
     const payload = {
       title: draft.title.trim(),
       description_html: draft.description_html || undefined,
@@ -551,9 +751,6 @@ export default function NewProductPage() {
       tags: draft.tags.length > 0 ? draft.tags : undefined,
       handle: draft.handle || undefined,
       status: draft.status,
-      price: draft.price !== '' ? draft.price : undefined,
-      compare_at_price: draft.compare_at_price !== '' ? draft.compare_at_price : undefined,
-      sku: draft.sku || undefined,
       seo_meta_title: draft.seo_meta_title || undefined,
       seo_meta_description: draft.seo_meta_description || undefined,
       collections: draft.collections.length > 0
@@ -566,7 +763,37 @@ export default function NewProductPage() {
             alt: img.alt || '',
           }))
         : undefined,
+      // M2.D — inventory tracking
+      track_inventory: draft.track_inventory,
+      initial_stock: draft.initial_stock !== '' ? Number(draft.initial_stock) : undefined,
+      // M2.E — Cost per item (applied to all variants via inventory_item.cost)
+      cost_per_item: draft.cost_per_item !== '' ? draft.cost_per_item : undefined,
+      // M2.D — Google Shopping metafields (only send if non-empty)
+      google_age_group: draft.google_age_group || undefined,
+      google_gender:    draft.google_gender    || undefined,
+      google_condition: draft.google_condition || undefined,
+      google_mpn:       draft.google_mpn       || undefined,
     };
+
+    if (usingVariantOptions) {
+      // Multi-variant flow — variant fields fall back to main values when empty
+      payload.options = draft.options.map(o => ({ name: o.name, values: o.values }));
+      payload.variants_input = draft.variants_generated.map(v => ({
+        option1: v.option1,
+        option2: v.option2,
+        option3: v.option3,
+        // Variant-specific OR fall back to main
+        price: (v.price !== '' && v.price !== null && v.price !== undefined) ? v.price : (draft.price || undefined),
+        compare_at_price: (v.compare_at_price !== '' && v.compare_at_price !== null && v.compare_at_price !== undefined) ? v.compare_at_price : (draft.compare_at_price || undefined),
+        sku: v.sku || undefined,
+        stock: v.stock,
+      }));
+    } else {
+      // Default-variant flow — single price/compare/sku
+      payload.price = draft.price !== '' ? draft.price : undefined;
+      payload.compare_at_price = draft.compare_at_price !== '' ? draft.compare_at_price : undefined;
+      payload.sku = draft.sku || undefined;
+    }
 
     try {
       const res = await fetch('/api/products', {
@@ -713,39 +940,285 @@ export default function NewProductPage() {
             />
           </Card>
 
-          <Card title="Default Variant" right={<span style={{ fontSize: 11, color: text3 }}>Add more variants in Shopify after create</span>}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+          {/* Pricing (M2.E — dedicated card, Shopify-style) */}
+          <Card title="Pricing">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
               <div>
-                <Label hint="PKR">Price</Label>
-                <TextInput
-                  type="number"
-                  value={draft.price}
-                  onChange={v => setField('price', v)}
-                  placeholder="0.00"
-                />
+                <Label hint="PKR — what customer pays">Price</Label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: 10, top: '50%',
+                    transform: 'translateY(-50%)', color: text3,
+                    fontSize: 13, pointerEvents: 'none',
+                  }}>Rs</span>
+                  <input
+                    type="number"
+                    value={draft.price}
+                    onChange={e => setField('price', e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    style={{
+                      width: '100%', padding: '8px 10px 8px 32px',
+                      background: bgPage, border: `1px solid ${border}`, borderRadius: 5,
+                      color: text1, fontSize: 14, fontFamily: 'monospace', outline: 'none',
+                    }}
+                    onFocus={e => e.target.style.borderColor = gold}
+                    onBlur={e => e.target.style.borderColor = border}
+                  />
+                </div>
               </div>
               <div>
-                <Label hint="strike-through">Compare at</Label>
-                <TextInput
-                  type="number"
-                  value={draft.compare_at_price}
-                  onChange={v => setField('compare_at_price', v)}
-                  placeholder="0.00"
-                />
+                <Label hint="Strike-through price — show discount">Compare-at price</Label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{
+                    position: 'absolute', left: 10, top: '50%',
+                    transform: 'translateY(-50%)', color: text3,
+                    fontSize: 13, pointerEvents: 'none',
+                  }}>Rs</span>
+                  <input
+                    type="number"
+                    value={draft.compare_at_price}
+                    onChange={e => setField('compare_at_price', e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
+                    style={{
+                      width: '100%', padding: '8px 10px 8px 32px',
+                      background: bgPage, border: `1px solid ${border}`, borderRadius: 5,
+                      color: text1, fontSize: 14, fontFamily: 'monospace', outline: 'none',
+                    }}
+                    onFocus={e => e.target.style.borderColor = gold}
+                    onBlur={e => e.target.style.borderColor = border}
+                  />
+                </div>
               </div>
-              <div>
-                <Label>SKU</Label>
-                <TextInput
-                  value={draft.sku}
-                  onChange={v => setField('sku', v)}
-                  placeholder="optional"
-                  mono
+            </div>
+
+            {/* Cost per item */}
+            <div>
+              <Label hint="Customer-side mai nahi dikhta — sirf aapke margin ke liye">Cost per item</Label>
+              <div style={{ position: 'relative', maxWidth: 240 }}>
+                <span style={{
+                  position: 'absolute', left: 10, top: '50%',
+                  transform: 'translateY(-50%)', color: text3,
+                  fontSize: 13, pointerEvents: 'none',
+                }}>Rs</span>
+                <input
+                  type="number"
+                  value={draft.cost_per_item}
+                  onChange={e => setField('cost_per_item', e.target.value)}
+                  placeholder="0.00"
+                  step="0.01"
+                  style={{
+                    width: '100%', padding: '8px 10px 8px 32px',
+                    background: bgPage, border: `1px solid ${border}`, borderRadius: 5,
+                    color: text1, fontSize: 14, fontFamily: 'monospace', outline: 'none',
+                  }}
+                  onFocus={e => e.target.style.borderColor = gold}
+                  onBlur={e => e.target.style.borderColor = border}
                 />
               </div>
             </div>
-            <div style={{ fontSize: 11, color: text3, marginTop: 10 }}>
-              Stock kar later set kar sakte ho Shopify pe — naya product 0 stock se start hota hai.
+
+            {/* Profit + Margin (computed) */}
+            {(() => {
+              const p = Number(draft.price) || 0;
+              const c = Number(draft.cost_per_item) || 0;
+              if (p <= 0 || c <= 0) return null;
+              const profit = p - c;
+              const margin = p > 0 ? (profit / p) * 100 : 0;
+              const profitColor = profit >= 0 ? '#4ade80' : '#f87171';
+              return (
+                <div style={{
+                  marginTop: 14, padding: '10px 12px',
+                  background: 'rgba(74,222,128,0.05)',
+                  border: '1px solid rgba(74,222,128,0.2)',
+                  borderRadius: 6,
+                  display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
+                  fontSize: 13,
+                }}>
+                  <div>
+                    <span style={{ color: text3, fontSize: 11 }}>Profit</span>{' '}
+                    <span style={{ color: profitColor, fontWeight: 600, fontFamily: 'monospace' }}>
+                      Rs {profit >= 0 ? '+' : ''}{profit.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div style={{ width: 1, height: 16, background: border }} />
+                  <div>
+                    <span style={{ color: text3, fontSize: 11 }}>Margin</span>{' '}
+                    <span style={{ color: profitColor, fontWeight: 600, fontFamily: 'monospace' }}>
+                      {margin >= 0 ? '+' : ''}{margin.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {draft.use_variant_options && (
+              <div style={{ marginTop: 12, padding: 10, background: 'rgba(201,169,110,0.05)', borderRadius: 5, fontSize: 11, color: text2 }}>
+                💡 Yeh values <strong style={{ color: gold }}>default</strong> hain saare variants ke liye. Neeche variant table me individual variant ka price override kar sakte ho.
+              </div>
+            )}
+          </Card>
+
+          {/* Variants & Inventory (M2.D — simplified, autofills from Pricing) */}
+          <Card
+            title="Variants & Inventory"
+            right={
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: text2, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={draft.use_variant_options}
+                  onChange={e => toggleVariantOptions(e.target.checked)}
+                  style={{ accentColor: gold }}
+                />
+                This product has variants (size/color/etc)
+              </label>
+            }
+          >
+            {/* Inventory tracking — applies to both single + multi variant flows */}
+            <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${border}` }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={draft.track_inventory}
+                  onChange={e => setField('track_inventory', e.target.checked)}
+                  style={{ accentColor: gold }}
+                />
+                <span style={{ fontSize: 13, color: text1 }}>Track inventory in Shopify</span>
+              </label>
+              <div style={{ fontSize: 11, color: text3 }}>
+                Recommended ON — storefront will block out-of-stock orders.
+              </div>
             </div>
+
+            {!draft.use_variant_options ? (
+              // ── Single default variant ──
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <Label>SKU</Label>
+                  <TextInput
+                    value={draft.sku}
+                    onChange={v => setField('sku', v)}
+                    placeholder="optional — e.g. RSZ-EAR-001"
+                    mono
+                  />
+                </div>
+                {draft.track_inventory && (
+                  <div>
+                    <Label>Initial stock</Label>
+                    <TextInput
+                      type="number"
+                      value={draft.initial_stock}
+                      onChange={v => setField('initial_stock', v)}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              // ── Variant options builder ──
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  {draft.options.map((opt, idx) => (
+                    <OptionRow
+                      key={idx}
+                      option={opt}
+                      onChange={newOpt => updateOption(idx, newOpt)}
+                      onRemove={() => removeOption(idx)}
+                    />
+                  ))}
+                  {draft.options.length < 2 && (
+                    <button onClick={addOption} style={{
+                      width: '100%', padding: '8px', background: 'transparent',
+                      border: `1px dashed ${border}`, color: text2,
+                      borderRadius: 6, fontSize: 12, fontFamily: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = gold}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = border}
+                    >
+                      + Add another option {draft.options.length === 0 ? '(e.g. Size)' : '(e.g. Color)'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Variants matrix — minimal columns. Empty = use main pricing. */}
+                {draft.variants_generated.length > 0 && (
+                  <div style={{ marginTop: 18 }}>
+                    <Label hint={`${draft.variants_generated.length} variants — empty fields = use main pricing`}>
+                      Variants
+                    </Label>
+                    <div style={{ overflowX: 'auto', border: `1px solid ${border}`, borderRadius: 6 }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(201,169,110,0.03)', borderBottom: `1px solid ${border}` }}>
+                            <th style={{ padding: '8px 10px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase' }}>Variant</th>
+                            <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 110 }}>Price</th>
+                            <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 130 }}>SKU</th>
+                            {draft.track_inventory && (
+                              <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 80 }}>Stock</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {draft.variants_generated.map((v, idx) => {
+                            const mainPrice = draft.price || '';
+                            return (
+                              <tr key={idx} style={{ borderBottom: `1px solid ${border}` }}>
+                                <td style={{ padding: '8px 10px', color: text1, fontWeight: 500 }}>{v.title}</td>
+                                <td style={{ padding: '8px' }}>
+                                  <input
+                                    type="number"
+                                    value={v.price || ''}
+                                    onChange={e => updateGeneratedVariant(idx, 'price', e.target.value)}
+                                    placeholder={mainPrice || '0.00'}
+                                    step="0.01"
+                                    style={{
+                                      width: '100%', padding: '6px 8px',
+                                      background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+                                      color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                    }}
+                                    onFocus={e => e.target.style.borderColor = gold}
+                                    onBlur={e => e.target.style.borderColor = border}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px' }}>
+                                  <input
+                                    type="text"
+                                    value={v.sku || ''}
+                                    onChange={e => updateGeneratedVariant(idx, 'sku', e.target.value)}
+                                    placeholder={`SKU-${(idx+1).toString().padStart(2,'0')}`}
+                                    style={{
+                                      width: '100%', padding: '6px 8px',
+                                      background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+                                      color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                    }}
+                                    onFocus={e => e.target.style.borderColor = gold}
+                                    onBlur={e => e.target.style.borderColor = border}
+                                  />
+                                </td>
+                                {draft.track_inventory && (
+                                  <td style={{ padding: '8px' }}>
+                                    <NumInput value={v.stock || ''} onChange={val => updateGeneratedVariant(idx, 'stock', val)} placeholder="0" step="1" />
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {draft.price && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: text3 }}>
+                        Empty Price field = <strong style={{ color: gold }}>Rs {draft.price}</strong> (main price)
+                        {draft.compare_at_price && <> · Compare-at = <strong style={{ color: gold }}>Rs {draft.compare_at_price}</strong></>}
+                        {draft.cost_per_item && <> · Cost = <strong style={{ color: gold }}>Rs {draft.cost_per_item}</strong></>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </Card>
         </div>
 
@@ -839,6 +1312,61 @@ export default function NewProductPage() {
                   <span style={{ marginLeft: 8, fontStyle: 'italic' }}>(auto)</span>
                 )}
               </div>
+            </div>
+          </Card>
+
+          {/* Google Shopping (M2.D) */}
+          <Card title="Google Shopping" right={<span style={{ fontSize: 10, color: text3 }}>For Google Merchant feed</span>}>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Age Group</Label>
+              <Select
+                value={draft.google_age_group || ''}
+                onChange={v => setField('google_age_group', v)}
+                options={[
+                  { value: '',         label: '— not set —' },
+                  { value: 'adult',    label: 'Adult' },
+                  { value: 'all ages', label: 'All ages' },
+                  { value: 'kids',     label: 'Kids' },
+                  { value: 'newborn',  label: 'Newborn' },
+                  { value: 'infant',   label: 'Infant' },
+                  { value: 'toddler',  label: 'Toddler' },
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Gender</Label>
+              <Select
+                value={draft.google_gender || ''}
+                onChange={v => setField('google_gender', v)}
+                options={[
+                  { value: '',        label: '— not set —' },
+                  { value: 'female',  label: 'Female' },
+                  { value: 'male',    label: 'Male' },
+                  { value: 'unisex',  label: 'Unisex' },
+                ]}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Label>Condition</Label>
+              <Select
+                value={draft.google_condition || ''}
+                onChange={v => setField('google_condition', v)}
+                options={[
+                  { value: '',             label: '— not set —' },
+                  { value: 'new',          label: 'New' },
+                  { value: 'refurbished',  label: 'Refurbished' },
+                  { value: 'used',         label: 'Used' },
+                ]}
+              />
+            </div>
+            <div>
+              <Label hint="Manufacturer Part Number">MPN</Label>
+              <TextInput
+                value={draft.google_mpn || ''}
+                onChange={v => setField('google_mpn', v)}
+                placeholder="optional — e.g. RSZ-KS-001"
+                mono
+              />
             </div>
           </Card>
         </div>
