@@ -335,6 +335,7 @@ function ImageUploader({ images, onChange }) {
       try {
         const compressed = await compressImage(file);
         newImages.push({
+          _id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,  // M2.F — stable ref for variant assignment
           filename: file.name,
           previewUrl: compressed.dataUrl,
           base64: compressed.base64,
@@ -608,6 +609,122 @@ function OptionRow({ option, onChange, onRemove }) {
   );
 }
 
+// ── Variant grouping helpers (M2.F) ─────────────────────────────────────────
+// Groups variants by option1 value. Returns array of { key, label, variants }
+// preserving the order from options[0].values.
+function groupVariantsByOption1(variants, options) {
+  if (!options || options.length === 0) return [];
+  const order = options[0]?.values || [];
+  const map = new Map();
+  for (const v of variants) {
+    const key = v.option1 ?? '';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(v);
+  }
+  // Preserve options order
+  return order
+    .filter(val => map.has(val))
+    .map(val => ({ key: val, label: val, variants: map.get(val) }));
+}
+
+// Returns "Mixed" indicator if values differ, else the single value
+function getGroupCommonValue(variants, field) {
+  if (!variants || variants.length === 0) return '';
+  const first = variants[0][field] ?? '';
+  return variants.every(v => (v[field] ?? '') === first) ? first : '__MIXED__';
+}
+
+// Sum stock across group (treat empty as 0)
+function getGroupTotalStock(variants) {
+  return variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+}
+
+// ── Image picker for variant groups (M2.F) ─────────────────────────────────
+// Shows a clickable thumbnail. Click opens dropdown of uploaded images.
+function VariantImagePicker({ images, selectedId, onSelect, onClear }) {
+  const [open, setOpen] = useState(false);
+  const selectedImg = images.find(i => i._id === selectedId);
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title={selectedImg ? `Image: ${selectedImg.filename}` : 'Click to pick image for this color'}
+        style={{
+          width: 44, height: 44, padding: 0,
+          background: bgPage, border: `1px solid ${selectedImg ? gold : border}`,
+          borderRadius: 6, cursor: 'pointer', overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {selectedImg ? (
+          <img src={selectedImg.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <span style={{ color: text3, fontSize: 18, fontWeight: 300 }}>+</span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop to close picker */}
+          <div onClick={() => setOpen(false)} style={{
+            position: 'fixed', inset: 0, zIndex: 90, background: 'transparent',
+          }} />
+          {/* Picker panel */}
+          <div style={{
+            position: 'absolute', top: 50, left: 0, zIndex: 100,
+            background: card, border: `1px solid ${border}`, borderRadius: 8,
+            padding: 10, width: 280, maxHeight: 320, overflowY: 'auto',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.5)',
+          }}>
+            {images.length === 0 ? (
+              <div style={{ color: text3, fontSize: 12, padding: 8, textAlign: 'center' }}>
+                Pehle Media card me images upload karo, phir yahan select kar sako ge.
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 11, color: text3, marginBottom: 8 }}>
+                  Select an image for this color group:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  {images.map(img => {
+                    const isSelected = img._id === selectedId;
+                    return (
+                      <button
+                        key={img._id}
+                        onClick={() => { onSelect(img._id); setOpen(false); }}
+                        style={{
+                          padding: 0, background: 'none',
+                          border: `2px solid ${isSelected ? gold : 'transparent'}`,
+                          borderRadius: 5, cursor: 'pointer', overflow: 'hidden',
+                          aspectRatio: '1/1',
+                        }}
+                      >
+                        <img src={img.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedId && (
+                  <button
+                    onClick={() => { onClear(); setOpen(false); }}
+                    style={{
+                      marginTop: 8, width: '100%', padding: '5px',
+                      background: 'transparent', border: `1px solid ${border}`,
+                      color: '#f87171', borderRadius: 4, fontSize: 11,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >Clear assignment</button>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ────────────────────────────────────────────────────────────────────────────
@@ -638,6 +755,8 @@ export default function NewProductPage() {
     use_variant_options: false,
     options: [],                  // [{name, values: []}] up to 2
     variants_generated: [],       // generated from options
+    variant_image_assignments: {}, // M2.F — { option1Value: imageId } - per-color image
+    expanded_groups: {},          // M2.F — { option1Value: bool } - which groups are expanded
     // M2.D — Google Shopping metafields
     google_age_group: '',
     google_gender: '',
@@ -707,6 +826,39 @@ export default function NewProductPage() {
       ...d,
       variants_generated: d.variants_generated.map((v, i) => i === idx ? { ...v, [field]: value } : v),
     }));
+  };
+
+  // M2.F — broadcast a field's value to all variants in a group (by option1 value)
+  const setGroupField = (groupKey, field, value) => {
+    setDraft(d => ({
+      ...d,
+      variants_generated: d.variants_generated.map(v =>
+        v.option1 === groupKey ? { ...v, [field]: value } : v
+      ),
+    }));
+  };
+
+  // M2.F — toggle expanded/collapsed for a group
+  const toggleGroupExpanded = (groupKey) => {
+    setDraft(d => ({
+      ...d,
+      expanded_groups: { ...d.expanded_groups, [groupKey]: !d.expanded_groups[groupKey] },
+    }));
+  };
+
+  // M2.F — assign an image to a color group
+  const setGroupImage = (groupKey, imageId) => {
+    setDraft(d => ({
+      ...d,
+      variant_image_assignments: { ...d.variant_image_assignments, [groupKey]: imageId },
+    }));
+  };
+  const clearGroupImage = (groupKey) => {
+    setDraft(d => {
+      const next = { ...d.variant_image_assignments };
+      delete next[groupKey];
+      return { ...d, variant_image_assignments: next };
+    });
   };
   const toggleVariantOptions = (on) => {
     setDraft(d => ({
@@ -788,6 +940,18 @@ export default function NewProductPage() {
         sku: v.sku || undefined,
         stock: v.stock,
       }));
+
+      // M2.F — Variant image assignments: { 'Black': image_index, 'green': image_index }
+      // Convert from _id (frontend) to array index (server-friendly)
+      const assignments = {};
+      for (const [groupKey, imgId] of Object.entries(draft.variant_image_assignments || {})) {
+        if (!imgId) continue;
+        const idx = draft.images.findIndex(i => i._id === imgId);
+        if (idx >= 0) assignments[groupKey] = idx;
+      }
+      if (Object.keys(assignments).length > 0) {
+        payload.variant_image_assignments = assignments;
+      }
     } else {
       // Default-variant flow — single price/compare/sku
       payload.price = draft.price !== '' ? draft.price : undefined;
@@ -1142,72 +1306,245 @@ export default function NewProductPage() {
                   )}
                 </div>
 
-                {/* Variants matrix — minimal columns. Empty = use main pricing. */}
+                {/* Variants matrix — grouped by option1 when 2+ options (M2.F) */}
                 {draft.variants_generated.length > 0 && (
                   <div style={{ marginTop: 18 }}>
                     <Label hint={`${draft.variants_generated.length} variants — empty fields = use main pricing`}>
                       Variants
+                      {draft.options.length >= 2 && (
+                        <span style={{ marginLeft: 8, fontSize: 10, color: text3, fontWeight: 400 }}>
+                          · grouped by {draft.options[0]?.name || 'Option 1'}
+                        </span>
+                      )}
                     </Label>
-                    <div style={{ overflowX: 'auto', border: `1px solid ${border}`, borderRadius: 6 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ background: 'rgba(201,169,110,0.03)', borderBottom: `1px solid ${border}` }}>
-                            <th style={{ padding: '8px 10px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase' }}>Variant</th>
-                            <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 110 }}>Price</th>
-                            <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 130 }}>SKU</th>
-                            {draft.track_inventory && (
-                              <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 80 }}>Stock</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {draft.variants_generated.map((v, idx) => {
-                            const mainPrice = draft.price || '';
-                            return (
-                              <tr key={idx} style={{ borderBottom: `1px solid ${border}` }}>
-                                <td style={{ padding: '8px 10px', color: text1, fontWeight: 500 }}>{v.title}</td>
-                                <td style={{ padding: '8px' }}>
-                                  <input
-                                    type="number"
-                                    value={v.price || ''}
-                                    onChange={e => updateGeneratedVariant(idx, 'price', e.target.value)}
-                                    placeholder={mainPrice || '0.00'}
-                                    step="0.01"
-                                    style={{
-                                      width: '100%', padding: '6px 8px',
-                                      background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
-                                      color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
-                                    }}
-                                    onFocus={e => e.target.style.borderColor = gold}
-                                    onBlur={e => e.target.style.borderColor = border}
-                                  />
-                                </td>
-                                <td style={{ padding: '8px' }}>
-                                  <input
-                                    type="text"
-                                    value={v.sku || ''}
-                                    onChange={e => updateGeneratedVariant(idx, 'sku', e.target.value)}
-                                    placeholder={`SKU-${(idx+1).toString().padStart(2,'0')}`}
-                                    style={{
-                                      width: '100%', padding: '6px 8px',
-                                      background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
-                                      color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
-                                    }}
-                                    onFocus={e => e.target.style.borderColor = gold}
-                                    onBlur={e => e.target.style.borderColor = border}
-                                  />
-                                </td>
-                                {draft.track_inventory && (
+
+                    {draft.options.length >= 2 ? (
+                      // ── GROUPED VIEW (Color → Sizes nested) ──
+                      <div style={{ border: `1px solid ${border}`, borderRadius: 6, overflow: 'hidden' }}>
+                        {groupVariantsByOption1(draft.variants_generated, draft.options).map(group => {
+                          const isExpanded = !!draft.expanded_groups[group.key];
+                          const groupPrice = getGroupCommonValue(group.variants, 'price');
+                          const totalStock = getGroupTotalStock(group.variants);
+                          const isMixedPrice = groupPrice === '__MIXED__';
+
+                          return (
+                            <div key={group.key}>
+                              {/* PARENT ROW */}
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: '44px 44px 1fr 110px 90px 32px',
+                                gap: 8, padding: '10px 10px',
+                                background: 'rgba(201,169,110,0.04)',
+                                borderBottom: isExpanded ? `1px solid ${border}` : 'none',
+                                alignItems: 'center',
+                              }}>
+                                {/* Expand toggle */}
+                                <button onClick={() => toggleGroupExpanded(group.key)}
+                                  style={{
+                                    background: 'transparent', border: 'none', color: text2,
+                                    cursor: 'pointer', fontSize: 14, padding: 4,
+                                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.15s',
+                                  }}
+                                  title={isExpanded ? 'Collapse' : 'Expand'}
+                                >▶</button>
+
+                                {/* Image picker for this group */}
+                                <VariantImagePicker
+                                  images={draft.images}
+                                  selectedId={draft.variant_image_assignments[group.key]}
+                                  onSelect={(imgId) => setGroupImage(group.key, imgId)}
+                                  onClear={() => clearGroupImage(group.key)}
+                                />
+
+                                {/* Group label */}
+                                <div>
+                                  <div style={{ fontWeight: 600, color: text1, fontSize: 13 }}>{group.label}</div>
+                                  <div style={{ fontSize: 11, color: text3 }}>
+                                    {group.variants.length} {draft.options[1]?.name?.toLowerCase() || 'sub'}-variant{group.variants.length !== 1 ? 's' : ''}
+                                  </div>
+                                </div>
+
+                                {/* Group price (broadcast) */}
+                                <input
+                                  type="number"
+                                  value={isMixedPrice ? '' : (groupPrice || '')}
+                                  onChange={e => setGroupField(group.key, 'price', e.target.value)}
+                                  placeholder={isMixedPrice ? 'Mixed' : (draft.price || '0.00')}
+                                  step="0.01"
+                                  title={isMixedPrice ? 'Sub-variants have different prices — type to broadcast' : 'Applies to all sizes'}
+                                  style={{
+                                    padding: '6px 8px',
+                                    background: bgPage,
+                                    border: `1px solid ${isMixedPrice ? '#fb923c' : border}`,
+                                    borderRadius: 4, color: text1, fontSize: 12,
+                                    fontFamily: 'monospace', outline: 'none',
+                                  }}
+                                  onFocus={e => e.target.style.borderColor = gold}
+                                  onBlur={e => e.target.style.borderColor = isMixedPrice ? '#fb923c' : border}
+                                />
+
+                                {/* Total stock (read-only sum) */}
+                                {draft.track_inventory ? (
+                                  <div style={{
+                                    padding: '6px 8px', background: bgPage,
+                                    border: `1px solid ${border}`, borderRadius: 4,
+                                    color: text2, fontSize: 12, fontFamily: 'monospace',
+                                    textAlign: 'right',
+                                  }} title="Sum of sub-variant stocks (edit per-size below)">
+                                    {totalStock}
+                                  </div>
+                                ) : <div />}
+
+                                <div />
+                              </div>
+
+                              {/* SUB-VARIANT ROWS (when expanded) */}
+                              {isExpanded && (
+                                <div style={{ background: bgPage }}>
+                                  {group.variants.map((sv) => {
+                                    // Find this sub-variant's index in the FULL array
+                                    const fullIdx = draft.variants_generated.findIndex(
+                                      v => v.option1 === sv.option1 && v.option2 === sv.option2 && v.option3 === sv.option3
+                                    );
+                                    const mainPrice = draft.price || '';
+                                    return (
+                                      <div key={sv.title} style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '44px 44px 1fr 110px 90px 130px',
+                                        gap: 8, padding: '8px 10px',
+                                        borderBottom: `1px solid ${border}`,
+                                        alignItems: 'center',
+                                        fontSize: 12,
+                                      }}>
+                                        <div /> {/* indent */}
+                                        <div style={{
+                                          width: 28, height: 28, borderRadius: 4,
+                                          border: `1px dashed ${border}`,
+                                          background: 'rgba(201,169,110,0.05)',
+                                        }} />
+                                        <div style={{ color: text2, paddingLeft: 8 }}>
+                                          <span style={{ color: text3, fontSize: 10, marginRight: 4 }}>
+                                            {draft.options[1]?.name || 'Size'}:
+                                          </span>
+                                          {sv.option2 || '—'}
+                                        </div>
+                                        <input
+                                          type="number"
+                                          value={sv.price || ''}
+                                          onChange={e => updateGeneratedVariant(fullIdx, 'price', e.target.value)}
+                                          placeholder={mainPrice || '0.00'}
+                                          step="0.01"
+                                          style={{
+                                            padding: '6px 8px', background: card,
+                                            border: `1px solid ${border}`, borderRadius: 4,
+                                            color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                          }}
+                                          onFocus={e => e.target.style.borderColor = gold}
+                                          onBlur={e => e.target.style.borderColor = border}
+                                        />
+                                        {draft.track_inventory ? (
+                                          <input
+                                            type="number"
+                                            value={sv.stock || ''}
+                                            onChange={e => updateGeneratedVariant(fullIdx, 'stock', e.target.value)}
+                                            placeholder="0"
+                                            step="1"
+                                            style={{
+                                              padding: '6px 8px', background: card,
+                                              border: `1px solid ${border}`, borderRadius: 4,
+                                              color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                            }}
+                                            onFocus={e => e.target.style.borderColor = gold}
+                                            onBlur={e => e.target.style.borderColor = border}
+                                          />
+                                        ) : <div />}
+                                        <input
+                                          type="text"
+                                          value={sv.sku || ''}
+                                          onChange={e => updateGeneratedVariant(fullIdx, 'sku', e.target.value)}
+                                          placeholder={`${group.label.slice(0,3).toUpperCase()}-${sv.option2 || ''}`}
+                                          style={{
+                                            padding: '6px 8px', background: card,
+                                            border: `1px solid ${border}`, borderRadius: 4,
+                                            color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                          }}
+                                          onFocus={e => e.target.style.borderColor = gold}
+                                          onBlur={e => e.target.style.borderColor = border}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      // ── FLAT VIEW (single option) — original table ──
+                      <div style={{ overflowX: 'auto', border: `1px solid ${border}`, borderRadius: 6 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ background: 'rgba(201,169,110,0.03)', borderBottom: `1px solid ${border}` }}>
+                              <th style={{ padding: '8px 10px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase' }}>Variant</th>
+                              <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 110 }}>Price</th>
+                              <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 130 }}>SKU</th>
+                              {draft.track_inventory && (
+                                <th style={{ padding: '8px', textAlign: 'left', color: text3, fontWeight: 500, fontSize: 11, textTransform: 'uppercase', width: 80 }}>Stock</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {draft.variants_generated.map((v, idx) => {
+                              const mainPrice = draft.price || '';
+                              return (
+                                <tr key={idx} style={{ borderBottom: `1px solid ${border}` }}>
+                                  <td style={{ padding: '8px 10px', color: text1, fontWeight: 500 }}>{v.title}</td>
                                   <td style={{ padding: '8px' }}>
-                                    <NumInput value={v.stock || ''} onChange={val => updateGeneratedVariant(idx, 'stock', val)} placeholder="0" step="1" />
+                                    <input
+                                      type="number"
+                                      value={v.price || ''}
+                                      onChange={e => updateGeneratedVariant(idx, 'price', e.target.value)}
+                                      placeholder={mainPrice || '0.00'}
+                                      step="0.01"
+                                      style={{
+                                        width: '100%', padding: '6px 8px',
+                                        background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+                                        color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                      }}
+                                      onFocus={e => e.target.style.borderColor = gold}
+                                      onBlur={e => e.target.style.borderColor = border}
+                                    />
                                   </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                                  <td style={{ padding: '8px' }}>
+                                    <input
+                                      type="text"
+                                      value={v.sku || ''}
+                                      onChange={e => updateGeneratedVariant(idx, 'sku', e.target.value)}
+                                      placeholder={`SKU-${(idx+1).toString().padStart(2,'0')}`}
+                                      style={{
+                                        width: '100%', padding: '6px 8px',
+                                        background: bgPage, border: `1px solid ${border}`, borderRadius: 4,
+                                        color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                                      }}
+                                      onFocus={e => e.target.style.borderColor = gold}
+                                      onBlur={e => e.target.style.borderColor = border}
+                                    />
+                                  </td>
+                                  {draft.track_inventory && (
+                                    <td style={{ padding: '8px' }}>
+                                      <NumInput value={v.stock || ''} onChange={val => updateGeneratedVariant(idx, 'stock', val)} placeholder="0" step="1" />
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
                     {draft.price && (
                       <div style={{ marginTop: 8, fontSize: 11, color: text3 }}>
                         Empty Price field = <strong style={{ color: gold }}>Rs {draft.price}</strong> (main price)
