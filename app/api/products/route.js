@@ -126,6 +126,24 @@ async function postProductMetafield(productId, namespace, key, value, type = 'si
   });
 }
 
+// ── M2.K — Convert weight + unit to grams (Shopify's canonical unit) ──
+// Returns null if input is empty/invalid; otherwise an integer >= 0.
+function computeGrams(weight, unit) {
+  if (weight === undefined || weight === null || weight === '') return null;
+  const n = Number(weight);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const u = (unit || 'g').toLowerCase();
+  let g;
+  switch (u) {
+    case 'kg':  g = n * 1000;          break;
+    case 'oz':  g = n * 28.3495231;    break;
+    case 'lb':  g = n * 453.59237;     break;
+    case 'g':
+    default:    g = n;                 break;
+  }
+  return Math.round(g);
+}
+
 function groupByProduct(rows) {
   const groups = new Map();
   for (const r of rows) {
@@ -366,6 +384,9 @@ export async function POST(request) {
       initial_stock,             // number — default variant initial qty
       // M2.E — Cost per item (applied to ALL variants via inventory_item.cost)
       cost_per_item,
+      // M2.K — Weight (applied to all variants by default; per-variant weight overrides via variants_input[].weight)
+      weight,                    // number (in weight_unit)
+      weight_unit,               // 'g' | 'kg' | 'oz' | 'lb' (default 'g')
       // SEO
       seo_meta_title,
       seo_meta_description,
@@ -430,6 +451,13 @@ export async function POST(request) {
         if (v.price !== undefined && v.price !== '' && v.price !== null) variant.price = String(v.price);
         if (v.compare_at_price !== undefined && v.compare_at_price !== '' && v.compare_at_price !== null) variant.compare_at_price = String(v.compare_at_price);
         if (v.sku !== undefined && v.sku !== '' && v.sku !== null) variant.sku = String(v.sku);
+        // M2.K — weight per variant (grams to Shopify; UI may send weight + weight_unit and we convert)
+        const grams = computeGrams(v.weight, v.weight_unit || weight_unit);
+        if (grams !== null) {
+          variant.grams = grams;
+          variant.weight = grams / 1000;       // Shopify also accepts kg as `weight`
+          variant.weight_unit = 'g';
+        }
         if (track_inventory) variant.inventory_management = 'shopify';
         return variant;
       });
@@ -439,6 +467,13 @@ export async function POST(request) {
       if (price !== undefined && price !== '' && price !== null) variant.price = String(price);
       if (compare_at_price !== undefined && compare_at_price !== '' && compare_at_price !== null) variant.compare_at_price = String(compare_at_price);
       if (sku !== undefined && sku !== '' && sku !== null) variant.sku = String(sku);
+      // M2.K — weight on default variant
+      const grams = computeGrams(weight, weight_unit);
+      if (grams !== null) {
+        variant.grams = grams;
+        variant.weight = grams / 1000;
+        variant.weight_unit = 'g';
+      }
       if (track_inventory) variant.inventory_management = 'shopify';
       if (Object.keys(variant).length > 0) productPayload.product.variants = [variant];
     }
