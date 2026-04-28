@@ -657,6 +657,48 @@ export async function POST(request) {
       } catch (e) { errors.collections = e.message; }
     }
 
+    // ── Step 4.5: Auto-publish to ALL sales channels (M2.G) ───────────────
+    // By default, REST API products are only published to "Online Store" + the
+    // channels the private app token has explicit access to. To match Shopify
+    // admin's "publish everywhere" behavior (Google, TikTok, Shop, Facebook),
+    // we fetch all publications via GraphQL and explicitly publish to each.
+    //
+    // NOTE: This requires `write_publications` scope on the private app. If
+    // the scope is missing, this step fails gracefully and just logs the error.
+    try {
+      const pubData = await shopifyGraphQL(
+        `query AllPublications { publications(first: 50) { edges { node { id name } } } }`,
+        {}
+      );
+      const pubs = (pubData?.data?.publications?.edges || []).map(e => e.node);
+      if (pubs.length > 0) {
+        const publishRes = await shopifyGraphQL(
+          `mutation publishProduct($id: ID!, $input: [PublicationInput!]!) {
+            publishablePublish(id: $id, input: $input) {
+              publishable { ... on Product { id } }
+              userErrors { field message }
+            }
+          }`,
+          {
+            id: `gid://shopify/Product/${newProductId}`,
+            input: pubs.map(p => ({ publicationId: p.id })),
+          }
+        );
+        const pubErrors = publishRes?.data?.publishablePublish?.userErrors || [];
+        results.publications = {
+          success: pubErrors.length === 0,
+          attempted: pubs.length,
+          channels: pubs.map(p => p.name),
+          errors: pubErrors.length > 0 ? pubErrors : undefined,
+        };
+      } else {
+        results.publications = { success: false, error: 'No publications returned' };
+      }
+    } catch (e) {
+      // Most likely: missing `write_publications` scope on the private app.
+      errors.publications = e.message;
+    }
+
     // ── Step 5: Refetch + mirror to DB ────────────────────────────────────
     try {
       const fetchRes = await shopifyREST(`products/${newProductId}.json`);
