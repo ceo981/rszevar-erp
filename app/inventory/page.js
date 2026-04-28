@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import AiEnhanceModal from './_components/AiEnhanceModal';
 
@@ -364,7 +365,16 @@ export default function InventoryPage() {
           <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 600, color: 'var(--gold)', letterSpacing: 1 }}>Inventory</h1>
           <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{total} products · Synced from Shopify</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a
+            href="https://admin.shopify.com/store/rszevar/products/new"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'var(--gold)', color: '#080808', border: 'none', borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textDecoration: 'none' }}
+            title="Add new product (in-ERP form coming next milestone — for now opens Shopify admin in new tab)"
+          >
+            <span style={{ fontSize: 14, fontWeight: 800 }}>+</span> Add Product
+          </a>
           <button onClick={handleComputeABC} disabled={computing} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: computing ? 'var(--border)' : 'transparent', color: computing ? 'var(--text3)' : 'var(--gold)', border: `1px solid ${computing ? 'var(--border)' : 'var(--gold)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: computing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: computing ? 'spin 1s linear infinite' : 'none' }}>📊</span>
             {computing ? 'Computing...' : 'Compute ABC'}
@@ -600,7 +610,21 @@ export default function InventoryPage() {
                         <td style={{ padding: '10px', maxWidth: 250, overflow: 'hidden' }}>
                           <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             <span style={{ color: 'var(--gold)', fontSize: 10, width: 10, flexShrink: 0 }}>{isExpanded ? '▼' : '▶'}</span>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.parent_title}</span>
+                            <Link
+                              href={`/inventory/${group.shopify_product_id}`}
+                              onClick={e => {
+                                // Plain left-click → keep existing drawer/expand behavior.
+                                // Ctrl/Cmd/Shift/middle → let browser open in new tab.
+                                if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                                  e.preventDefault();
+                                  // do NOT stopPropagation — let row onClick fire (toggle expand + drawer)
+                                }
+                              }}
+                              style={{ color: 'inherit', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              title="Click to expand · Ctrl/Cmd-click to open editor in new tab"
+                            >
+                              {group.parent_title}
+                            </Link>
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1, marginLeft: 16 }}>{group.vendor ? `${group.vendor} · ` : ''}{group.variant_count} variant{group.variant_count !== 1 ? 's' : ''}</div>
                         </td>
@@ -615,7 +639,17 @@ export default function InventoryPage() {
                         <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
                         <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>—</td>
                         <td style={{ padding: '10px' }}>
-                          <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: group.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: group.is_active ? 'var(--green)' : 'var(--text3)' }}>{group.is_active ? 'Active' : 'Draft'}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: group.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: group.is_active ? 'var(--green)' : 'var(--text3)' }}>{group.is_active ? 'Active' : 'Draft'}</span>
+                            <a
+                              href={`/inventory/${group.shopify_product_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              title="Open editor in new tab"
+                              style={{ background: '#1a1a1a', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                            >↗</a>
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && group.variants.map(v => {
@@ -652,7 +686,22 @@ export default function InventoryPage() {
                         : <div style={{ width: 36, height: 36, borderRadius: 4, background: 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: 'var(--text3)' }}>📷</div>}
                     </td>
                     <td style={{ padding: '10px', maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <div style={{ fontWeight: 500 }}>{product.title}</div>
+                      <div style={{ fontWeight: 500 }}>
+                        {product.shopify_product_id ? (
+                          <Link
+                            href={`/inventory/${product.shopify_product_id}`}
+                            onClick={e => {
+                              if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+                                e.preventDefault();
+                              }
+                            }}
+                            style={{ color: 'inherit', textDecoration: 'none' }}
+                            title="Click for drawer · Ctrl/Cmd-click to open editor in new tab"
+                          >
+                            {product.title}
+                          </Link>
+                        ) : product.title}
+                      </div>
                       {product.vendor && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{product.vendor}</div>}
                     </td>
                     <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 12, fontFamily: 'monospace' }}>{product.sku || '—'}</td>
@@ -665,7 +714,19 @@ export default function InventoryPage() {
                     {canViewFinancial && <td style={{ padding: '10px', color: 'var(--text2)', fontSize: 11, whiteSpace: 'nowrap' }}>{product[revCol] ? `Rs ${Number(product[revCol]).toLocaleString()}` : '—'}</td>}
                     <td style={{ padding: '10px', color: 'var(--text3)', fontSize: 11 }}>{product[soldCol] || 0}</td>
                     <td style={{ padding: '10px' }}>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: product.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: product.is_active ? 'var(--green)' : 'var(--text3)' }}>{product.is_active ? 'Active' : 'Draft'}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: product.is_active ? 'var(--green-dim)' : 'rgba(138,133,128,0.12)', color: product.is_active ? 'var(--green)' : 'var(--text3)' }}>{product.is_active ? 'Active' : 'Draft'}</span>
+                        {product.shopify_product_id && (
+                          <a
+                            href={`/inventory/${product.shopify_product_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            title="Open editor in new tab"
+                            style={{ background: '#1a1a1a', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                          >↗</a>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
