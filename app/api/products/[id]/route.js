@@ -228,7 +228,10 @@ export async function GET(request, { params }) {
 // PATCH — Save edits to Shopify, mirror to DB
 // Body: { title?, description_html?, vendor?, product_type?, tags?, handle?,
 //         shopify_status?, seo_meta_title?, seo_meta_description?,
-//         alt_texts?: [{ image_id, alt }, ...] }
+//         alt_texts?: [{ image_id, alt }, ...],
+//         google_age_group?, google_gender?, google_condition?, google_mpn?,
+//         ai_faqs?: [{q,a},...], ai_mf_occasion?: string[], ai_mf_set_contents?: string[],
+//         ai_mf_stone_type?: string[], ai_mf_material?: string, ai_mf_color_finish?: string }
 // ────────────────────────────────────────────────────────────────────────────
 export async function PATCH(request, { params }) {
   const startTime = Date.now();
@@ -276,6 +279,20 @@ export async function PATCH(request, { params }) {
       google_gender,
       google_condition,
       google_mpn,
+      // M2.J — AI Enhance product metafields (rszevar namespace)
+      // Sent by editor pages when user clicks Apply in AI Enhance modal,
+      // then clicks Save. Same metafields as the older list-page push flow.
+      ai_faqs,                          // array of { q, a } objects
+      ai_mf_occasion,                   // array of strings (list.single_line_text_field)
+      ai_mf_set_contents,               // array of strings
+      ai_mf_stone_type,                 // array of strings
+      ai_mf_material,                   // single string
+      ai_mf_color_finish,               // single string
+      // M2.J — enhancement tracking. When set, the ai_enhancements row will be
+      // marked as pushed at the end of this request, mirroring the inventory-list
+      // push flow's tracking. Without this, apply-mode enhancements stay forever
+      // in 'generated' state in the DB.
+      ai_enhancement_id,
     } = body;
 
     // ── Step 1: Build core product update payload ──
@@ -519,6 +536,77 @@ export async function PATCH(request, { params }) {
       results.google_metafields = googleResults;
     }
 
+    // ── Step 3.4: AI Enhance product metafields (M2.J) ──
+    // Writes to rszevar namespace. Same shape as the inventory-list push flow
+    // so the resulting product has identical metafield coverage regardless
+    // of whether content was applied via single-page editor or pushed via list.
+    const aiMetafieldMap = [
+      {
+        param:  ai_faqs,
+        mf_key: 'faqs',
+        type:   'json',
+        kind:   'json',                  // serialize whole array
+      },
+      {
+        param:  ai_mf_occasion,
+        mf_key: 'occasion',
+        type:   'list.single_line_text_field',
+        kind:   'list',
+      },
+      {
+        param:  ai_mf_set_contents,
+        mf_key: 'set_contents',
+        type:   'list.single_line_text_field',
+        kind:   'list',
+      },
+      {
+        param:  ai_mf_stone_type,
+        mf_key: 'stone_type',
+        type:   'list.single_line_text_field',
+        kind:   'list',
+      },
+      {
+        param:  ai_mf_material,
+        mf_key: 'material',
+        type:   'single_line_text_field',
+        kind:   'string',
+      },
+      {
+        param:  ai_mf_color_finish,
+        mf_key: 'color_finish',
+        type:   'single_line_text_field',
+        kind:   'string',
+      },
+    ];
+
+    const aiMetaResults = [];
+    for (const mf of aiMetafieldMap) {
+      // undefined → field not in payload → skip entirely (don't touch existing)
+      if (mf.param === undefined) continue;
+
+      // Validate by kind
+      let stringValue;
+      if (mf.kind === 'list') {
+        if (!Array.isArray(mf.param) || mf.param.length === 0) continue;
+        stringValue = JSON.stringify(mf.param.map(v => String(v).trim()).filter(Boolean));
+      } else if (mf.kind === 'json') {
+        if (!Array.isArray(mf.param) || mf.param.length === 0) continue;
+        stringValue = JSON.stringify(mf.param);
+      } else { // string
+        if (typeof mf.param !== 'string' || !mf.param.trim()) continue;
+        stringValue = mf.param.trim();
+      }
+
+      try {
+        await upsertMetafield(productId, 'rszevar', mf.mf_key, stringValue, mf.type);
+        aiMetaResults.push({ key: mf.mf_key, success: true });
+      } catch (e) {
+        aiMetaResults.push({ key: mf.mf_key, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 120));   // rate limit
+    }
+    if (aiMetaResults.length > 0) results.ai_metafields = aiMetaResults;
+
     // ── Step 4: Mirror to DB ──
     // Update DB based on what was successfully pushed. We DO NOT wait for
     // Shopify webhook — mirror immediately so UI shows fresh data on save.
@@ -646,6 +734,56 @@ export async function PATCH(request, { params }) {
 
     const anySuccess = Object.keys(results).length > 0;
     const anyError = Object.keys(errors).length > 0;
+
+    // ── Step 6: M2.J — mark ai_enhancements row as pushed ──
+    // Mirrors the inventory-list push flow's tracking so analytics & cost
+    // dashboards see the same lifecycle for both flows.
+    if (ai_enhancement_id) {
+      try {
+        // Compute fields_pushed list from what was sent + what succeeded.
+        // Visible fields come from the body keys; metafields come from result keys.
+        const fieldsPushed = [];
+        if (typeof title === 'string')                  fieldsPushed.push('title');
+        if (typeof description_html === 'string')       fieldsPushed.push('description');
+        if (typeof seo_meta_title === 'string')         fieldsPushed.push('meta_title');
+        if (typeof seo_meta_description === 'string')   fieldsPushed.push('meta_description');
+        if (typeof handle === 'string' && handle.trim())fieldsPushed.push('url_handle');
+        if (Array.isArray(tags))                        fieldsPushed.push('tags');
+        if (Array.isArray(alt_texts) && alt_texts.length > 0) fieldsPushed.push('alt_texts');
+        if (Array.isArray(ai_faqs) && ai_faqs.length > 0)     fieldsPushed.push('faqs');
+        if (Array.isArray(ai_mf_occasion))     fieldsPushed.push('mf_occasion');
+        if (Array.isArray(ai_mf_set_contents)) fieldsPushed.push('mf_set_contents');
+        if (Array.isArray(ai_mf_stone_type))   fieldsPushed.push('mf_stone_type');
+        if (typeof ai_mf_material === 'string'     && ai_mf_material.trim())     fieldsPushed.push('mf_material');
+        if (typeof ai_mf_color_finish === 'string' && ai_mf_color_finish.trim()) fieldsPushed.push('mf_color_finish');
+
+        await supabase
+          .from('ai_enhancements')
+          .update({
+            pushed_to_shopify: anySuccess,
+            pushed_at: anySuccess ? new Date().toISOString() : null,
+            status: anySuccess && !anyError ? 'pushed' : (anySuccess ? 'partial' : 'failed'),
+            fields_pushed: fieldsPushed,
+            pushed_output: {
+              title: typeof title === 'string' ? title : null,
+              body_html: typeof description_html === 'string' ? description_html : null,
+              handle: typeof handle === 'string' ? handle : null,
+              tags: Array.isArray(tags) ? tags.join(', ') : null,
+              meta_title: typeof seo_meta_title === 'string' ? seo_meta_title : null,
+              meta_description: typeof seo_meta_description === 'string' ? seo_meta_description : null,
+              applied_via: 'editor',  // distinguishes from list-page push
+            },
+            push_response: { results, errors },
+            push_error: anyError ? JSON.stringify(errors) : null,
+          })
+          .eq('id', ai_enhancement_id);
+        results.ai_enhancement_marked = { success: true };
+      } catch (e) {
+        // Non-fatal — save already succeeded; just log.
+        console.warn('[PATCH] failed to mark ai_enhancement', e.message);
+        errors.ai_enhancement_marked = e.message;
+      }
+    }
 
     return NextResponse.json({
       success: anySuccess && !anyError,
