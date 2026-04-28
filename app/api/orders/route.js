@@ -219,6 +219,22 @@ export async function GET(request) {
     };
 
     // ── GLOBAL type/courier/status counts for dropdown (ignore current filters) ──
+    // Apr 28 2026 — Date-aware counts.
+    // Pehle saare counts global hote the (DB ka full snapshot). Ab agar user
+    // date range select kare, toh tabs ke counts bhi usi range ke liye dikhte
+    // hain (warna "Pending: 25" sab dates ka dikhata, jo confusing tha).
+    //
+    // applyDateRange() har count query mein date filter apply karta hai —
+    // sirf created_at column par. Agar from/to dono missing hain to no-op.
+    const applyDateRange = (q) => {
+      if (dateFrom) q = q.gte('created_at', dateFrom);
+      if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
+      return q;
+    };
+    const baseCount = () => applyDateRange(
+      supabase.from('orders').select('*', { count: 'exact', head: true })
+    );
+
     const [
       { count: wholesaleCount },
       { count: internationalCount },
@@ -242,33 +258,33 @@ export async function GET(request) {
       { count: gUnfulfilled },
       { count: gPendingPayment },
     ] = await Promise.all([
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_wholesale', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_international', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('is_walkin', true),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Leopards'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'PostEx'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Kangaroo'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'on_packing'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'dispatched'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'rto'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'attempted'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'hold'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'packed'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'paid'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('payment_status', 'unpaid'),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
+      baseCount().eq('is_wholesale', true),
+      baseCount().eq('is_international', true),
+      baseCount().eq('is_walkin', true),
+      baseCount().eq('dispatched_courier', 'Leopards'),
+      baseCount().eq('dispatched_courier', 'PostEx'),
+      baseCount().eq('dispatched_courier', 'Kangaroo'),
+      baseCount().eq('status', 'pending'),
+      baseCount().eq('status', 'confirmed'),
+      baseCount().eq('status', 'on_packing'),
+      baseCount().eq('status', 'dispatched'),
+      baseCount().eq('status', 'delivered'),
+      baseCount().eq('status', 'rto'),
+      baseCount().eq('status', 'cancelled'),
+      baseCount().eq('status', 'attempted'),
+      baseCount().eq('status', 'hold'),
+      baseCount().eq('status', 'packed'),
+      baseCount().eq('payment_status', 'paid'),
+      baseCount().eq('payment_status', 'unpaid'),
+      baseCount().eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
       // FIX Apr 2026 — Shopify "unfulfilled" count (operational view).
       // Match karta hai applyFilters mein wala logic — 3 exclusions.
-      supabase.from('orders').select('*', { count: 'exact', head: true })
+      baseCount()
         .neq('status', 'cancelled')
         .is('shopify_raw->>cancelled_at', null)
         .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
       // Apr 27 2026 — Pending Payment count (delivered but payment NOT received yet)
-      supabase.from('orders').select('*', { count: 'exact', head: true })
+      baseCount()
         .eq('status', 'delivered')
         .neq('payment_status', 'paid'),
     ]);
