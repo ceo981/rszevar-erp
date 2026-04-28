@@ -364,6 +364,8 @@ export async function POST(request) {
       // M2.D — inventory tracking
       track_inventory,           // boolean
       initial_stock,             // number — default variant initial qty
+      // M2.E — Cost per item (applied to ALL variants via inventory_item.cost)
+      cost_per_item,
       // SEO
       seo_meta_title,
       seo_meta_description,
@@ -493,6 +495,30 @@ export async function POST(request) {
       } catch (e) {
         errors.inventory_levels = e.message;
       }
+    }
+
+    // ── Step 1.6: Set inventory_item.cost for ALL variants (M2.E) ──────────
+    // Cost in Shopify is stored on inventory_item, not variant. So we need a
+    // separate PUT per variant after product create. Same cost applies to all
+    // variants (per Abdul's UX request: "ek baar daldo upar, sab me auto pick").
+    if (cost_per_item !== undefined && cost_per_item !== null && cost_per_item !== '') {
+      const costStr = String(cost_per_item);
+      const createdVariants = createdShopifyProduct.variants || [];
+      const costResults = [];
+      for (const cv of createdVariants) {
+        if (!cv.inventory_item_id) continue;
+        try {
+          await shopifyREST(`inventory_items/${cv.inventory_item_id}.json`, {
+            method: 'PUT',
+            body: { inventory_item: { id: cv.inventory_item_id, cost: costStr } },
+          });
+          costResults.push({ variant_id: cv.id, cost: costStr, success: true });
+        } catch (e) {
+          costResults.push({ variant_id: cv.id, cost: costStr, success: false, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 150));
+      }
+      results.cost_per_item = costResults;
     }
 
     // ── Step 2: Upload images sequentially (best-effort) ───────────────────
