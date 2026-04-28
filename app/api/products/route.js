@@ -5,9 +5,26 @@ import { createServerClient } from '@/lib/supabase';
 // Products / Inventory API
 // Phase 1: Collection filter added (?collection=handle)
 //          Collections list returned for dropdown
+// Phase D M2.A: Parent aggregates added — parent_abc_*, parent_revenue_*,
+//          parent_units_sold_*, parent_seo_score, parent_seo_tier so the
+//          grouped view shows real numbers on parent rows instead of "—".
 // ============================================================================
 
 const MAX_FETCH = 10000;
+
+// ── ABC ranking helpers ────────────────────────────────────────────────────
+// Best class wins on parent row. Null/missing = lowest priority.
+const ABC_RANK = { A: 4, B: 3, C: 2, D: 1 };
+const RANK_TO_CLASS = ['', 'D', 'C', 'B', 'A'];
+
+function bestAbc(variants, col) {
+  let max = 0;
+  for (const v of variants) {
+    const r = ABC_RANK[v[col]] || 0;
+    if (r > max) max = r;
+  }
+  return max ? RANK_TO_CLASS[max] : null;
+}
 
 function groupByProduct(rows) {
   const groups = new Map();
@@ -42,6 +59,17 @@ function groupByProduct(rows) {
     const prices = g.variants.map(v => v.selling_price || 0).filter(p => p > 0);
     g.selling_price = prices.length ? Math.min(...prices) : 0;
     g.is_active = g.variants.some(v => v.is_active);
+
+    // ── Phase D M2.A: parent-row aggregates ────────────────────────────
+    g.parent_abc_90d  = bestAbc(g.variants, 'abc_90d');
+    g.parent_abc_180d = bestAbc(g.variants, 'abc_180d');
+    g.parent_revenue_90d     = g.variants.reduce((s, v) => s + (Number(v.revenue_90d)     || 0), 0);
+    g.parent_revenue_180d    = g.variants.reduce((s, v) => s + (Number(v.revenue_180d)    || 0), 0);
+    g.parent_units_sold_90d  = g.variants.reduce((s, v) => s + (v.units_sold_90d  || 0), 0);
+    g.parent_units_sold_180d = g.variants.reduce((s, v) => s + (v.units_sold_180d || 0), 0);
+    // SEO is product-level (same value across all variants of a product)
+    g.parent_seo_score = g.variants[0]?.seo_score ?? null;
+    g.parent_seo_tier  = g.variants[0]?.seo_tier  ?? null;
   }
 
   return Array.from(groups.values());
@@ -57,7 +85,7 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit') || '40');
     const search = searchParams.get('search');
     const category = searchParams.get('category');
-    const collection = searchParams.get('collection');      // NEW: collection handle
+    const collection = searchParams.get('collection');      // collection handle
     const stockFilter = searchParams.get('stock');
     const activeFilter = searchParams.get('active');
     const sort = searchParams.get('sort') || 'title';
@@ -206,7 +234,7 @@ export async function GET(request) {
       total_pages: Math.ceil(total / limit) || 1,
       stats: productStats,
       categories,
-      collections,  // NEW: [{handle, title}, ...]
+      collections,  // [{handle, title}, ...]
     });
   } catch (error) {
     console.error('Products fetch error:', error);
