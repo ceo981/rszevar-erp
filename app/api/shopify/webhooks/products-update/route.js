@@ -1,14 +1,14 @@
 // ============================================================================
-// RS ZEVAR ERP — Auto Product Sync Webhook (Phase D — verbose logging)
+// RS ZEVAR ERP — Auto Product Sync Webhook (Apr 28 2026 final)
 // Route: /api/shopify/webhooks/products-update
 // ----------------------------------------------------------------------------
-// Updated Apr 28 2026 — Added verbose logging so we can diagnose webhook
-// delivery issues from Vercel logs. Every incoming request now logs:
-//   - Whether headers (HMAC, topic, shop) are present
-//   - Body size
-//   - HMAC verification result (pass/fail with reason)
-//   - Product details if parsed successfully
-//   - Final outcome (success/skipped/failed)
+// Multi-secret HMAC verification — supports BOTH:
+//   - Settings → Notifications webhooks (signed with ACCOUNT-level secret,
+//     stored in env var SHOPIFY_WEBHOOK_SECRET)
+//   - API-registered webhooks via custom app (signed with APP-level secret =
+//     custom app's "API secret key", stored in env var SHOPIFY_APP_WEBHOOK_SECRET)
+//
+// Tries each configured secret in turn. First match wins.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -19,33 +19,45 @@ import { transformProducts } from '@/lib/shopify';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function verifyHmac(rawBody, hmacHeader) {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (!hmacHeader) {
-    console.log('[webhook:products] HMAC FAIL: x-shopify-hmac-sha256 header missing');
-    return false;
-  }
-  if (!secret) {
-    console.log('[webhook:products] HMAC FAIL: SHOPIFY_WEBHOOK_SECRET env var not set in Vercel');
-    return false;
-  }
+function tryHmac(rawBody, hmacHeader, secret) {
   try {
     const computed = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
     const a = Buffer.from(computed);
     const b = Buffer.from(hmacHeader);
-    if (a.length !== b.length) {
-      console.log(`[webhook:products] HMAC FAIL: signature length mismatch (computed=${a.length}, received=${b.length})`);
-      return false;
-    }
-    const match = crypto.timingSafeEqual(a, b);
-    if (!match) {
-      console.log(`[webhook:products] HMAC FAIL: signatures differ. computed_prefix=${computed.slice(0, 12)}... received_prefix=${hmacHeader.slice(0, 12)}...`);
-    }
-    return match;
-  } catch (e) {
-    console.log('[webhook:products] HMAC FAIL: exception —', e.message);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
     return false;
   }
+}
+
+function verifyHmac(rawBody, hmacHeader) {
+  if (!hmacHeader) {
+    return { valid: false, reason: 'header_missing' };
+  }
+
+  // Try secrets in order — Settings webhooks (account secret) first,
+  // then API-registered webhooks (app secret).
+  const candidates = [
+    { name: 'SHOPIFY_WEBHOOK_SECRET',      value: process.env.SHOPIFY_WEBHOOK_SECRET },
+    { name: 'SHOPIFY_APP_WEBHOOK_SECRET',  value: process.env.SHOPIFY_APP_WEBHOOK_SECRET },
+  ].filter(s => s.value);
+
+  if (candidates.length === 0) {
+    return { valid: false, reason: 'no_secrets_configured' };
+  }
+
+  for (const { name, value } of candidates) {
+    if (tryHmac(rawBody, hmacHeader, value)) {
+      return { valid: true, matched: name };
+    }
+  }
+
+  return {
+    valid: false,
+    reason: 'all_secrets_mismatched',
+    tried: candidates.map(c => c.name),
+  };
 }
 
 export async function POST(request) {
@@ -56,16 +68,16 @@ export async function POST(request) {
   const topic       = request.headers.get('x-shopify-topic')        || 'unknown';
   const shopDomain  = request.headers.get('x-shopify-shop-domain')  || 'unknown';
   const webhookId   = request.headers.get('x-shopify-webhook-id')   || 'none';
-  const apiVersion  = request.headers.get('x-shopify-api-version')  || 'none';
 
-  console.log(`[webhook:products] INCOMING — topic=${topic} shop=${shopDomain} webhook_id=${webhookId} api_version=${apiVersion} body_bytes=${rawBody.length} hmac=${hmac ? 'present' : 'missing'}`);
+  console.log(`[webhook:products] INCOMING — topic=${topic} shop=${shopDomain} webhook_id=${webhookId} body_bytes=${rawBody.length} hmac=${hmac ? 'present' : 'missing'}`);
 
-  if (!verifyHmac(rawBody, hmac)) {
-    console.log('[webhook:products] REJECTED: HMAC verification failed');
+  const hmacResult = verifyHmac(rawBody, hmac);
+  if (!hmacResult.valid) {
+    console.log(`[webhook:products] HMAC FAIL — reason=${hmacResult.reason}${hmacResult.tried ? ' tried=' + hmacResult.tried.join(',') : ''}`);
     return NextResponse.json({ error: 'Invalid HMAC' }, { status: 401 });
   }
 
-  console.log('[webhook:products] HMAC verified OK');
+  console.log(`[webhook:products] HMAC verified using ${hmacResult.matched}`);
 
   let shopifyProduct;
   try {
@@ -77,15 +89,13 @@ export async function POST(request) {
 
   console.log(`[webhook:products] parsed product id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants=${shopifyProduct.variants?.length || 0} status=${shopifyProduct.status}`);
 
-  // Transform into variant rows (Phase A: includes tags, description, images, etc.)
   const variants = transformProducts(shopifyProduct);
   if (variants.length === 0) {
-    console.log('[webhook:products] SKIPPED: no variants in payload');
+    console.log('[webhook:products] SKIPPED: no variants');
     return NextResponse.json({ success: true, skipped: 'no_variants' });
   }
 
   const supabase = createServerClient();
-
   const { error } = await supabase
     .from('products')
     .upsert(variants, { onConflict: 'shopify_variant_id' });
