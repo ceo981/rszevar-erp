@@ -554,22 +554,30 @@ export async function POST(request) {
       results.images = imageResults;
     }
 
-    // ── Step 2.5: Assign images to variant groups (M2.F) ──────────────────
-    // variant_image_assignments shape: { 'Black': 0, 'green': 1 } where number
-    // is the index into the images array. We map index → uploaded image ID,
-    // then PUT each variant whose option1 matches with image_id.
+    // ── Step 2.5: Assign images to variant groups (M2.F + M2.H) ───────────
+    // variant_image_assignments shape:
+    //   - Group key:    'Black' → applies to all variants where option1=Black
+    //   - Composite:    'Black|2.4|' → overrides for that exact sub-variant
+    // Resolution: composite key takes priority; fall back to group key.
     if (variant_image_assignments && typeof variant_image_assignments === 'object'
         && Object.keys(variant_image_assignments).length > 0
         && createdShopifyProduct.variants?.length > 0) {
       const assignResults = [];
       for (const cv of createdShopifyProduct.variants) {
-        const groupKey = cv.option1;
-        if (groupKey === undefined || groupKey === null) continue;
-        const imgIdx = variant_image_assignments[groupKey];
+        const subKey   = `${cv.option1 ?? ''}|${cv.option2 ?? ''}|${cv.option3 ?? ''}`;
+        const groupKey = cv.option1 ?? '';
+        // composite override wins; else fall back to group default
+        let imgIdx = variant_image_assignments[subKey];
+        let resolvedFrom = 'sub';
+        if (imgIdx === undefined || imgIdx === null) {
+          imgIdx = variant_image_assignments[groupKey];
+          resolvedFrom = 'group';
+        }
         if (imgIdx === undefined || imgIdx === null) continue;
+
         const shopifyImageId = uploadedImageIdByIndex[imgIdx];
         if (!shopifyImageId) {
-          assignResults.push({ variant_id: cv.id, group: groupKey, success: false, error: 'image upload failed' });
+          assignResults.push({ variant_id: cv.id, key: subKey, success: false, error: 'image upload failed' });
           continue;
         }
         try {
@@ -577,9 +585,16 @@ export async function POST(request) {
             method: 'PUT',
             body: { variant: { id: cv.id, image_id: shopifyImageId } },
           });
-          assignResults.push({ variant_id: cv.id, group: groupKey, image_id: shopifyImageId, success: true });
+          assignResults.push({
+            variant_id: cv.id,
+            sub_key: subKey,
+            group_key: groupKey,
+            resolved_from: resolvedFrom,
+            image_id: shopifyImageId,
+            success: true,
+          });
         } catch (e) {
-          assignResults.push({ variant_id: cv.id, group: groupKey, success: false, error: e.message });
+          assignResults.push({ variant_id: cv.id, key: subKey, success: false, error: e.message });
         }
         await new Promise(r => setTimeout(r, 200));
       }
