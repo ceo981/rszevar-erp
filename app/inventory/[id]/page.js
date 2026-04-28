@@ -337,6 +337,7 @@ export default function ProductEditPage() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
   const [saving, setSaving]     = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [saveResult, setSaveResult] = useState(null);
   const [descMode, setDescMode] = useState('edit'); // 'edit' | 'preview'
 
@@ -409,6 +410,32 @@ export default function ProductEditPage() {
     if (!confirm('Discard all changes?')) return;
     setDraft({ ...product, images_data: [...(product.images_data || [])] });
     setSaveResult(null);
+  };
+
+  // Pull fresh data from Shopify (safety net for missed webhooks)
+  const handleRefresh = async () => {
+    if (hasChanges) {
+      if (!confirm('Discard your unsaved changes and refresh from Shopify?')) return;
+    }
+    setRefreshing(true);
+    setSaveResult(null);
+    try {
+      const res = await fetch(`/api/products/${id}/refresh`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSaveResult({
+          success: true,
+          message: `🔄 ${data.message}`,
+          duration_ms: data.duration_ms,
+        });
+        await loadProduct();
+      } else {
+        setSaveResult({ success: false, error: data.error || 'Refresh failed' });
+      }
+    } catch (e) {
+      setSaveResult({ success: false, error: e.message });
+    }
+    setRefreshing(false);
   };
 
   // ── Field setters ─────────────────────────────────────────────────────────
@@ -503,6 +530,13 @@ export default function ProductEditPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn
+            onClick={handleRefresh}
+            disabled={refreshing || saving}
+            title="Pull latest data from Shopify (use if recent edits in Shopify aren't showing here)"
+          >
+            {refreshing ? '⟳ Refreshing...' : '🔄 Refresh'}
+          </Btn>
           {storefrontUrl && (
             <Btn href={storefrontUrl} target="_blank" title="View on storefront">🌐 View</Btn>
           )}
