@@ -19,6 +19,36 @@ import { transformProducts } from '@/lib/shopify';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+const SHOPIFY_TOKEN  = process.env.SHOPIFY_ACCESS_TOKEN;
+const GRAPHQL_VERSION = '2025-01';
+
+// M2.B hotfix — REST product payload doesn't include collections, so fetch
+// them via a tiny GraphQL call and stamp on every variant row before upsert
+async function fetchProductCollections(productId) {
+  if (!SHOPIFY_DOMAIN || !SHOPIFY_TOKEN) return null;
+  const query = `
+    query getProductCollections($id: ID!) {
+      product(id: $id) {
+        collections(first: 50) { edges { node { handle title } } }
+      }
+    }
+  `;
+  const res = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/${GRAPHQL_VERSION}/graphql.json`, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_TOKEN,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables: { id: `gid://shopify/Product/${productId}` } }),
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  if (json.errors) return null;
+  const edges = json?.data?.product?.collections?.edges || [];
+  return edges.map(e => ({ handle: e.node.handle, title: e.node.title }));
+}
+
 function tryHmac(rawBody, hmacHeader, secret) {
   try {
     const computed = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
@@ -95,6 +125,19 @@ export async function POST(request) {
     return NextResponse.json({ success: true, skipped: 'no_variants' });
   }
 
+  // M2.B hotfix — also pull collections via GraphQL and stamp on variant rows
+  // (best-effort; webhook still succeeds if this fails)
+  let collectionsFetched = null;
+  try {
+    const colls = await fetchProductCollections(shopifyProduct.id);
+    if (Array.isArray(colls)) {
+      for (const v of variants) v.collections = colls;
+      collectionsFetched = colls.length;
+    }
+  } catch (e) {
+    console.error('[webhook:products] collections fetch failed:', e.message);
+  }
+
   const supabase = createServerClient();
   const { error } = await supabase
     .from('products')
@@ -106,11 +149,12 @@ export async function POST(request) {
   }
 
   const elapsed = Date.now() - startTime;
-  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} elapsed_ms=${elapsed}`);
+  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} collections_synced=${collectionsFetched ?? 'skip'} elapsed_ms=${elapsed}`);
 
   return NextResponse.json({
     success: true,
     product: shopifyProduct.title,
     variants_synced: variants.length,
+    collections_synced: collectionsFetched,
   });
 }
