@@ -139,7 +139,7 @@ export async function POST(request) {
       return NextResponse.json({ received: true });
     }
 
-    const lockedStatuses = ['confirmed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto'];
+    const lockedStatuses = ['confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto'];
     if (lockedStatuses.includes(order.status)) {
       console.log(`[whatsapp-webhook] Order ${orderNumber} already ${order.status} — ignoring button click`);
       if (order.shopify_order_id) {
