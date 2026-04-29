@@ -93,6 +93,14 @@ export default function PackingSlipPage() {
 
   return (
     <>
+      {/* Google Fonts — Cormorant Garamond for luxury tagline */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+      />
+
       {/* Print CSS */}
       <style>{`
         /* ── A4 page setup — 10mm margin for max content area ──────────── */
@@ -175,6 +183,17 @@ export default function PackingSlipPage() {
         .slip .muted {
           color: #666;
           font-size: 9pt;
+        }
+        /* Brand tagline under "RS ZEVAR" — luxury italic serif, gold tone.
+           Matches invoice page tagline styling for brand consistency. */
+        .slip .brand-tagline {
+          font-family: 'Cormorant Garamond', Georgia, serif;
+          font-size: 11pt;
+          font-style: italic;
+          color: #b8935a;
+          letter-spacing: 1.5px;
+          margin-top: 1px;
+          font-weight: 500;
         }
 
         .hr {
@@ -499,7 +518,7 @@ export default function PackingSlipPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div>
             <h1>RS ZEVAR</h1>
-            <div className="muted">Luxury Jewelry · Karachi</div>
+            <div className="brand-tagline">Designer Jewellery</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <h2 style={{ color: '#c9a96e', textTransform: 'uppercase', letterSpacing: 1.5 }}>Packing Slip</h2>
