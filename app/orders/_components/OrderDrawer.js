@@ -36,6 +36,15 @@ export const timeAgo = iso => {
   return `${Math.floor(h / 24)}d ago`;
 };
 
+// Ordinal: 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th"...
+export const ordinal = n => {
+  const v = Number(n);
+  if (!v || v < 1) return '';
+  const s = ['th', 'st', 'nd', 'rd'];
+  const r = v % 100;
+  return v + (s[(r - 20) % 10] || s[r] || s[0]);
+};
+
 // ─── Status/Payment config + badges ──────────────────────────────────────
 export const STATUS_CONFIG = {
   pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
@@ -239,6 +248,16 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [customerOrderCount, setCustomerOrderCount] = useState(null);
+
+  // Eager fetch: kitne orders is customer ke total — header badge ke liye
+  useEffect(() => {
+    if (!order.customer_phone) { setCustomerOrderCount(null); return; }
+    fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=1`)
+      .then(r => r.json())
+      .then(d => setCustomerOrderCount(d.total || 0))
+      .catch(() => {});
+  }, [order.customer_phone]);
 
   const loadLog = useCallback(() => {
     fetch(`/api/orders/comment?order_id=${order.id}`)
@@ -559,7 +578,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: isMobile ? 15 : 16, color: gold }}>{order.order_number || '#' + order.id}</div>
-            <div style={{ fontSize: 12, color: '#555', marginTop: 3 }}>{order.customer_name} · {order.customer_city}</div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>{order.customer_name} · {order.customer_city}</span>
+              {customerOrderCount !== null && customerOrderCount > 1 && (
+                <span title={`Total ${customerOrderCount} orders from this customer`} style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2444', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, letterSpacing: 0.3 }}>
+                  ⭐ {ordinal(customerOrderCount)} order
+                </span>
+              )}
+            </div>
             <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <StatusBadge status={order.status} />
               {typeBadges.map(b => (
@@ -567,7 +593,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   {b.label}
                 </span>
               ))}
-              {Array.isArray(order.tags) && order.tags.filter(t => !['wholesale','international','walkin','kangaroo'].includes(t?.toLowerCase())).map((tag, ti) => (
+              {Array.isArray(order.tags) && order.tags.filter(t => {
+                const tag = String(t || '').toLowerCase();
+                // Hide: type tags (already shown as typeBadges) + redundant confirm/cancel state tags + system tags
+                if (['wholesale','international','walkin','kangaroo'].includes(tag)) return false;
+                if (['whatsapp_confirmed', 'whatsapp confirmed', 'order_confirmed', 'order confirmed', 'confirmation pending', 'whatsapp_cancelled', 'whatsapp cancelled', 'no whatsapp'].includes(tag)) return false;
+                if (tag.startsWith('packing:')) return false; // already shown via assigned_to_name
+                return true;
+              }).map((tag, ti) => (
                 <span key={ti} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag}</span>
               ))}
             </div>
@@ -605,18 +638,51 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
               <StatusBadge status={order.status} />
             </div>
-            <div style={{ flex: 1, background: '#111', border: `1px solid #2a1a4a`, borderRadius: 8, padding: '10px 14px' }}>
-              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🚚 Courier Status</div>
-              {order.courier_status_raw
-                ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{order.courier_status_raw}</span>
-                : <span style={{ color: '#333', fontSize: 12 }}>Not dispatched yet</span>}
-            </div>
+            {(() => {
+              const raw = order.courier_status_raw || '';
+              const rawLower = String(raw).toLowerCase();
+              // Detect exception/attention-needed states
+              const isException = !!raw && (
+                rawLower.includes('not available') ||
+                rawLower.includes('refus') ||
+                rawLower.includes('not delivered') ||
+                rawLower.includes('undelivered') ||
+                rawLower.includes('attempt') ||
+                rawLower.includes('exception') ||
+                rawLower.includes('hold') ||
+                rawLower.includes('return') ||
+                rawLower.includes('rto') ||
+                rawLower.includes('cancel')
+              );
+              const cardBorder = isException ? '#ef444466' : '#2a1a4a';
+              const tagColor   = isException ? '#ef4444'   : '#8b5cf6';
+              const tagBg      = isException ? '#ef444411' : '#8b5cf611';
+              const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
+              return (
+                <div style={{ flex: 1, background: '#111', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🚚 Courier Status</span>
+                    {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
+                  </div>
+                  {raw
+                    ? <span style={{ color: tagColor, background: tagBg, border: `1px solid ${tagBorder}`, padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{raw}</span>
+                    : <span style={{ color: '#333', fontSize: 12 }}>Not dispatched yet</span>}
+                </div>
+              );
+            })()}
           </div>
           {/* Info Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[
               ['COD Amount', fmt(order.total_amount)],
-              ['Phone', order.customer_phone || '—'],
+              ['Phone', order.customer_phone ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span>{order.customer_phone}</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
+                  <a href={`tel:${order.customer_phone}`} title="Call customer" style={{ background: 'transparent', border: '1px solid #1e3a5f', color: '#3b82f6', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>📞</a>
+                  <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>💬</a>
+                </div>
+              ) : '—'],
               ['Placed', timeAgo(order.created_at)],
               ['Payment', order.payment_status || 'unpaid'],
               ['Courier', order.dispatched_courier || '—'],
@@ -628,7 +694,15 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               </div>
             ))}
             <div style={{ gridColumn: 'span 2' }}>
-              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>Address</div>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>Address</span>
+                {order.customer_address && (
+                  <>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_address); }} title="Copy address" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 9, cursor: 'pointer', padding: '0 6px', borderRadius: 4, lineHeight: 1.6, fontFamily: 'inherit' }}>📋</button>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([order.customer_address, order.customer_city].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" title="Open in Google Maps" style={{ background: 'transparent', border: '1px solid #1f3a5a', color: '#60a5fa', fontSize: 9, textDecoration: 'none', padding: '0 6px', borderRadius: 4, lineHeight: 1.6 }}>🗺️</a>
+                  </>
+                )}
+              </div>
               <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{order.customer_address || '—'}</div>
             </div>
           </div>
