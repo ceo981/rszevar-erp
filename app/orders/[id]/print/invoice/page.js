@@ -80,12 +80,12 @@ export default function InvoicePage() {
 
   return (
     <>
-      {/* Google Fonts — Playfair Display (serif) + Inter (sans) */}
+      {/* Google Fonts — Playfair Display + Cormorant Garamond (luxury) + Inter (sans) */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
       />
 
       <style>{`
@@ -173,11 +173,13 @@ export default function InvoicePage() {
           object-fit: contain;
         }
         .brand .tagline {
-          font-size: 9pt;
-          color: #666;
-          letter-spacing: 3px;
-          text-transform: uppercase;
-          margin-top: 6px;
+          /* Luxury italic serif — sits just under the RS ZEVAR logo */
+          font-family: 'Cormorant Garamond', 'Playfair Display', Georgia, serif;
+          font-size: 14pt;
+          font-style: italic;
+          color: #b8935a;
+          letter-spacing: 2px;
+          margin-top: 4px;
           font-weight: 500;
         }
         .inv-title {
@@ -491,7 +493,7 @@ export default function InvoicePage() {
           <div className="inv-header">
             <div className="brand">
               <img src="/rs_zevar_logo_transparent.png" alt="RS ZEVAR" />
-              <div className="tagline">Luxury Jewelry · Karachi</div>
+              <div className="tagline">Designer Jewellery</div>
             </div>
             <div className="inv-title">
               <h1>INVOICE</h1>
@@ -611,7 +613,7 @@ export default function InvoicePage() {
           {/* Thank you */}
           <div className="thanks">
             <div className="main">Thank you for choosing RS ZEVAR ❤️</div>
-            <div className="urdu">Shukriya aap ka hum pe bharosa karne ke liye. InshaAllah jald phir milenge!</div>
+            <div className="urdu">Thank you for trusting us. We look forward to serving you again, InshaAllah!</div>
           </div>
 
           {/* Footer */}
@@ -620,13 +622,14 @@ export default function InvoicePage() {
               <h3>Contact Us</h3>
               <p>WhatsApp: <a href="https://wa.me/923032244550">+92 303 2244550</a></p>
               <p>Website: <a href="https://rszevar.com">rszevar.com</a></p>
-              <p>Location: Karachi, Pakistan</p>
+              <p>Address: Suite #604, Falak Corporate City, Seari Quarters, Karachi</p>
             </div>
             <div>
-              <h3>Return Policy</h3>
-              <p>• Manufacturing defect pe 3 din ke andar exchange</p>
-              <p>• Size/design issue: 24 hours notice zaroori</p>
-              <p>• Custom orders non-refundable</p>
+              <h3>Return &amp; Exchange Policy</h3>
+              <p>• 10-day exchange/return window from purchase date</p>
+              <p>• Defective products: free exchange or refund</p>
+              <p>• Other returns: Rs 200 fee, item must be unused in original packaging</p>
+              <p>• Sale items, custom orders &amp; transit damage non-refundable</p>
             </div>
           </div>
         </div>
