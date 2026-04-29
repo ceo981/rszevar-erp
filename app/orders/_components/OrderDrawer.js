@@ -715,11 +715,24 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {orderItems.map((item, i) => (
                 <div key={i}
-                  onClick={() => { onClose(); setTimeout(() => { window.dispatchEvent(new CustomEvent('openInventorySku', { detail: item.sku })); }, 300); }}
+                  onClick={() => {
+                    if (!item.sku) return;
+                    onClose();
+                    setTimeout(() => {
+                      // Direct navigation to product detail page if product_id resolved.
+                      // Browser Back from product page returns to this order.
+                      if (item.product_id) {
+                        window.location.href = `/inventory/${item.product_id}`;
+                      } else {
+                        // Fallback: SKU not found in products table → search
+                        window.dispatchEvent(new CustomEvent('openInventorySku', { detail: item.sku }));
+                      }
+                    }, 300);
+                  }}
                   style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#1a1a1a', borderRadius: 9, padding: '10px 12px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#252525'}
                   onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
-                  title={item.sku ? 'Click to view in Inventory' : ''}
+                  title={item.sku ? 'Click to view product page' : ''}
                 >
                   {item.image_url ? (
                     <img src={item.image_url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 7, flexShrink: 0, border: '1px solid #333' }} />
