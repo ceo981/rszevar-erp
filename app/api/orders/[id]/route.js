@@ -66,22 +66,27 @@ export async function GET(request, { params }) {
       });
     }
 
-    // ── SKU → image enrichment from products table (applies to both paths) ──
-    const missingSkus = [...new Set(items.filter(i => !i.image_url && i.sku).map(i => i.sku))];
-    if (missingSkus.length > 0) {
+    // ── SKU → product_id + image enrichment from products table ──
+    // FIX Apr 2026 — Single query fetches BOTH product_id (for direct
+    // product page navigation from order items) AND image_url (for items
+    // missing thumbnails). Replaces the previous image-only enrichment.
+    const allSkus = [...new Set(items.filter(i => i.sku).map(i => i.sku))];
+    if (allSkus.length > 0) {
       const { data: prods } = await supabase
         .from('products')
-        .select('sku, image_url')
-        .in('sku', missingSkus)
-        .not('image_url', 'is', null);
+        .select('id, sku, image_url')
+        .in('sku', allSkus);
 
-      const skuMap = {};
+      const productMap = {};
       for (const p of prods || []) {
-        if (p.sku && p.image_url && !skuMap[p.sku]) skuMap[p.sku] = p.image_url;
+        if (p.sku && !productMap[p.sku]) productMap[p.sku] = p;
       }
       for (const item of items) {
-        if (!item.image_url && item.sku && skuMap[item.sku]) {
-          item.image_url = skuMap[item.sku];
+        if (item.sku && productMap[item.sku]) {
+          item.product_id = productMap[item.sku].id;
+          if (!item.image_url && productMap[item.sku].image_url) {
+            item.image_url = productMap[item.sku].image_url;
+          }
         }
       }
     }
