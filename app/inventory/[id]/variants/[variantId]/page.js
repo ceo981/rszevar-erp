@@ -266,6 +266,16 @@ export default function VariantEditPage() {
     return keys.some(k => String(originalVariant[k] ?? '') !== String(draft[k] ?? ''));
   }, [draft, originalVariant]);
 
+  // Phase 2.1 — Stock change requires a reason (prevent silent inventory theft).
+  // Other field changes (price/sku/barcode/weight) don't require reason.
+  const stockChanged = useMemo(() => {
+    if (!draft || !originalVariant) return false;
+    return String(originalVariant.stock_quantity ?? '') !== String(draft.stock_quantity ?? '');
+  }, [draft, originalVariant]);
+
+  const reasonRequired = stockChanged;
+  const reasonMissing  = reasonRequired && !reason.trim();
+
   // Computed: profit/margin (only if cost available — Phase 1 placeholder, cost not yet loaded)
   const pricing = useMemo(() => {
     const price = parseFloat(draft?.selling_price) || 0;
@@ -278,6 +288,16 @@ export default function VariantEditPage() {
   // Save handler — sends only the changed fields via existing PATCH endpoint
   const handleSave = async () => {
     if (!draft || !originalVariant || !isDirty || saving) return;
+
+    // Phase 2.1 — Reason mandatory when stock is being adjusted (anti-theft control)
+    if (reasonMissing) {
+      setSaveResult({
+        success: false,
+        message: 'Stock change ke liye reason likhna zaroori hai (e.g. "Restocked", "Damaged", "Manual count")',
+      });
+      return;
+    }
+
     setSaving(true);
     setSaveResult(null);
     try {
@@ -422,7 +442,7 @@ export default function VariantEditPage() {
             {isDirty && (
               <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
             )}
-            <Btn primary onClick={handleSave} disabled={!isDirty || saving}>
+            <Btn primary onClick={handleSave} disabled={!isDirty || saving || reasonMissing} title={reasonMissing ? 'Stock change ke liye reason likhna zaroori hai' : ''}>
               {saving ? 'Saving...' : 'Save'}
             </Btn>
             {saveResult && (
@@ -719,36 +739,46 @@ export default function VariantEditPage() {
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
-                    <Btn primary onClick={handleSave} disabled={saving}>
+                    <Btn primary onClick={handleSave} disabled={saving || reasonMissing}>
                       {saving ? 'Saving...' : 'Save changes'}
                     </Btn>
                   </div>
                 </div>
 
-                {/* Phase 2 — Optional reason for adjustment history log */}
+                {/* Phase 2 — Reason input. REQUIRED when stock is changing (anti-theft).
+                    Optional for price/SKU/barcode/weight changes. */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 11, color: text3, whiteSpace: 'nowrap' }}>Reason (optional):</span>
+                  <span style={{ fontSize: 11, color: reasonRequired ? '#f87171' : text3, whiteSpace: 'nowrap', fontWeight: reasonRequired ? 600 : 400 }}>
+                    {reasonRequired ? 'Reason (REQUIRED for stock change):' : 'Reason (optional):'}
+                  </span>
                   <input
                     type="text"
                     value={reason}
                     onChange={e => setReason(e.target.value)}
-                    placeholder="e.g. Restocked, Damaged, Manual count, Promotion..."
+                    placeholder={reasonRequired
+                      ? 'Stock kyun change kiya? e.g. Restocked, Damaged, Manual count, Theft, Promotion...'
+                      : 'e.g. Restocked, Damaged, Manual count, Promotion...'}
                     style={{
                       flex: 1,
                       padding: '6px 10px',
                       background: bgPage,
-                      border: `1px solid ${border}`,
+                      border: `1px solid ${reasonMissing ? '#f87171' : border}`,
                       borderRadius: 5,
                       color: text1,
                       fontSize: 12,
                       fontFamily: 'inherit',
                       outline: 'none',
                     }}
-                    onFocus={e => e.target.style.borderColor = gold}
-                    onBlur={e => e.target.style.borderColor = border}
+                    onFocus={e => e.target.style.borderColor = reasonMissing ? '#f87171' : gold}
+                    onBlur={e => e.target.style.borderColor = reasonMissing ? '#f87171' : border}
                   />
                   <span style={{ fontSize: 10, color: text3 }}>by {performer || 'Staff'}</span>
                 </div>
+                {reasonMissing && (
+                  <div style={{ fontSize: 11, color: '#f87171', marginTop: -4 }}>
+                    ⚠️ Stock change save karne ke liye reason zaroori hai
+                  </div>
+                )}
               </div>
             )}
           </div>
