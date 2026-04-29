@@ -1050,6 +1050,65 @@ export default function ProductEditPage() {
   // M2.K — Bulk Edit modal state
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
+  // M2.K — Expanded color groups (for 2+ option products' grouped variants UI)
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  // M2.K — Detect if product has 2+ options (any variant with option2 set)
+  // Used to switch between flat table and grouped view in variants section.
+  const hasMultiOptions = useMemo(() => {
+    return Array.isArray(draft?.variants) && draft.variants.some(v => v.option2 != null && v.option2 !== '');
+  }, [draft?.variants]);
+
+  // M2.K — Group variants by option1 (preserves first-seen order)
+  const variantGroups = useMemo(() => {
+    if (!hasMultiOptions || !draft?.variants) return [];
+    const order = [];
+    const map = new Map();
+    for (const v of draft.variants) {
+      const key = v.option1 ?? '';
+      if (!map.has(key)) { map.set(key, []); order.push(key); }
+      map.get(key).push(v);
+    }
+    return order.map(k => ({ key: k, label: k || '—', variants: map.get(k) }));
+  }, [draft?.variants, hasMultiOptions]);
+
+  // M2.K — Helpers for group operations
+  const toggleGroupExpanded = (groupKey) => {
+    setExpandedGroups(g => ({ ...g, [groupKey]: !g[groupKey] }));
+  };
+
+  // Broadcast a field's value to all variants in a group
+  const setGroupField = (groupKey, fieldName, value) => {
+    setDraft(d => ({
+      ...d,
+      variants: (d.variants || []).map(v =>
+        v.option1 === groupKey ? { ...v, [fieldName]: value } : v
+      ),
+    }));
+  };
+
+  // Set image_id for whole group (broadcast to all sub-variants)
+  const setGroupImageId = (groupKey, imageId) => {
+    setDraft(d => ({
+      ...d,
+      variants: (d.variants || []).map(v =>
+        v.option1 === groupKey ? { ...v, image_id: imageId } : v
+      ),
+    }));
+  };
+
+  // Returns common value if all variants share it, else '__MIXED__'
+  const getGroupCommonValue = (variants, field) => {
+    if (!variants || variants.length === 0) return '';
+    const first = variants[0][field] ?? '';
+    return variants.every(v => (v[field] ?? '') === first) ? first : '__MIXED__';
+  };
+
+  // Sum stock across group (treat empty as 0)
+  const getGroupTotalStock = (variants) => {
+    return (variants || []).reduce((sum, v) => sum + (Number(v.stock_quantity) || 0), 0);
+  };
+
   // M2.I — Live SEO score (recomputes on every draft change, no DB call)
   const liveSeo = useMemo(() => {
     if (!draft) return null;
@@ -1082,11 +1141,20 @@ export default function ProductEditPage() {
         setProduct(data.product);
         // M2.K — derive each variant's image_id by matching image_url against images_data[].src
         // This avoids needing schema changes; the link is reconstructed client-side.
+        // Also parse variant_label (e.g. "Black / 2.4") into option1/option2/option3
+        // so we can render grouped UI for 2+ option products.
         const imgs = data.product.images_data || [];
         const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
         const variantsWithImageId = (data.product.variants || []).map(v => {
           const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
-          return { ...v, image_id: matched ? Number(matched) : null };
+          const parts = String(v.variant_label || '').split(' / ').map(s => s.trim()).filter(Boolean);
+          return {
+            ...v,
+            image_id: matched ? Number(matched) : null,
+            option1: parts[0] ?? null,
+            option2: parts[1] ?? null,
+            option3: parts[2] ?? null,
+          };
         });
         setDraft({
           ...data.product,
@@ -1217,7 +1285,7 @@ export default function ProductEditPage() {
 
   const handleDiscard = () => {
     if (!confirm('Discard all changes?')) return;
-    // M2.K — re-derive image_id from URL match on discard too
+    // M2.K — re-derive image_id from URL match + parse options on discard too
     const imgs = product.images_data || [];
     const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
     setDraft({
@@ -1225,7 +1293,14 @@ export default function ProductEditPage() {
       images_data: [...imgs],
       variants: (product.variants || []).map(v => {
         const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
-        return { ...v, image_id: matched ? Number(matched) : null };
+        const parts = String(v.variant_label || '').split(' / ').map(s => s.trim()).filter(Boolean);
+        return {
+          ...v,
+          image_id: matched ? Number(matched) : null,
+          option1: parts[0] ?? null,
+          option2: parts[1] ?? null,
+          option3: parts[2] ?? null,
+        };
       }),
       images_to_add: [],
     });
@@ -1234,6 +1309,8 @@ export default function ProductEditPage() {
     setAiPendingExtras(null);
     setAiEnhancementId(null);
     setAiAppliedFlash(null);
+    // M2.K — also discard expanded group state
+    setExpandedGroups({});
   };
 
   // Pull fresh data from Shopify (safety net for missed webhooks)
@@ -1818,7 +1895,182 @@ export default function ProductEditPage() {
           >
             {(!draft.variants || draft.variants.length === 0) ? (
               <div style={{ padding: 24, color: text3, fontSize: 13, textAlign: 'center' }}>No variants</div>
+            ) : hasMultiOptions ? (
+              // ═══════════════════════════════════════════════════════════
+              // M2.K — GROUPED VIEW (2+ option products, e.g. Color + Size)
+              // ═══════════════════════════════════════════════════════════
+              <div style={{ borderTop: `1px solid ${border}` }}>
+                <div style={{
+                  padding: '8px 14px', fontSize: 11, color: text3,
+                  background: 'rgba(201,169,110,0.02)',
+                  borderBottom: `1px solid ${border}`,
+                }}>
+                  Grouped by <strong style={{ color: gold }}>{draft.variants[0]?.option1 ? 'Option 1' : 'Color'}</strong> · click row to expand sub-variants
+                </div>
+                {variantGroups.map(group => {
+                  const isExpanded = !!expandedGroups[group.key];
+                  const groupPrice = getGroupCommonValue(group.variants, 'selling_price');
+                  const groupCompare = getGroupCommonValue(group.variants, 'compare_at_price');
+                  const groupWeight = getGroupCommonValue(group.variants, 'weight');
+                  const groupImageId = getGroupCommonValue(group.variants, 'image_id');
+                  const totalStock = getGroupTotalStock(group.variants);
+                  const isMixedPrice = groupPrice === '__MIXED__';
+                  const isMixedCompare = groupCompare === '__MIXED__';
+                  const isMixedWeight = groupWeight === '__MIXED__';
+                  const isMixedImage = groupImageId === '__MIXED__';
+
+                  return (
+                    <div key={group.key}>
+                      {/* PARENT (group) ROW */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '32px 56px 1fr 110px 110px 130px 90px 100px 50px',
+                        gap: 8, padding: '10px 14px',
+                        background: 'rgba(201,169,110,0.04)',
+                        borderBottom: isExpanded ? `1px solid ${border}` : `1px solid ${border}`,
+                        alignItems: 'center',
+                      }}>
+                        {/* Expand toggle */}
+                        <button onClick={() => toggleGroupExpanded(group.key)}
+                          title={isExpanded ? 'Collapse' : 'Expand'}
+                          style={{
+                            background: 'transparent', border: 'none', color: text2,
+                            cursor: 'pointer', fontSize: 14, padding: 4,
+                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s',
+                          }}
+                        >▶</button>
+
+                        {/* Group image picker (broadcasts to all sub-variants) */}
+                        <VariantImagePicker
+                          images={draft.images_data || []}
+                          selectedId={isMixedImage ? null : groupImageId}
+                          onSelect={(imgId) => setGroupImageId(group.key, imgId)}
+                          size={40}
+                          variantLabel={`${group.label} (all ${group.variants.length})`}
+                        />
+
+                        {/* Group label */}
+                        <div>
+                          <div style={{ fontWeight: 600, color: text1, fontSize: 13 }}>{group.label}</div>
+                          <div style={{ fontSize: 10, color: text3, marginTop: 2 }}>
+                            {group.variants.length} variant{group.variants.length !== 1 ? 's' : ''} · {totalStock} in stock
+                          </div>
+                        </div>
+
+                        {/* Group price (broadcast) */}
+                        {canViewFinancial ? (
+                          <NumInput
+                            value={isMixedPrice ? '' : (groupPrice ?? '')}
+                            onChange={val => setGroupField(group.key, 'selling_price', val)}
+                            placeholder={isMixedPrice ? 'Mixed' : '0.00'}
+                          />
+                        ) : <div />}
+
+                        {/* Group compare-at (broadcast) */}
+                        {canViewFinancial ? (
+                          <NumInput
+                            value={isMixedCompare ? '' : (groupCompare ?? '')}
+                            onChange={val => setGroupField(group.key, 'compare_at_price', val)}
+                            placeholder={isMixedCompare ? 'Mixed' : '—'}
+                          />
+                        ) : <div />}
+
+                        {/* Group SKU placeholder — SKUs are per sub-variant, no broadcast */}
+                        <div style={{ fontSize: 10, color: text3, fontStyle: 'italic' }}>per sub-variant</div>
+
+                        {/* Group total stock (read-only summary) */}
+                        <div style={{ fontSize: 11, color: text2, fontFamily: 'monospace' }}>{totalStock}</div>
+
+                        {/* Group weight (broadcast) */}
+                        <NumInput
+                          value={isMixedWeight ? '' : (groupWeight ?? '')}
+                          onChange={val => setGroupField(group.key, 'weight', val)}
+                          placeholder={isMixedWeight ? 'Mixed' : '0'}
+                          step="0.1"
+                        />
+
+                        {/* ABC summary — show first variant's ABC for parent row */}
+                        <div style={{ color: text2, fontSize: 11 }}>{group.variants[0]?.abc_90d || '—'}</div>
+                      </div>
+
+                      {/* EXPANDED SUB-VARIANT ROWS */}
+                      {isExpanded && group.variants.map(v => (
+                        <div key={v.id} style={{
+                          display: 'grid',
+                          gridTemplateColumns: '32px 56px 1fr 110px 110px 130px 90px 100px 50px',
+                          gap: 8, padding: '8px 14px',
+                          background: bgPage,
+                          borderBottom: `1px solid ${border}`,
+                          alignItems: 'center',
+                        }}>
+                          {/* indent column */}
+                          <div />
+                          {/* sub-variant image picker */}
+                          <VariantImagePicker
+                            images={draft.images_data || []}
+                            selectedId={v.image_id}
+                            onSelect={(imgId) => setVariantField(v.shopify_variant_id, 'image_id', imgId)}
+                            size={36}
+                            variantLabel={v.variant_label}
+                          />
+                          {/* sub-variant label (e.g. size value) */}
+                          <div style={{ color: text2, fontSize: 12, paddingLeft: 4 }}>
+                            <span style={{ color: text3, marginRight: 6 }}>↳</span>
+                            {v.option2 || v.variant_label}
+                          </div>
+                          {canViewFinancial && (
+                            <NumInput
+                              value={v.selling_price ?? ''}
+                              onChange={val => setVariantField(v.shopify_variant_id, 'selling_price', val)}
+                              placeholder="0.00"
+                            />
+                          )}
+                          {!canViewFinancial && <div />}
+                          {canViewFinancial && (
+                            <NumInput
+                              value={v.compare_at_price ?? ''}
+                              onChange={val => setVariantField(v.shopify_variant_id, 'compare_at_price', val)}
+                              placeholder="—"
+                            />
+                          )}
+                          {!canViewFinancial && <div />}
+                          <input
+                            type="text"
+                            value={v.sku || ''}
+                            onChange={e => setVariantField(v.shopify_variant_id, 'sku', e.target.value)}
+                            placeholder="SKU"
+                            style={{
+                              width: '100%', padding: '6px 8px',
+                              background: card, border: `1px solid ${border}`, borderRadius: 4,
+                              color: text1, fontSize: 12, fontFamily: 'monospace', outline: 'none',
+                            }}
+                            onFocus={e => e.target.style.borderColor = gold}
+                            onBlur={e => e.target.style.borderColor = border}
+                          />
+                          <NumInput
+                            value={v.stock_quantity ?? 0}
+                            onChange={val => setVariantField(v.shopify_variant_id, 'stock_quantity', val)}
+                            placeholder="0"
+                            step="1"
+                          />
+                          <NumInput
+                            value={v.weight ?? ''}
+                            onChange={val => setVariantField(v.shopify_variant_id, 'weight', val)}
+                            placeholder="0"
+                            step="0.1"
+                          />
+                          <div style={{ color: text2, fontSize: 11 }}>{v.abc_90d || '—'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
+              // ═══════════════════════════════════════════════════════════
+              // FLAT VIEW — single-option (or no-option) products
+              // ═══════════════════════════════════════════════════════════
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
