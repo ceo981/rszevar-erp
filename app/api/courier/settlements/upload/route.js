@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { canTransition } from '@/lib/order-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -382,12 +383,20 @@ export async function POST(request) {
         } else {
           toMarkPaid.push({ id: db.id, order_number: o.order_number, amount: o.net_amount });
         }
-      } else if (o.status === 'rto') {
+     } else if (o.status === 'rto') {
         const locked = ['delivered', 'paid', 'rto', 'cancelled', 'refunded'];
         if (locked.includes(db.status)) {
           alreadyRTO.push(o.order_number);
         } else {
-          toMarkRTO.push({ id: db.id, order_number: o.order_number });
+          // Defense-in-depth: canTransition guard. Settlement files mein
+          // sirf dispatched orders hone chahiye, lekin agar galti se koi
+          // pending/confirmed order aa jaye to silently RTO mein flip nahi karenge.
+          const gate = canTransition(db.status, 'rto', 'manual');
+          if (!gate.allowed) {
+            skipped.push(o.order_number);
+          } else {
+            toMarkRTO.push({ id: db.id, order_number: o.order_number });
+          }
         }
       } else {
         skipped.push(o.order_number); // 0-amount or unknown
