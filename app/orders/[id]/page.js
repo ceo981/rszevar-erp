@@ -48,9 +48,9 @@ function formatShortDate(iso) {
 }
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────
-function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false, right = null }) {
+function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false, right = null, id = null }) {
   return (
-    <div style={{
+    <div id={id || undefined} style={{
       background: card,
       border: `1px solid ${border}`,
       borderRadius: 10,
@@ -323,7 +323,20 @@ export default function SingleOrderPage() {
   //    also enforces this, but frontend gives a clearer error.
   const markPacked = () => {
     if (!order.assigned_to_name) {
-      flash('error', 'Pehle packer assign karo (right sidebar mein "Assigned to" card se)', 5000);
+      flash('error', '⚠️ Pehle packer assign karo — right sidebar ke "Assigned to" card se select karo', 6000);
+      // UX boost — scroll the Assigned to card into view + brief gold pulse
+      // so user knows EXACTLY where to look (especially on small screens
+      // where the right sidebar is below the main content).
+      if (typeof document !== 'undefined') {
+        const el = document.getElementById('assigned-to-card');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const orig = el.style.boxShadow;
+          el.style.transition = 'box-shadow 0.4s';
+          el.style.boxShadow = '0 0 0 3px rgba(201,169,110,0.6), 0 0 24px rgba(201,169,110,0.4)';
+          setTimeout(() => { el.style.boxShadow = orig; }, 2500);
+        }
+      }
       return;
     }
     doAction(
@@ -1647,7 +1660,7 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Assignment */}
-            <Card title="Assigned to">
+            <Card title="Assigned to" id="assigned-to-card">
               {order.assigned_to_name ? (
                 <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginBottom: 10 }}>
                   👤 {order.assigned_to_name}
