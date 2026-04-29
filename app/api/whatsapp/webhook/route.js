@@ -206,6 +206,8 @@ export async function POST(request) {
     } else if (action === 'CANCEL') {
       await supabase.from('orders').update({
         status: 'cancelled',
+        cancelled_at: nowIso,
+        cancel_reason: 'Customer cancelled via WhatsApp',
         updated_at: nowIso,
       }).eq('id', order.id);
 
