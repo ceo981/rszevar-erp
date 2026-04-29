@@ -1032,6 +1032,31 @@ export default function ProductEditPage() {
   const [saveResult, setSaveResult] = useState(null);
   const [descMode, setDescMode] = useState('edit'); // 'edit' | 'preview'
 
+  // Apr 2026 — Smart back navigation: if user came from an order page, label
+  // changes to "Back to order" and click uses router.back() to return there.
+  // Otherwise default "Inventory" label + push to /inventory.
+  const [backLabel, setBackLabel] = useState('← Inventory');
+  const [cameFromOrder, setCameFromOrder] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.referrer) return;
+    try {
+      const ref = new URL(document.referrer);
+      if (ref.origin === window.location.origin && ref.pathname.startsWith('/orders/')) {
+        setBackLabel('← Back to order');
+        setCameFromOrder(true);
+      }
+    } catch {}
+  }, []);
+
+  const handleSmartBack = () => {
+    if (cameFromOrder && typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/inventory');
+    }
+  };
+
   // M2.B — master collections list (loaded once, used by CollectionsPicker)
   const [allCollections, setAllCollections] = useState([]);
   const [collectionsLoading, setCollectionsLoading] = useState(true);
@@ -1555,9 +1580,13 @@ export default function ProductEditPage() {
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Link href="/inventory" style={{ color: text3, fontSize: 12, textDecoration: 'none' }}>
-            ← Inventory
-          </Link>
+          <button
+            type="button"
+            onClick={handleSmartBack}
+            style={{ background: 'transparent', border: 'none', color: text3, fontSize: 12, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}
+          >
+            {backLabel}
+          </button>
           <h1 style={{
             fontFamily: "'Cormorant Garamond', serif",
             fontSize: 24, fontWeight: 600,
