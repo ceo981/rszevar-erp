@@ -67,14 +67,15 @@ export async function GET(request, { params }) {
     }
 
     // ── SKU → product_id + image enrichment from products table ──
-    // FIX Apr 2026 — Single query fetches BOTH product_id (for direct
-    // product page navigation from order items) AND image_url (for items
-    // missing thumbnails). Replaces the previous image-only enrichment.
+    // FIX Apr 2026 — Single query fetches BOTH shopify_product_id (for direct
+    // product page navigation from order items — /inventory/[id] route is
+    // keyed by shopify_product_id, NOT the table UUID) AND image_url (for
+    // items missing thumbnails). Replaces previous image-only enrichment.
     const allSkus = [...new Set(items.filter(i => i.sku).map(i => i.sku))];
     if (allSkus.length > 0) {
       const { data: prods } = await supabase
         .from('products')
-        .select('id, sku, image_url')
+        .select('shopify_product_id, sku, image_url')
         .in('sku', allSkus);
 
       const productMap = {};
@@ -83,7 +84,7 @@ export async function GET(request, { params }) {
       }
       for (const item of items) {
         if (item.sku && productMap[item.sku]) {
-          item.product_id = productMap[item.sku].id;
+          item.product_id = productMap[item.sku].shopify_product_id;
           if (!item.image_url && productMap[item.sku].image_url) {
             item.image_url = productMap[item.sku].image_url;
           }
