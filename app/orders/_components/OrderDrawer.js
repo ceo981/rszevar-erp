@@ -1159,7 +1159,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
                       <div style={{ width: 32, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4 }}>
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', border: `1px solid ${actionColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{emoji}</div>
-                        {i < log.length - 1 && <div style={{ width: 1, height: 18, background: '#1f1f1f', marginTop: 3 }} />}
+                        {i < visibleLog.length - 1 && <div style={{ width: 1, height: 18, background: '#1f1f1f', marginTop: 3 }} />}
                       </div>
                       <div style={{ flex: 1, paddingBottom: 4 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1173,6 +1173,8 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   );
                 })}
               </div>
+                </>);
+              })()}
             </div>
           )}
 
