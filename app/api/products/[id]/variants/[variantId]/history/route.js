@@ -186,10 +186,15 @@ export async function GET(request, { params }) {
 
     const manualEvents = (manualRows || []).map(mapManualAdjustment);
 
-    // ── Step 3: Fetch order events (by SKU). Skip if no SKU. ────────────────
+    // ── Step 3: Fetch order events ──────────────────────────────────────────
+    // Strategy:
+    //   A) SKU is present → fast path: match via order_items.sku index
+    //   B) SKU is empty   → fallback: match via shopify_raw JSONB
+    //      (Shopify line_items array has variant_id even when SKU is empty)
     let orderEvents = [];
+
     if (variantSku) {
-      // Get all order_items rows with this SKU, then JOIN orders for timestamps
+      // ─── A) FAST PATH — SKU match ───
       const { data: itemRows, error: iErr } = await supabase
         .from('order_items')
         .select(`
@@ -213,16 +218,63 @@ export async function GET(request, { params }) {
         .limit(limit);
 
       if (iErr) {
-        console.error('[history] order_items query error', iErr);
+        console.error('[history] order_items SKU query error', iErr);
       }
 
-      // Some `orders` columns are optional in older schemas (rto_at, delivered_at).
-      // Supabase returns null for missing fields rather than erroring, so we just
-      // proceed and let deriveOrderEvents skip events where the timestamp is null.
       for (const item of itemRows || []) {
         if (!item.orders) continue;     // dangling order_item with no order
         const qty = Number(item.quantity) || 1;
         orderEvents = orderEvents.concat(deriveOrderEvents(item.orders, qty));
+      }
+    } else {
+      // ─── B) FALLBACK — variant_id match via shopify_raw JSONB ───
+      // For variants without SKU, we still want to surface order events.
+      // Shopify's raw line_items[] has `variant_id` (numeric) which we match
+      // against shopify_variant_id. Postgres JSONB containment (`@>`) handles this.
+      const variantIdNum = parseInt(variantId, 10);
+      if (Number.isFinite(variantIdNum) && variantIdNum > 0) {
+        const containmentJson = `[{"variant_id":${variantIdNum}}]`;
+        const { data: orderRows, error: oErr } = await supabase
+          .from('orders')
+          .select(`
+            id,
+            order_number,
+            status,
+            created_at,
+            confirmed_at,
+            dispatched_at,
+            delivered_at,
+            cancelled_at,
+            rto_at,
+            dispatched_courier,
+            is_walkin,
+            shopify_raw
+          `)
+          .filter('shopify_raw->line_items', 'cs', containmentJson)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (oErr) {
+          console.error('[history] shopify_raw variant_id query error', oErr);
+        }
+
+        for (const order of orderRows || []) {
+          // Pull quantity from the matching line_item in shopify_raw
+          const lineItems = order.shopify_raw?.line_items || [];
+          const li = lineItems.find(x => String(x.variant_id) === String(variantId));
+          // Use current_quantity if Shopify Order Edit reduced it, else original quantity.
+          // 0 means the line was fully removed — skip that order entirely.
+          const effQty = li
+            ? (li.current_quantity !== undefined ? Number(li.current_quantity) : Number(li.quantity))
+            : 0;
+          if (!effQty || effQty <= 0) continue;
+
+          // Strip shopify_raw before passing to event generator (memory hygiene)
+          const orderForEvent = { ...order };
+          delete orderForEvent.shopify_raw;
+
+          orderEvents = orderEvents.concat(deriveOrderEvents(orderForEvent, effQty));
+        }
       }
     }
 
@@ -239,6 +291,7 @@ export async function GET(request, { params }) {
         variant_sku: variantSku,
         variant_label: variantLabel,
         product_title: productTitle,
+        match_strategy: variantSku ? 'sku' : 'variant_id_fallback',
         manual_count: manualEvents.length,
         order_count: orderEvents.length,
         total_returned: allEvents.length,
