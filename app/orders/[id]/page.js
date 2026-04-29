@@ -191,6 +191,17 @@ export default function SingleOrderPage() {
   // Apr 2026 — Customer mini-history (last 3 orders by phone) for sidebar inline preview
   const [customerHistory, setCustomerHistory] = useState([]);
 
+  // Apr 2026 — Manual Fulfill modal state.
+  // For orders where team books courier outside ERP (e.g. Kangaroo via Shopify
+  // app, Leopards via their own portal) OR walk-in/wholesale/pickup with no
+  // tracking. Adds tracking + courier + creates Shopify fulfillment.
+  const [showFulfillModal, setShowFulfillModal]   = useState(false);
+  const [fulfillTracking, setFulfillTracking]     = useState('');
+  const [fulfillCourier, setFulfillCourier]       = useState('');           // '' = auto-detect
+  const [fulfillNotify, setFulfillNotify]         = useState(true);
+  const [fulfillReason, setFulfillReason]         = useState('');
+  const [fulfillCourierManuallyEdited, setFulfillCourierManuallyEdited] = useState(false);
+
   // ─── Data fetchers ──────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
     if (!id) return;
@@ -303,7 +314,25 @@ export default function SingleOrderPage() {
   };
 
   const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
-  const markPacked   = () => doAction('/api/orders/status', { order_id: id, status: 'packed' }, '✓ Marked as Packed');
+
+  // Apr 2026 — Mark as Packed
+  // 1. Uses /api/orders/assign with action:'packed' (writes packing_log for HR Leaderboard credit).
+  //    Direct /api/orders/status call would skip packing_log. See app/api/orders/assign/route.js.
+  // 2. Frontend guard: order MUST have an assigned packer first. Without
+  //    assignment, packing_log can't attribute the credit. Backend route
+  //    also enforces this, but frontend gives a clearer error.
+  const markPacked = () => {
+    if (!order.assigned_to_name) {
+      flash('error', 'Pehle packer assign karo (right sidebar mein "Assigned to" card se)', 5000);
+      return;
+    }
+    doAction(
+      '/api/orders/assign',
+      { order_id: id, action: 'packed', performed_by: performer, performed_by_email: userEmail },
+      '✓ Marked as Packed',
+    );
+  };
+
   const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
 
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
@@ -352,6 +381,73 @@ export default function SingleOrderPage() {
     if (reason === null) return; // user cancelled
     await doAction('/api/orders/cancel-fulfillment', { order_id: id, reason: reason || 'No reason' }, '✓ Fulfillment cancelled — tracking removed');
   };
+
+  // Apr 2026 — Auto-detect courier from tracking number prefix.
+  // Mirrors lib/shopify.js#detectCourierFromTracking. Used in fulfill modal
+  // for live preview as user types.
+  //   "KI..." → Leopards
+  //   "KL..." → Kangaroo
+  //   else    → "" (user picks manually or leaves as Other)
+  const detectCourierFromTrackingClient = (tracking) => {
+    if (!tracking) return '';
+    const t = String(tracking).trim().toUpperCase();
+    if (t.startsWith('KI')) return 'Leopards';
+    if (t.startsWith('KL')) return 'Kangaroo';
+    return '';
+  };
+
+  // Effective courier: explicit edit > auto-detect from tracking > empty (=> "Other"/Pickup on backend)
+  const effectiveFulfillCourier = (() => {
+    if (fulfillCourierManuallyEdited && fulfillCourier) return fulfillCourier;
+    const auto = detectCourierFromTrackingClient(fulfillTracking);
+    if (auto) return auto;
+    return fulfillCourier; // user-picked or empty
+  })();
+
+  // Apr 2026 — Manual Fulfill submit handler. Calls /api/orders/manual-fulfill.
+  // Closes modal + refreshes data on success.
+  const submitManualFulfill = async () => {
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/manual-fulfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: id,
+          tracking_number: fulfillTracking.trim() || null,
+          courier: effectiveFulfillCourier || null,
+          notify_customer: fulfillNotify,
+          reason: fulfillReason.trim() || null,
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        const trackInfo = d.tracking_number
+          ? `Tracking: ${d.tracking_number} (${d.courier})`
+          : `Marked fulfilled (${d.courier} — no tracking)`;
+        const shopifyInfo = d.shopify_synced
+          ? ' — Shopify synced'
+          : (d.warning ? ` — Shopify warning: ${d.warning}` : '');
+        flash('success', `✓ ${trackInfo}${shopifyInfo}`, 6000);
+        // Reset modal state
+        setShowFulfillModal(false);
+        setFulfillTracking('');
+        setFulfillCourier('');
+        setFulfillCourierManuallyEdited(false);
+        setFulfillReason('');
+        setFulfillNotify(true);
+        await refreshAll();
+      } else {
+        flash('error', d.error || 'Manual fulfill failed', 6000);
+      }
+    } catch (e) {
+      flash('error', e.message, 6000);
+    }
+    setActionBusy(false);
+  };
+
 
   const addComment = async () => {
     const txt = commentText.trim();
@@ -599,6 +695,17 @@ export default function SingleOrderPage() {
   const fulfillSecondary = [
     { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered },
     { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered },
+    // Apr 2026 — Manual fulfill (add tracking) — for orders booked outside ERP
+    // (Kangaroo via Shopify app, Leopards via portal) OR tracking-less fulfill
+    // (walk-in / wholesale / pickup). Available on packed status only — before
+    // packed it's premature; after dispatched the cancel-fulfillment flow handles redo.
+    {
+      status: '__manual_fulfill__',          // sentinel — handled separately below
+      label: order.shopify_fulfillment_id ? 'Already fulfilled' : '📋 Add tracking / Fulfill',
+      icon:  '📋',
+      show: order.status === 'packed' && !order.shopify_fulfillment_id && !isCancelled,
+      customAction: () => setShowFulfillModal(true),
+    },
   ].filter(x => x.show);
 
   // Fulfilled/Unfulfilled header badge
@@ -956,7 +1063,14 @@ export default function SingleOrderPage() {
                                   key={opt.status}
                                   icon={opt.icon}
                                   label={opt.label}
-                                  onClick={() => { setOpenMenu(null); setStatus(opt.status); }}
+                                  onClick={() => {
+                                    setOpenMenu(null);
+                                    if (opt.customAction) {
+                                      opt.customAction();
+                                    } else {
+                                      setStatus(opt.status);
+                                    }
+                                  }}
                                 />
                               ))}
                             </div>
@@ -1609,6 +1723,175 @@ export default function SingleOrderPage() {
           variant="drawer"
           defaultTab={drawerInitialTab}
         />
+      )}
+
+      {/* Apr 2026 — Manual Fulfill modal: opened from Fulfill dropdown when status='packed'.
+          Used when courier was booked OUTSIDE ERP (Kangaroo via Shopify app, Leopards via portal)
+          OR when there's no tracking (walk-in / wholesale / pickup). */}
+      {showFulfillModal && (
+        <div
+          onClick={() => !actionBusy && setShowFulfillModal(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+            zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#141414', border: '1px solid #2a2a2a', borderRadius: 12,
+              padding: 24, width: '100%', maxWidth: 520,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{
+                fontFamily: "'Cormorant Garamond', serif",
+                fontSize: 20, color: '#c9a96e', margin: 0, fontWeight: 600,
+              }}>
+                📋 Add Tracking / Mark Fulfilled
+              </h3>
+              <button
+                onClick={() => setShowFulfillModal(false)}
+                disabled={actionBusy}
+                style={{
+                  background: 'transparent', border: 'none', color: '#666',
+                  cursor: 'pointer', fontSize: 18, padding: 4,
+                }}
+              >×</button>
+            </div>
+
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 16, lineHeight: 1.5 }}>
+              Order: <strong style={{ color: '#e5e5e5' }}>{order.order_number}</strong> · Total: <strong style={{ color: '#e5e5e5' }}>Rs {Number(total).toLocaleString('en-PK')}</strong>
+              <div style={{ marginTop: 6, fontSize: 11, color: '#666' }}>
+                Yeh option courier outside ERP book hua ho (Kangaroo Shopify app / Leopards portal),
+                ya walk-in / wholesale / pickup bina tracking ke fulfill karna ho — uske liye hai.
+              </div>
+            </div>
+
+            {/* Tracking input */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                Tracking Number <span style={{ color: '#666', fontWeight: 400 }}>(optional — leave empty for no-tracking fulfill)</span>
+              </label>
+              <input
+                type="text"
+                value={fulfillTracking}
+                onChange={e => setFulfillTracking(e.target.value)}
+                placeholder="e.g. KI3601012345 or KL27001234567"
+                disabled={actionBusy}
+                style={{
+                  width: '100%', padding: '9px 12px',
+                  background: '#0a0a0a', border: '1px solid #2a2a2a',
+                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
+                  fontFamily: 'monospace', outline: 'none',
+                }}
+                autoFocus
+              />
+              {fulfillTracking && detectCourierFromTrackingClient(fulfillTracking) && !fulfillCourierManuallyEdited && (
+                <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4 }}>
+                  ✓ Detected: <strong>{detectCourierFromTrackingClient(fulfillTracking)}</strong>
+                </div>
+              )}
+            </div>
+
+            {/* Courier dropdown */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                Courier
+                {!fulfillCourierManuallyEdited && detectCourierFromTrackingClient(fulfillTracking) && (
+                  <span style={{ color: '#666', fontWeight: 400 }}> (auto-detected — change if wrong)</span>
+                )}
+              </label>
+              <select
+                value={effectiveFulfillCourier || ''}
+                onChange={e => {
+                  setFulfillCourier(e.target.value);
+                  setFulfillCourierManuallyEdited(true);
+                }}
+                disabled={actionBusy}
+                style={{
+                  width: '100%', padding: '9px 12px',
+                  background: '#0a0a0a', border: '1px solid #2a2a2a',
+                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
+                  fontFamily: 'inherit', outline: 'none',
+                }}
+              >
+                <option value="">— Auto / Not set —</option>
+                <option value="Leopards">Leopards (KI...)</option>
+                <option value="Kangaroo">Kangaroo (KL...)</option>
+                <option value="PostEx">PostEx</option>
+                <option value="TCS">TCS</option>
+                <option value="M&P">M&amp;P</option>
+                <option value="Other">Other</option>
+                <option value="Pickup">Pickup / Walk-in (no courier)</option>
+              </select>
+            </div>
+
+            {/* Notify customer checkbox — only meaningful with tracking */}
+            <div style={{ marginBottom: 14, opacity: fulfillTracking.trim() ? 1 : 0.5 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#ccc', cursor: fulfillTracking.trim() ? 'pointer' : 'not-allowed' }}>
+                <input
+                  type="checkbox"
+                  checked={fulfillNotify}
+                  onChange={e => setFulfillNotify(e.target.checked)}
+                  disabled={actionBusy || !fulfillTracking.trim()}
+                  style={{ accentColor: '#c9a96e' }}
+                />
+                Customer ko Shopify se shipping email bhejo
+                {!fulfillTracking.trim() && <span style={{ color: '#666', fontSize: 11 }}>(needs tracking)</span>}
+              </label>
+            </div>
+
+            {/* Reason (optional, audit log) */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
+                Note <span style={{ color: '#666', fontWeight: 400 }}>(optional — for audit log)</span>
+              </label>
+              <input
+                type="text"
+                value={fulfillReason}
+                onChange={e => setFulfillReason(e.target.value)}
+                placeholder="e.g. Booked Kangaroo manually, Wholesale pickup, Walk-in handover..."
+                disabled={actionBusy}
+                style={{
+                  width: '100%', padding: '8px 12px',
+                  background: '#0a0a0a', border: '1px solid #2a2a2a',
+                  borderRadius: 6, color: '#e5e5e5', fontSize: 12,
+                  fontFamily: 'inherit', outline: 'none',
+                }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowFulfillModal(false)}
+                disabled={actionBusy}
+                style={{
+                  padding: '9px 16px', background: 'transparent',
+                  border: '1px solid #333', borderRadius: 6,
+                  color: '#aaa', fontSize: 12, cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >Cancel</button>
+              <button
+                onClick={submitManualFulfill}
+                disabled={actionBusy}
+                style={{
+                  padding: '9px 18px', background: '#c9a96e',
+                  border: '1px solid #c9a96e', borderRadius: 6,
+                  color: '#080808', fontSize: 12, cursor: 'pointer',
+                  fontWeight: 600, fontFamily: 'inherit',
+                  opacity: actionBusy ? 0.6 : 1,
+                }}
+              >
+                {actionBusy ? 'Submitting…' : (fulfillTracking.trim() ? '✓ Add Tracking & Fulfill' : '✓ Mark as Fulfilled')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
