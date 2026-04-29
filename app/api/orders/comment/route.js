@@ -60,7 +60,7 @@ export async function GET(request) {
     .from('order_activity_log')
     .select('*')
     .eq('order_id', order_id)
-    .order('performed_at', { ascending: true });
+    .order('performed_at', { ascending: false });
 
   return NextResponse.json({ log: data || [] });
 }
