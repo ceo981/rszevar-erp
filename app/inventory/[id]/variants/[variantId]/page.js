@@ -178,7 +178,7 @@ export default function VariantEditPage() {
   const router = useRouter();
   const productId = params?.id;
   const variantId = params?.variantId;
-  const { canViewFinancial } = useUser();
+  const { canViewFinancial, performer, userEmail } = useUser();
 
   const [product, setProduct] = useState(null);   // full product with all variants
   const [draft, setDraft]     = useState(null);   // editable copy of CURRENT variant
@@ -186,6 +186,7 @@ export default function VariantEditPage() {
   const [error, setError]     = useState(null);
   const [saving, setSaving]   = useState(false);
   const [saveResult, setSaveResult] = useState(null);
+  const [reason, setReason]   = useState('');   // Phase 2 — optional adjustment reason
 
   // Smart back: detect if user came from an order
   const [backLabel, setBackLabel] = useState('← Back to product');
@@ -280,7 +281,24 @@ export default function VariantEditPage() {
     setSaving(true);
     setSaveResult(null);
     try {
-      const variantPatch = { shopify_variant_id: draft.shopify_variant_id };
+      const variantPatch = {
+        shopify_variant_id: draft.shopify_variant_id,
+        // Phase 2 — pass inventory_item_id so backend doesn't have to refetch,
+        // and product_title for log row enrichment.
+        shopify_inventory_item_id: draft.shopify_inventory_item_id || null,
+        product_title: product.title || '',
+        // Snapshot of values BEFORE this save — used by API to compute diff
+        // and write per-field rows to inventory_adjustments.
+        previous: {
+          selling_price:    originalVariant.selling_price ?? '',
+          compare_at_price: originalVariant.compare_at_price ?? '',
+          sku:              originalVariant.sku ?? '',
+          barcode:          originalVariant.barcode ?? '',
+          stock_quantity:   originalVariant.stock_quantity ?? 0,
+          weight:           originalVariant.weight ?? '',
+          variant_label:    originalVariant.variant_label || '',
+        },
+      };
 
       if (String(originalVariant.selling_price ?? '') !== String(draft.selling_price ?? '')) {
         variantPatch.price = draft.selling_price === '' ? null : draft.selling_price;
@@ -304,7 +322,13 @@ export default function VariantEditPage() {
       const res = await fetch(`/api/products/${productId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variants_update: [variantPatch] }),
+        body: JSON.stringify({
+          variants_update: [variantPatch],
+          // Phase 2 — top-level metadata applied to all log rows
+          performed_by: performer || 'Staff',
+          performed_by_email: userEmail || null,
+          reason: reason.trim() || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -315,6 +339,8 @@ export default function VariantEditPage() {
         throw new Error(r.error || r.stock_error || 'Variant update failed');
       }
       setSaveResult({ success: true, message: '✓ Saved to Shopify' });
+      // Clear reason after successful save (it applied only to this batch)
+      setReason('');
       // Refetch to reflect any server-side adjustments (cost calc, stock normalization)
       await loadProduct();
     } catch (e) {
@@ -683,20 +709,45 @@ export default function VariantEditPage() {
                 borderRadius: 10,
                 padding: '12px 18px',
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 12,
-                flexWrap: 'wrap',
+                flexDirection: 'column',
+                gap: 10,
                 boxShadow: '0 6px 24px rgba(0,0,0,0.5)',
               }}>
-                <div style={{ fontSize: 12, color: gold }}>
-                  ⚠️ Unsaved changes — Shopify pe save karne ke liye click karo
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 12, color: gold }}>
+                    ⚠️ Unsaved changes — Shopify pe save karne ke liye click karo
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
+                    <Btn primary onClick={handleSave} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save changes'}
+                    </Btn>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
-                  <Btn primary onClick={handleSave} disabled={saving}>
-                    {saving ? 'Saving...' : 'Save changes'}
-                  </Btn>
+
+                {/* Phase 2 — Optional reason for adjustment history log */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: text3, whiteSpace: 'nowrap' }}>Reason (optional):</span>
+                  <input
+                    type="text"
+                    value={reason}
+                    onChange={e => setReason(e.target.value)}
+                    placeholder="e.g. Restocked, Damaged, Manual count, Promotion..."
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      background: bgPage,
+                      border: `1px solid ${border}`,
+                      borderRadius: 5,
+                      color: text1,
+                      fontSize: 12,
+                      fontFamily: 'inherit',
+                      outline: 'none',
+                    }}
+                    onFocus={e => e.target.style.borderColor = gold}
+                    onBlur={e => e.target.style.borderColor = border}
+                  />
+                  <span style={{ fontSize: 10, color: text3 }}>by {performer || 'Staff'}</span>
                 </div>
               </div>
             )}
