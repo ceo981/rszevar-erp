@@ -553,7 +553,23 @@ function buildDiff(original, draft) {
     for (const v of draft.variants) {
       const orig = origVarMap.get(String(v.shopify_variant_id));
       if (!orig) continue;
-      const change = { shopify_variant_id: v.shopify_variant_id, shopify_inventory_item_id: v.shopify_inventory_item_id };
+      const change = {
+        shopify_variant_id: v.shopify_variant_id,
+        shopify_inventory_item_id: v.shopify_inventory_item_id,
+        // Phase 2 — snapshot of OLD values + parent product title.
+        // Backend uses this to compute diff for inventory_adjustments log + to
+        // verify stock change is REAL (so reason validation only fires when needed).
+        product_title: draft.parent_title || '',
+        previous: {
+          selling_price:    orig.selling_price ?? '',
+          compare_at_price: orig.compare_at_price ?? '',
+          sku:              orig.sku ?? '',
+          barcode:          orig.barcode ?? '',
+          stock_quantity:   orig.stock_quantity ?? 0,
+          weight:           orig.weight ?? '',
+          variant_label:    orig.variant_label || '',
+        },
+      };
       let changed = false;
       // Compare numerics — coerce both sides to numbers, treat null/undefined/empty as null
       const num = (x) => (x === '' || x === null || x === undefined) ? null : Number(x);
@@ -1021,7 +1037,7 @@ export default function ProductEditPage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id;
-  const { canViewFinancial } = useUser();
+  const { canViewFinancial, performer, userEmail } = useUser();
 
   const [product, setProduct]   = useState(null);   // loaded from server (immutable snapshot)
   const [draft, setDraft]       = useState(null);   // editable copy
@@ -1030,6 +1046,9 @@ export default function ProductEditPage() {
   const [saving, setSaving]     = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saveResult, setSaveResult] = useState(null);
+  // Phase 2.1 — Reason for stock changes (anti-theft control). Required when
+  // any variant's stock_quantity is being changed via this page's bulk/inline edits.
+  const [reason, setReason] = useState('');
   const [descMode, setDescMode] = useState('edit'); // 'edit' | 'preview'
 
   // Apr 2026 — Smart back navigation: if user came from an order page, label
@@ -1230,6 +1249,16 @@ export default function ProductEditPage() {
 
   const hasChanges = Object.keys(diff).length > 0 || !!aiPendingExtras || !!aiEnhancementId;
 
+  // Phase 2.1 — Anti-theft: detect how many variants are getting a stock change.
+  // If any, reason field becomes REQUIRED before save. Backend also enforces.
+  const stockChangedCount = useMemo(() => {
+    if (!Array.isArray(diff.variants_update)) return 0;
+    return diff.variants_update.filter(v => v.stock !== undefined).length;
+  }, [diff]);
+
+  const reasonRequired = stockChangedCount > 0;
+  const reasonMissing  = reasonRequired && !reason.trim();
+
   // ── Warn on navigation if unsaved ─────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
@@ -1245,11 +1274,28 @@ export default function ProductEditPage() {
   // ── Save handler ──────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!hasChanges) return;
+
+    // Phase 2.1 — Block save when stock is changing without a reason (anti-theft).
+    // Backend also rejects this, but frontend short-circuits with a friendly message.
+    if (reasonMissing) {
+      setSaveResult({
+        success: false,
+        error: `${stockChangedCount} variant${stockChangedCount === 1 ? '' : 's'} ka stock change ho raha hai — reason likhna zaroori hai (e.g. Restocked, Damaged, Manual count).`,
+      });
+      return;
+    }
+
     setSaving(true);
     setSaveResult(null);
     try {
       // Build payload from diff
       const body = { ...diff };
+
+      // Phase 2 — top-level metadata for inventory_adjustments log rows.
+      // Applied uniformly to every variant change in this save batch.
+      body.performed_by       = performer || 'Staff';
+      body.performed_by_email = userEmail || null;
+      body.reason             = reason.trim() || null;
 
       // M2.B — if collections changed, resolve join/leave numeric IDs from
       // master list and strip ids from collections array (server stores
@@ -1304,6 +1350,8 @@ export default function ProductEditPage() {
         // Clear AI state now that it's been written to Shopify + DB
         setAiPendingExtras(null);
         setAiEnhancementId(null);
+        // Clear reason (it applied only to this save batch)
+        setReason('');
         // Reload fresh data from DB (which now reflects Shopify)
         await loadProduct();
       }
@@ -1558,22 +1606,67 @@ export default function ProductEditPage() {
           padding: '12px 18px',
           marginBottom: 16,
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          flexDirection: 'column',
+          gap: 10,
           boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: gold, fontSize: 13, fontWeight: 600 }}>
-            <span>● Unsaved changes</span>
-            <span style={{ color: text3, fontWeight: 400, fontSize: 12 }}>
-              ({Object.keys(diff).length} field{Object.keys(diff).length !== 1 ? 's' : ''} changed)
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: gold, fontSize: 13, fontWeight: 600 }}>
+              <span>● Unsaved changes</span>
+              <span style={{ color: text3, fontWeight: 400, fontSize: 12 }}>
+                ({Object.keys(diff).length} field{Object.keys(diff).length !== 1 ? 's' : ''} changed
+                {stockChangedCount > 0 ? `, including stock for ${stockChangedCount} variant${stockChangedCount === 1 ? '' : 's'}` : ''})
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
+              <Btn
+                onClick={handleSave}
+                primary
+                disabled={saving || reasonMissing}
+                title={reasonMissing ? 'Stock change ke liye reason likhna zaroori hai' : ''}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </Btn>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn onClick={handleDiscard} disabled={saving}>Discard</Btn>
-            <Btn onClick={handleSave} primary disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
-            </Btn>
-          </div>
+
+          {/* Phase 2.1 — Reason input. Shown when stock has changed (anti-theft).
+              Hidden when only non-stock fields (price/SKU/etc.) changed. */}
+          {reasonRequired && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: '#f87171', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                  Reason (REQUIRED for stock change):
+                </span>
+                <input
+                  type="text"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  placeholder="Stock kyun change kiya? e.g. Restocked, Damaged, Manual count, Theft, Promotion..."
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    background: bgPage,
+                    border: `1px solid ${reasonMissing ? '#f87171' : border}`,
+                    borderRadius: 5,
+                    color: text1,
+                    fontSize: 12,
+                    fontFamily: 'inherit',
+                    outline: 'none',
+                  }}
+                  onFocus={e => e.target.style.borderColor = reasonMissing ? '#f87171' : gold}
+                  onBlur={e => e.target.style.borderColor = reasonMissing ? '#f87171' : border}
+                />
+                <span style={{ fontSize: 10, color: text3 }}>by {performer || 'Staff'}</span>
+              </div>
+              {reasonMissing && (
+                <div style={{ fontSize: 11, color: '#f87171' }}>
+                  ⚠️ Stock change save karne ke liye reason zaroori hai
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
