@@ -878,7 +878,7 @@ export default function VariantEditPage() {
 
               {!historyError && !historyLoading && history.length === 0 && (
                 <div style={{ padding: '24px 20px', fontSize: 12, color: text3, textAlign: 'center' }}>
-                  Koi history nahi mili. Order-driven events SKU se match karte hain — agar variant ka SKU empty ya naya hai, history khaali aayegi.
+                  Koi history nahi mili. Naya variant hai ya abhi tak koi order/manual change nahi hua.
                 </div>
               )}
 
