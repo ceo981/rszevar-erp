@@ -455,7 +455,7 @@ export async function POST(request) {
         const grams = computeGrams(v.weight, v.weight_unit || weight_unit);
         if (grams !== null) {
           variant.grams = grams;
-          variant.weight = grams / 1000;       // Shopify also accepts kg as `weight`
+          variant.weight = grams;             // when weight_unit is 'g', weight is the gram value
           variant.weight_unit = 'g';
         }
         if (track_inventory) variant.inventory_management = 'shopify';
@@ -471,7 +471,7 @@ export async function POST(request) {
       const grams = computeGrams(weight, weight_unit);
       if (grams !== null) {
         variant.grams = grams;
-        variant.weight = grams / 1000;
+        variant.weight = grams;             // weight in grams (matches weight_unit='g')
         variant.weight_unit = 'g';
       }
       if (track_inventory) variant.inventory_management = 'shopify';
