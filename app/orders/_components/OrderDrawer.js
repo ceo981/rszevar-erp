@@ -1080,15 +1080,25 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 </div>
               </div>
 
-              {/* Timeline Entries */}
-              {log.length === 0 && (
+              {/* Timeline Entries — super_admin sees all, staff hides webhook/system noise */}
+              {(() => {
+                const visibleLog = isCEO ? log : log.filter(l => {
+                  const a = String(l.action || '');
+                  if (a.startsWith('webhook:')) return false;
+                  if (a.startsWith('protocol_violation:')) return false;
+                  if (a === 'shopify_order_edited_webhook') return false;
+                  if (a === 'courier_reclassified') return false;
+                  return true;
+                });
+                return (<>
+              {visibleLog.length === 0 && (
                 <div style={{ color: '#333', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
                   Koi activity nahi abhi tak
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {log.map((l, i) => {
+                {visibleLog.map((l, i) => {
                   const isComment = l.action === 'staff_comment';
                   const dateStr = l.performed_at
                     ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
