@@ -284,7 +284,7 @@ export default function SingleOrderPage() {
   };
 
   const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
-  const markPacked   = () => doAction('/api/orders/status', { order_id: id, status: 'packed' }, '✓ Marked as Packed');
+  const markPacked   = () => doAction('/api/orders/assign', { order_id: id, action: 'packed' }, '✓ Marked as Packed');
   const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
 
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
