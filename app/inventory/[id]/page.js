@@ -2037,10 +2037,17 @@ export default function ProductEditPage() {
                             size={36}
                             variantLabel={v.variant_label}
                           />
-                          {/* sub-variant label (e.g. size value) */}
+                          {/* sub-variant label (e.g. size value) — clickable link to variant detail */}
                           <div style={{ color: text2, fontSize: 12, paddingLeft: 4 }}>
                             <span style={{ color: text3, marginRight: 6 }}>↳</span>
-                            {v.option2 || v.variant_label}
+                            <Link
+                              href={`/inventory/${id}/variants/${v.shopify_variant_id}`}
+                              style={{ color: gold, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              title="Open variant detail page"
+                            >
+                              {v.option2 || v.variant_label}
+                              <span style={{ fontSize: 10, opacity: 0.6 }}>↗</span>
+                            </Link>
                           </div>
                           {canViewFinancial && (
                             <NumInput
@@ -2124,7 +2131,16 @@ export default function ProductEditPage() {
                             variantLabel={v.variant_label}
                           />
                         </td>
-                        <td style={{ padding: '8px 12px', color: text1 }}>{v.variant_label}</td>
+                        <td style={{ padding: '8px 12px', color: text1 }}>
+                          <Link
+                            href={`/inventory/${id}/variants/${v.shopify_variant_id}`}
+                            style={{ color: gold, textDecoration: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title="Open variant detail page"
+                          >
+                            {v.variant_label}
+                            <span style={{ fontSize: 10, opacity: 0.6 }}>↗</span>
+                          </Link>
+                        </td>
                         {canViewFinancial && (
                           <td style={{ padding: '8px' }}>
                             <NumInput
