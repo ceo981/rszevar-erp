@@ -777,7 +777,7 @@ export default function SingleOrderPage() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Link
-                        href={item.sku ? `/inventory?search=${encodeURIComponent(item.sku)}` : '#'}
+                        href={item.product_id ? `/inventory/${item.product_id}` : (item.sku ? `/inventory?search=${encodeURIComponent(item.sku)}` : '#')}
                         style={{ color: '#fff', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}
                       >
                         {item.title || 'Untitled'}
