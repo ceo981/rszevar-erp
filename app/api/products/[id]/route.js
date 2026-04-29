@@ -310,7 +310,18 @@ export async function PATCH(request, { params }) {
       // push flow's tracking. Without this, apply-mode enhancements stay forever
       // in 'generated' state in the DB.
       ai_enhancement_id,
+      // Phase 2 — adjustment history log fields (Apr 2026)
+      // Top-level metadata applies to ALL variant changes in this save.
+      // Each variants_update item can also include `previous` (snapshot of old
+      // values) and `product_title` for log row enrichment.
+      performed_by,
+      performed_by_email,
+      reason,
     } = body;
+
+    // Phase 2 — Create supabase client EARLY (used for adjustment logging during
+    // variant updates AND for DB mirror at end of handler).
+    const supabase = createServerClient();
 
     // ── Step 1: Build core product update payload ──
     const productUpdate = { id: productId };
@@ -510,6 +521,147 @@ export async function PATCH(request, { params }) {
           }
         }
 
+        // ── Phase 2 — Write adjustment log rows ──
+        // After SUCCESSFUL variant update, write granular log rows to
+        // inventory_adjustments (one row per changed field). Best effort:
+        // if logging fails, don't fail the user-facing save.
+        if (r.success && (hasFieldChange || hasStockChange)) {
+          const prev = v.previous || {};
+          const variantLabel = prev.variant_label || null;
+          const productTitle = v.product_title || null;
+          const skuForLog = (typeof v.sku === 'string') ? v.sku : (prev.sku || null);
+
+          const baseRow = {
+            shopify_variant_id: String(vid),
+            shopify_inventory_item_id: v.shopify_inventory_item_id ? String(v.shopify_inventory_item_id) : null,
+            shopify_product_id: productId,
+            variant_label: variantLabel,
+            product_title: productTitle,
+            sku: skuForLog,
+            performed_by: performed_by || null,
+            performed_by_email: performed_by_email || null,
+            reason: reason || null,
+            source: 'erp_variant_edit',
+          };
+
+          const logRows = [];
+
+          // Stock change
+          if (hasStockChange) {
+            const newStock = Number(v.stock);
+            const oldStock = Number(prev.stock_quantity ?? 0);
+            if (newStock !== oldStock) {
+              logRows.push({
+                ...baseRow,
+                activity: 'stock',
+                description: `Manually adjusted: ${oldStock} → ${newStock}`,
+                field_name: 'stock',
+                old_value: String(oldStock),
+                new_value: String(newStock),
+                stock_before: oldStock,
+                stock_after: newStock,
+                stock_delta: newStock - oldStock,
+              });
+            }
+          }
+
+          // Price change
+          if (variantPatch.price !== undefined) {
+            const newP = String(variantPatch.price ?? '');
+            const oldP = String(prev.selling_price ?? '');
+            if (newP !== oldP) {
+              logRows.push({
+                ...baseRow,
+                activity: 'price',
+                description: `Price: Rs ${oldP || '0'} → Rs ${newP || '0'}`,
+                field_name: 'selling_price',
+                old_value: oldP,
+                new_value: newP,
+              });
+            }
+          }
+
+          // Compare-at change
+          if (variantPatch.compare_at_price !== undefined) {
+            const newC = variantPatch.compare_at_price === null ? '' : String(variantPatch.compare_at_price);
+            const oldC = String(prev.compare_at_price ?? '');
+            if (newC !== oldC) {
+              logRows.push({
+                ...baseRow,
+                activity: 'compare_at_price',
+                description: `Compare-at: ${oldC || '—'} → ${newC || '—'}`,
+                field_name: 'compare_at_price',
+                old_value: oldC,
+                new_value: newC,
+              });
+            }
+          }
+
+          // SKU change
+          if (variantPatch.sku !== undefined) {
+            const newS = String(variantPatch.sku || '');
+            const oldS = String(prev.sku ?? '');
+            if (newS !== oldS) {
+              logRows.push({
+                ...baseRow,
+                activity: 'sku',
+                description: `SKU: ${oldS || '—'} → ${newS || '—'}`,
+                field_name: 'sku',
+                old_value: oldS,
+                new_value: newS,
+              });
+            }
+          }
+
+          // Barcode change
+          if (variantPatch.barcode !== undefined) {
+            const newB = String(variantPatch.barcode || '');
+            const oldB = String(prev.barcode ?? '');
+            if (newB !== oldB) {
+              logRows.push({
+                ...baseRow,
+                activity: 'barcode',
+                description: `Barcode: ${oldB || '—'} → ${newB || '—'}`,
+                field_name: 'barcode',
+                old_value: oldB,
+                new_value: newB,
+              });
+            }
+          }
+
+          // Weight change (in grams)
+          if (variantPatch.grams !== undefined) {
+            const newW = String(variantPatch.grams);
+            const oldW = String(prev.weight ?? '');
+            if (newW !== oldW) {
+              logRows.push({
+                ...baseRow,
+                activity: 'weight',
+                description: `Weight: ${oldW || '0'}g → ${newW}g`,
+                field_name: 'weight',
+                old_value: oldW,
+                new_value: newW,
+              });
+            }
+          }
+
+          // Bulk-insert all log rows for this variant (best effort)
+          if (logRows.length > 0) {
+            try {
+              const { error: logErr } = await supabase
+                .from('inventory_adjustments')
+                .insert(logRows);
+              if (logErr) {
+                r.log_error = logErr.message;
+              } else {
+                r.log_entries = logRows.length;
+              }
+            } catch (logErr) {
+              r.log_error = logErr.message;
+            }
+          }
+        }
+
         variantResults.push(r);
         await new Promise(r => setTimeout(r, 150));
       }
@@ -654,7 +806,7 @@ export async function PATCH(request, { params }) {
     // ── Step 4: Mirror to DB ──
     // Update DB based on what was successfully pushed. We DO NOT wait for
     // Shopify webhook — mirror immediately so UI shows fresh data on save.
-    const supabase = createServerClient();
+    // (supabase client created earlier at top of handler — Phase 2)
     const dbUpdate = {};
 
     if (typeof title === 'string') dbUpdate.parent_title = title;
