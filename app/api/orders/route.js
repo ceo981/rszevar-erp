@@ -53,14 +53,15 @@ export async function GET(request) {
         });
       }
 
-      // FIX Apr 2026 — Enrich: SKU → product_id + image_url (single query).
-      // product_id enables direct navigation from order item to product detail page.
+      // FIX Apr 2026 — Enrich: SKU → shopify_product_id + image_url (single query).
+      // shopify_product_id enables direct navigation to product page; /inventory/[id]
+      // is keyed by shopify_product_id, NOT the products table UUID.
       // image_url falls back from products table for items missing thumbnails.
       const allSkus = [...new Set(rows.filter(i => i.sku).map(i => i.sku))];
       if (allSkus.length > 0) {
         const { data: prods } = await supabase
           .from('products')
-          .select('id, sku, image_url')
+          .select('shopify_product_id, sku, image_url')
           .in('sku', allSkus);
 
         const productMap = {};
@@ -75,7 +76,7 @@ export async function GET(request) {
         const updates = [];
         for (const item of rows) {
           if (item.sku && productMap[item.sku]) {
-            item.product_id = productMap[item.sku].id;
+            item.product_id = productMap[item.sku].shopify_product_id;
             if (!item.image_url && productMap[item.sku].image_url) {
               item.image_url = productMap[item.sku].image_url;
               if (cameFromDb) updates.push({ sku: item.sku, image_url: productMap[item.sku].image_url });
