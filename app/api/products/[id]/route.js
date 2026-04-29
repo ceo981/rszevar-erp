@@ -482,6 +482,24 @@ export async function PATCH(request, { params }) {
         const hasFieldChange = Object.keys(variantPatch).length > 0;
         const hasStockChange = v.stock !== undefined && v.stock !== null && v.stock !== '';
 
+        // Phase 2.1 — Anti-theft control: reject stock changes without a reason.
+        // Frontend enforces this too, but we double-check server-side so direct
+        // API calls (Postman, scripts, etc.) can't bypass the audit trail.
+        if (hasStockChange) {
+          const prevStock = Number(v.previous?.stock_quantity ?? 0);
+          const newStock  = Number(v.stock);
+          const stockActuallyChanged = prevStock !== newStock;
+          if (stockActuallyChanged && !(typeof reason === 'string' && reason.trim().length > 0)) {
+            variantResults.push({
+              shopify_variant_id: vid,
+              success: false,
+              error: 'Stock change requires a reason. Please specify why stock is being adjusted (e.g. Restocked, Damaged, Manual count).',
+              code: 'reason_required',
+            });
+            continue;
+          }
+        }
+
         const r = { shopify_variant_id: vid, success: true };
 
         // Field updates via PUT /variants/{id}
