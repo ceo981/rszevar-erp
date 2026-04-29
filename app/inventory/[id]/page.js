@@ -1138,14 +1138,14 @@ export default function ProductEditPage() {
       if (!data.success) {
         setError(data.error || 'Failed to load product');
       } else {
-        setProduct(data.product);
         // M2.K — derive each variant's image_id by matching image_url against images_data[].src
-        // This avoids needing schema changes; the link is reconstructed client-side.
-        // Also parse variant_label (e.g. "Black / 2.4") into option1/option2/option3
-        // so we can render grouped UI for 2+ option products.
+        // and parse variant_label (e.g. "Black / 2.4") into option1/option2/option3
+        // for the grouped UI. CRITICAL: apply these derived fields to BOTH `product`
+        // (original) and `draft` so buildDiff sees them as equal on initial load —
+        // otherwise every product appears to have "1 field changed" the moment it opens.
         const imgs = data.product.images_data || [];
         const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
-        const variantsWithImageId = (data.product.variants || []).map(v => {
+        const variantsEnriched = (data.product.variants || []).map(v => {
           const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
           const parts = String(v.variant_label || '').split(' / ').map(s => s.trim()).filter(Boolean);
           return {
@@ -1156,10 +1156,15 @@ export default function ProductEditPage() {
             option3: parts[2] ?? null,
           };
         });
-        setDraft({
+        const enrichedProduct = {
           ...data.product,
+          variants: variantsEnriched,
+        };
+        setProduct(enrichedProduct);
+        setDraft({
+          ...enrichedProduct,
           images_data: [...imgs],
-          variants: variantsWithImageId,
+          variants: variantsEnriched.map(v => ({ ...v })),    // shallow clone so edits don't mutate original
           images_to_add: [],   // M2.D — staged uploads
         });
       }
@@ -1285,23 +1290,12 @@ export default function ProductEditPage() {
 
   const handleDiscard = () => {
     if (!confirm('Discard all changes?')) return;
-    // M2.K — re-derive image_id from URL match + parse options on discard too
-    const imgs = product.images_data || [];
-    const urlToId = new Map(imgs.map(i => [String(i.src || ''), String(i.id)]));
+    // M2.K — `product` is already enriched with image_id + option1/2/3 from loadProduct,
+    // so we just clone it back into draft. No re-derivation needed.
     setDraft({
       ...product,
-      images_data: [...imgs],
-      variants: (product.variants || []).map(v => {
-        const matched = v.image_url ? urlToId.get(String(v.image_url)) : null;
-        const parts = String(v.variant_label || '').split(' / ').map(s => s.trim()).filter(Boolean);
-        return {
-          ...v,
-          image_id: matched ? Number(matched) : null,
-          option1: parts[0] ?? null,
-          option2: parts[1] ?? null,
-          option3: parts[2] ?? null,
-        };
-      }),
+      images_data: [...(product.images_data || [])],
+      variants: (product.variants || []).map(v => ({ ...v })),
       images_to_add: [],
     });
     setSaveResult(null);
