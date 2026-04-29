@@ -24,7 +24,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import OrderDrawer, {
-  StatusBadge, PaymentBadge, fmt, timeAgo,
+  StatusBadge, PaymentBadge, fmt, timeAgo, ordinal,
   gold, card, border, STATUS_CONFIG, NO_CANCEL_FROM_UI,
 } from '../_components/OrderDrawer';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
@@ -188,6 +188,9 @@ export default function SingleOrderPage() {
   // Phase 2 NEW: confirmation box state for Mark as Paid (irreversible-ish, needs confirmation)
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
 
+  // Apr 2026 — Customer mini-history (last 3 orders by phone) for sidebar inline preview
+  const [customerHistory, setCustomerHistory] = useState([]);
+
   // ─── Data fetchers ──────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
     if (!id) return;
@@ -224,6 +227,22 @@ export default function SingleOrderPage() {
   useEffect(() => { loadOrder(); }, [loadOrder]);
   useEffect(() => { loadTimeline(); }, [loadTimeline]);
   useEffect(() => { loadPackingStaff(); }, [loadPackingStaff]);
+
+  // Apr 2026 — Fetch customer's last 4 orders by phone (for sidebar mini-history)
+  // Excludes current order. Only runs if customer_phone exists and customer_order_count > 1.
+  useEffect(() => {
+    if (!order?.customer_phone || (order.customer_order_count || 0) < 2) {
+      setCustomerHistory([]);
+      return;
+    }
+    fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=4`)
+      .then(r => r.json())
+      .then(d => {
+        const others = (d.orders || []).filter(o => o.id !== order.id).slice(0, 3);
+        setCustomerHistory(others);
+      })
+      .catch(() => setCustomerHistory([]));
+  }, [order?.customer_phone, order?.customer_order_count, order?.id]);
 
   // Close any open dropdown on outside click
   useEffect(() => {
@@ -284,7 +303,7 @@ export default function SingleOrderPage() {
   };
 
   const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
-  const markPacked   = () => doAction('/api/orders/assign', { order_id: id, action: 'packed' }, '✓ Marked as Packed');
+  const markPacked   = () => doAction('/api/orders/status', { order_id: id, status: 'packed' }, '✓ Marked as Packed');
   const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
 
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
@@ -618,6 +637,12 @@ export default function SingleOrderPage() {
                   <span title="Customer ne WhatsApp se cancel kiya — review zaroori"
                     style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
                     ⚠️ Review needed
+                  </span>
+                )}
+                {(order.customer_order_count || 0) > 1 && (
+                  <span title={`Total ${order.customer_order_count} orders from this customer`}
+                    style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2444', padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+                    ⭐ {ordinal(order.customer_order_count)} order
                   </span>
                 )}
               </div>
@@ -956,17 +981,43 @@ export default function SingleOrderPage() {
                     </div>
                   )}
                 </div>
-                <div style={{ background: '#0f0f0f', border: `1px solid #2a1a4a`, borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🚚 Courier Status</div>
-                  {order.courier_status_raw
-                    ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{order.courier_status_raw}</span>
-                    : <span style={{ color: '#444', fontSize: 12 }}>Not dispatched yet</span>}
-                  {order.courier_last_synced_at && (
-                    <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
-                      Last sync {timeAgo(order.courier_last_synced_at)}
+                {(() => {
+                  const raw = order.courier_status_raw || '';
+                  const rawLower = String(raw).toLowerCase();
+                  // Detect exception/attention-needed states
+                  const isException = !!raw && (
+                    rawLower.includes('not available') ||
+                    rawLower.includes('refus') ||
+                    rawLower.includes('not delivered') ||
+                    rawLower.includes('undelivered') ||
+                    rawLower.includes('attempt') ||
+                    rawLower.includes('exception') ||
+                    rawLower.includes('hold') ||
+                    rawLower.includes('return') ||
+                    rawLower.includes('rto') ||
+                    rawLower.includes('cancel')
+                  );
+                  const cardBorder = isException ? '#ef444466' : '#2a1a4a';
+                  const tagColor   = isException ? '#ef4444'   : '#8b5cf6';
+                  const tagBg      = isException ? '#ef444411' : '#8b5cf611';
+                  const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
+                  return (
+                    <div style={{ background: '#0f0f0f', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🚚 Courier Status</span>
+                        {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
+                      </div>
+                      {raw
+                        ? <span style={{ color: tagColor, background: tagBg, border: `1px solid ${tagBorder}`, padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{raw}</span>
+                        : <span style={{ color: '#444', fontSize: 12 }}>Not dispatched yet</span>}
+                      {order.courier_last_synced_at && (
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
+                          Last sync {timeAgo(order.courier_last_synced_at)}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
 
               {order.dispatched_courier && (
@@ -1228,10 +1279,8 @@ export default function SingleOrderPage() {
               {/* Log */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {(() => {
-                  // Apr 2026 — Hide webhook entries (Shopify sync noise).
-                  // Action prefix `webhook:` waale entries staff ke liye useless
-                  // hain. Sirf meaningful events dikhayenge: confirmations,
-                  // status changes, comments, dispatches, etc.
+                  // Apr 2026 — Hide webhook + system noise for staff.
+                  // Super_admin (CEO/admin) sees everything for audit purposes.
                   const visibleTimeline = isCEO ? timeline : timeline.filter(l => {
                     const a = String(l.action || '');
                     if (a.startsWith('webhook:')) return false;
@@ -1335,8 +1384,8 @@ export default function SingleOrderPage() {
             </Card>
           </div>
 
-          {/* ═══ RIGHT SIDEBAR ═══ (unchanged) */}
-          <div>
+          {/* ═══ RIGHT SIDEBAR ═══ (sticky on desktop) */}
+          <div style={{ position: 'sticky', top: 16, alignSelf: 'start', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
 
             {/* Notes (confirmation_notes) */}
             <Card title="Notes">
@@ -1418,16 +1467,38 @@ export default function SingleOrderPage() {
                   {order.customer_order_count === 1 ? '1st order' : `${order.customer_order_count} orders total`} →
                 </Link>
               )}
+              {customerHistory.length > 0 && (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${border}` }}>
+                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recent orders</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {customerHistory.map(co => {
+                      const cfg = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
+                      return (
+                        <Link key={co.id} href={`/orders/${co.id}`}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 6, textDecoration: 'none', fontSize: 11 }}>
+                          <span style={{ color: gold, fontFamily: 'monospace', fontWeight: 600 }}>{co.order_number}</span>
+                          <span style={{ color: cfg.color, fontSize: 10 }}>{cfg.label}</span>
+                          <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{timeAgo(co.created_at)}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </Card>
 
             {/* Contact */}
             <Card title="Contact information">
               {order.customer_phone ? (
-                <a href={`tel:${order.customer_phone}`} style={{ fontSize: 13, color: gold, textDecoration: 'none' }}>
-                  {order.customer_phone}
-                </a>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <a href={`tel:${order.customer_phone}`} style={{ fontSize: 13, color: gold, textDecoration: 'none' }}>
+                    {order.customer_phone}
+                  </a>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
+                  <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4 }}>💬 WhatsApp</a>
+                </div>
               ) : <div style={{ fontSize: 12, color: '#555' }}>No phone</div>}
-              <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>No email provided</div>
+              <div style={{ fontSize: 12, color: '#555', marginTop: 8 }}>No email provided</div>
             </Card>
 
             {/* Shipping address */}
@@ -1440,13 +1511,19 @@ export default function SingleOrderPage() {
                 {order.customer_phone && <div style={{ marginTop: 4 }}>{order.customer_phone}</div>}
               </div>
               {order.customer_address && (
-                <a
-                  href={`https://maps.google.com/?q=${encodeURIComponent(`${order.customer_address}, ${order.customer_city || ''}`)}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 10 }}
-                >
-                  View on map ↗
-                </a>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                  <a
+                    href={`https://maps.google.com/?q=${encodeURIComponent(`${order.customer_address}, ${order.customer_city || ''}`)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: gold, textDecoration: 'none' }}
+                  >
+                    🗺️ View on map ↗
+                  </a>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText([order.customer_address, order.customer_city].filter(Boolean).join(', ')); }} title="Copy full address"
+                    style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 11, cursor: 'pointer', padding: '3px 8px', borderRadius: 4, fontFamily: 'inherit' }}>
+                    📋 Copy
+                  </button>
+                </div>
               )}
             </Card>
 
@@ -1481,22 +1558,38 @@ export default function SingleOrderPage() {
 
             {/* Tags */}
             <Card title="Tags">
-              {Array.isArray(order.tags) && order.tags.length > 0 ? (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {order.tags.map((tag, i) => (
-                    <span key={i} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '3px 8px', borderRadius: 4, fontSize: 11 }}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No tags</div>
-              )}
+              {(() => {
+                const visibleTags = Array.isArray(order.tags) ? order.tags.filter(t => {
+                  const tag = String(t || '').toLowerCase();
+                  // Hide: type tags (already shown as typeBadges in header) + redundant confirm/cancel state tags + system tags
+                  if (['wholesale','international','walkin','kangaroo'].includes(tag)) return false;
+                  if (['whatsapp_confirmed', 'whatsapp confirmed', 'order_confirmed', 'order confirmed', 'confirmation pending', 'whatsapp_cancelled', 'whatsapp cancelled', 'no whatsapp'].includes(tag)) return false;
+                  if (tag.startsWith('packing:')) return false; // already shown via assigned_to_name
+                  return true;
+                }) : [];
+                return visibleTags.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {visibleTags.map((tag, i) => (
+                      <span key={i} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '3px 8px', borderRadius: 4, fontSize: 11 }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No tags</div>
+                );
+              })()}
             </Card>
 
             {/* Metadata */}
             <Card title="Order info">
               <Row label="Created" value={formatShortDate(order.created_at)} />
+              {order.confirmed_at && <Row label="Confirmed" value={formatShortDate(order.confirmed_at)} color="#3b82f6" />}
+              {order.dispatched_at && <Row label="Dispatched" value={formatShortDate(order.dispatched_at)} color="#a855f7" />}
+              {order.delivered_at && <Row label="Delivered" value={formatShortDate(order.delivered_at)} color="#22c55e" />}
+              {order.paid_at && <Row label="Paid" value={formatShortDate(order.paid_at)} color="#22c55e" />}
+              {order.rto_at && <Row label="RTO" value={formatShortDate(order.rto_at)} color="#ef4444" />}
+              {order.cancelled_at && <Row label="Cancelled" value={formatShortDate(order.cancelled_at)} color="#ef4444" />}
               <Row label="Updated" value={formatShortDate(order.updated_at)} />
               {order.shopify_order_id && <Row label="Shopify ID" value={order.shopify_order_id} mono />}
               {order.shopify_synced_at && <Row label="Last synced" value={timeAgo(order.shopify_synced_at)} />}
