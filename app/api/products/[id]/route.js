@@ -456,14 +456,14 @@ export async function PATCH(request, { params }) {
           const g = Number(v.grams);
           if (Number.isFinite(g) && g >= 0) {
             variantPatch.grams = Math.round(g);
-            variantPatch.weight = Math.round(g) / 1000;
+            variantPatch.weight = Math.round(g);     // weight in grams (matches weight_unit='g')
             variantPatch.weight_unit = 'g';
           }
         } else if (v.weight !== undefined && v.weight !== null && v.weight !== '') {
           const grams = computeGrams(v.weight, v.weight_unit);
           if (grams !== null) {
             variantPatch.grams = grams;
-            variantPatch.weight = grams / 1000;
+            variantPatch.weight = grams;             // weight in grams
             variantPatch.weight_unit = 'g';
           }
         }
