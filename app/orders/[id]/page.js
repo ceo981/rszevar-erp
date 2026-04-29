@@ -1198,7 +1198,7 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Timeline — unchanged */}
-            <Card title={`Timeline (${timeline.filter(l => !(l.action || '').startsWith('webhook:')).length})`}>
+            <Card title={`Timeline (${(isCEO ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
               {/* Comment input */}
               <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -1232,7 +1232,14 @@ export default function SingleOrderPage() {
                   // Action prefix `webhook:` waale entries staff ke liye useless
                   // hain. Sirf meaningful events dikhayenge: confirmations,
                   // status changes, comments, dispatches, etc.
-                  const visibleTimeline = timeline.filter(l => !(l.action || '').startsWith('webhook:'));
+                  const visibleTimeline = isCEO ? timeline : timeline.filter(l => {
+                    const a = String(l.action || '');
+                    if (a.startsWith('webhook:')) return false;
+                    if (a.startsWith('protocol_violation:')) return false;
+                    if (a === 'shopify_order_edited_webhook') return false;
+                    if (a === 'courier_reclassified') return false;
+                    return true;
+                  });
 
                   if (visibleTimeline.length === 0) {
                     return <div style={{ textAlign: 'center', color: '#555', fontSize: 12, padding: 20 }}>No activity yet</div>;
