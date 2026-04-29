@@ -172,6 +172,125 @@ function StatusPill({ status }) {
   );
 }
 
+// ── Phase 3 — History table helpers ─────────────────────────────────────────
+const thStyle = {
+  textAlign: 'left',
+  padding: '10px 14px',
+  color: text3,
+  fontWeight: 500,
+  fontSize: 11,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+};
+
+const tdStyle = {
+  padding: '10px 14px',
+  color: text2,
+  fontSize: 12,
+  verticalAlign: 'top',
+};
+
+// Format ISO timestamp into "2 minutes ago" / "Today 3:45 PM" / "28 Mar 2026, 6:19 PM"
+function formatTimestamp(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  const diffHr  = Math.round(diffMs / 3600000);
+  const diffDay = Math.round(diffMs / 86400000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min${diffMin === 1 ? '' : 's'} ago`;
+  if (diffHr < 24 && d.toDateString() === now.toDateString()) {
+    return `Today ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  if (diffDay < 7) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
+  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// Render a delta cell: "(+1)" green or "(-1)" red, with optional muted "0" in grey
+function DeltaCell({ delta }) {
+  const n = Number(delta) || 0;
+  if (n === 0) return <span style={{ color: text3 }}>—</span>;
+  const isPositive = n > 0;
+  return (
+    <span style={{
+      color: isPositive ? '#22c55e' : '#f87171',
+      fontFamily: 'monospace',
+      fontWeight: 600,
+    }}>
+      ({isPositive ? '+' : ''}{n})
+    </span>
+  );
+}
+
+// One row of the history table — renders manual or order-derived event uniformly
+function HistoryRow({ event, isLast }) {
+  // Activity badge color by source/type
+  const badge = (() => {
+    const a = event.activity;
+    if (a === 'stock')            return { label: 'Manual stock', color: gold,    bg: 'rgba(201,169,110,0.12)' };
+    if (a === 'price')            return { label: 'Price',        color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' };
+    if (a === 'sku')              return { label: 'SKU',          color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' };
+    if (a === 'barcode')          return { label: 'Barcode',      color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' };
+    if (a === 'compare_at_price') return { label: 'Compare-at',   color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' };
+    if (a === 'weight')           return { label: 'Weight',       color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' };
+    if (a === 'order_created')    return { label: 'Order created',    color: '#22c55e', bg: 'rgba(34,197,94,0.10)' };
+    if (a === 'order_dispatched') return { label: 'Order dispatched', color: '#fbbf24', bg: 'rgba(251,191,36,0.10)' };
+    if (a === 'order_cancelled')  return { label: 'Order cancelled',  color: '#f87171', bg: 'rgba(248,113,113,0.10)' };
+    if (a === 'rto')              return { label: 'RTO',              color: '#f87171', bg: 'rgba(248,113,113,0.10)' };
+    return { label: a || 'Event', color: text2, bg: 'rgba(255,255,255,0.05)' };
+  })();
+
+  return (
+    <tr style={{ borderBottom: isLast ? 'none' : `1px solid ${border}` }}>
+      {/* Date */}
+      <td style={{ ...tdStyle, color: text2, whiteSpace: 'nowrap' }}>
+        {formatTimestamp(event.timestamp)}
+      </td>
+
+      {/* Activity */}
+      <td style={tdStyle}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{
+            color: badge.color, background: badge.bg, padding: '2px 8px', borderRadius: 4,
+            fontSize: 10, fontWeight: 600, letterSpacing: 0.3, whiteSpace: 'nowrap',
+          }}>{badge.label}</span>
+          <div style={{ flex: 1, minWidth: 0, color: text1, fontSize: 12 }}>
+            {event.description || event.activity}
+            {event.reason && (
+              <div style={{ fontSize: 11, color: text3, marginTop: 2, fontStyle: 'italic' }}>
+                Reason: {event.reason}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+
+      {/* By */}
+      <td style={{ ...tdStyle, color: text2, whiteSpace: 'nowrap' }}>
+        {event.performed_by || 'Staff'}
+      </td>
+
+      {/* Committed delta */}
+      <td style={{ ...tdStyle, textAlign: 'right' }}>
+        <DeltaCell delta={event.committed_delta} />
+      </td>
+
+      {/* On hand delta */}
+      <td style={{ ...tdStyle, textAlign: 'right' }}>
+        <DeltaCell delta={event.on_hand_delta} />
+      </td>
+
+      {/* Available delta */}
+      <td style={{ ...tdStyle, textAlign: 'right' }}>
+        <DeltaCell delta={event.available_delta} />
+      </td>
+    </tr>
+  );
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 export default function VariantEditPage() {
   const params = useParams();
@@ -187,6 +306,12 @@ export default function VariantEditPage() {
   const [saving, setSaving]   = useState(false);
   const [saveResult, setSaveResult] = useState(null);
   const [reason, setReason]   = useState('');   // Phase 2 — optional adjustment reason
+
+  // Phase 3 — Adjustment history events (manual + order-derived)
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+  const [historyMeta, setHistoryMeta] = useState(null);
 
   // Smart back: detect if user came from an order
   const [backLabel, setBackLabel] = useState('← Back to product');
@@ -249,6 +374,28 @@ export default function VariantEditPage() {
   }, [productId, variantId]);
 
   useEffect(() => { loadProduct(); }, [loadProduct]);
+
+  // Phase 3 — Fetch adjustment history (combines manual log + order-derived events)
+  const loadHistory = useCallback(async () => {
+    if (!productId || !variantId) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch(`/api/products/${productId}/variants/${variantId}/history?limit=100`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load history');
+      }
+      setHistory(data.events || []);
+      setHistoryMeta(data.meta || null);
+    } catch (e) {
+      setHistoryError(e.message);
+      setHistory([]);
+    }
+    setHistoryLoading(false);
+  }, [productId, variantId]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
 
   // Update a single field in the draft
   const setField = (key, value) => setDraft(d => ({ ...d, [key]: value }));
@@ -363,6 +510,8 @@ export default function VariantEditPage() {
       setReason('');
       // Refetch to reflect any server-side adjustments (cost calc, stock normalization)
       await loadProduct();
+      // Phase 3 — Refetch history to show newly written log row(s)
+      await loadHistory();
     } catch (e) {
       setSaveResult({ success: false, message: e.message });
     }
@@ -698,24 +847,66 @@ export default function VariantEditPage() {
               </Card>
             )}
 
-            {/* Adjustment history — Phase 1: deep link only. Phase 3 will replace with full table. */}
+            {/* Phase 3 — Adjustment history (manual + order-derived combined) */}
             <Card
               title="Adjustment history"
               right={
-                shopifyAdjustmentHistoryUrl ? (
-                  <Btn href={shopifyAdjustmentHistoryUrl} target="_blank" title="Open Shopify admin's adjustment history page in new tab">
-                    📋 View on Shopify ↗
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {historyLoading && <span style={{ fontSize: 11, color: text3 }}>Loading…</span>}
+                  {historyMeta && !historyLoading && (
+                    <span style={{ fontSize: 10, color: text3 }}>
+                      {historyMeta.manual_count} manual · {historyMeta.order_count} order events
+                    </span>
+                  )}
+                  <Btn onClick={loadHistory} disabled={historyLoading} title="Refresh history">
+                    ↻ Refresh
                   </Btn>
-                ) : null
+                  {shopifyAdjustmentHistoryUrl && (
+                    <Btn href={shopifyAdjustmentHistoryUrl} target="_blank" title="Open Shopify admin's adjustment history page in new tab">
+                      View on Shopify ↗
+                    </Btn>
+                  )}
+                </div>
               }
+              padBody={false}
             >
-              <div style={{ padding: '10px 0', fontSize: 12, color: text3, lineHeight: 1.6 }}>
-                Phase 1: Shopify ke admin panel pe poori history dikhne ke liye upper button click karo.
-                <br/>
-                <span style={{ fontSize: 11 }}>
-                  Phase 3 mein yahan inline table aayegi — order-driven changes (auto from ERP) + manual adjustments (jo tum yahan se save karoge) sab combine ho ke dikhenge.
-                </span>
-              </div>
+              {historyError && (
+                <div style={{ padding: '14px 20px', fontSize: 12, color: '#f87171' }}>
+                  ⚠️ {historyError}
+                </div>
+              )}
+
+              {!historyError && !historyLoading && history.length === 0 && (
+                <div style={{ padding: '24px 20px', fontSize: 12, color: text3, textAlign: 'center' }}>
+                  Koi history nahi mili. Order-driven events SKU se match karte hain — agar variant ka SKU empty ya naya hai, history khaali aayegi.
+                </div>
+              )}
+
+              {history.length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(201,169,110,0.04)', borderBottom: `1px solid ${border}` }}>
+                        <th style={thStyle}>Date</th>
+                        <th style={thStyle}>Activity</th>
+                        <th style={thStyle}>By</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 100 }}>Committed</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 100 }}>On hand</th>
+                        <th style={{ ...thStyle, textAlign: 'right', width: 100 }}>Available</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((ev, idx) => (
+                        <HistoryRow
+                          key={ev.id}
+                          event={ev}
+                          isLast={idx === history.length - 1}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
 
             {/* Save bar (sticky at bottom for long forms) */}
