@@ -219,11 +219,16 @@ function CustomerSearch({ onSelect, onCreateNew }) {
 function DiscountModal({ initial, onClose, onSave, label }) {
   const [type,  setType]  = useState(initial?.type  || 'amount');
   const [value, setValue] = useState(initial?.value || '');
+  // Apr 30 2026 — Reason/description field. Edit page mein ye pehle se tha,
+  // create pe nahi tha. Ab dono jagah consistent. Backend (api/orders/create)
+  // already `description` accept karta hai applied_discount mein, isliye
+  // koi API change nahi chahiye.
+  const [description, setDescription] = useState(initial?.description || '');
 
   const save = () => {
     const v = parseFloat(value) || 0;
     if (v <= 0) { onSave(null); onClose(); return; }
-    onSave({ type, value: v });
+    onSave({ type, value: v, description: description.trim() || undefined });
     onClose();
   };
 
@@ -241,10 +246,15 @@ function DiscountModal({ initial, onClose, onSave, label }) {
             <option value="percentage">Percentage (%)</option>
           </select>
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <div style={labelStyle}>Value</div>
           <input type="number" min="0" step="0.01" value={value} onChange={e => setValue(e.target.value)}
             placeholder={type === 'percentage' ? '10' : '100'} style={inpStyle} autoFocus />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={labelStyle}>Reason (optional)</div>
+          <input type="text" value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="e.g. wholesale, loyalty, friend price" style={inpStyle} />
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           {initial && (
@@ -494,7 +504,9 @@ export default function CreateOrderPage() {
                             )}
                             <button onClick={() => setLineDiscountIdx(idx)}
                               style={{ background: 'none', border: 'none', color: item.discount ? success : '#888', fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}>
-                              {item.discount ? `Discount: ${item.discount.type === 'percentage' ? item.discount.value + '%' : fmt(item.discount.value)}` : 'Add discount'}
+                              {item.discount
+                                ? `Discount: ${item.discount.type === 'percentage' ? item.discount.value + '%' : fmt(item.discount.value)}${item.discount.description ? ` — ${item.discount.description}` : ''}`
+                                : 'Add discount'}
                             </button>
                           </div>
                         </div>
@@ -532,12 +544,17 @@ export default function CreateOrderPage() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#bbb' }}>
-                <span>Subtotal ({items.length} {items.length === 1 ? 'item' : 'items'})</span>
+                {(() => {
+                  const totalQty = items.reduce((s, it) => s + (parseInt(it.quantity) || 0), 0);
+                  return <span>Subtotal ({totalQty} {totalQty === 1 ? 'item' : 'items'})</span>;
+                })()}
                 <span>{fmt(subtotal)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button onClick={() => setShowOrderDiscount(true)} style={{ background: 'none', border: 'none', color: gold, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: 'inherit', textAlign: 'left' }}>
-                  {orderDiscount ? `Discount (${orderDiscount.type === 'percentage' ? orderDiscount.value + '%' : fmt(orderDiscount.value)})` : '+ Add order discount'}
+                  {orderDiscount
+                    ? `Discount (${orderDiscount.type === 'percentage' ? orderDiscount.value + '%' : fmt(orderDiscount.value)})${orderDiscount.description ? ` — ${orderDiscount.description}` : ''}`
+                    : '+ Add order discount'}
                 </button>
                 <span style={{ color: '#bbb' }}>{orderDiscount ? `− ${fmt(orderDiscountAmt)}` : 'Rs 0'}</span>
               </div>
