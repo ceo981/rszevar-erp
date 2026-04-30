@@ -381,6 +381,26 @@ export default function CreateOrderPage() {
     : 0;
   const total = Math.max(0, subtotal - orderDiscountAmt + (parseFloat(shippingAmt) || 0));
 
+  // Apr 30 2026 — Browser tab close / refresh warning when there's unsaved work.
+  // Pehle galti se tab close ya browser back ho jaata to saara order data
+  // gum ho jaata. Ab agar items add ho gaye hain ya customer attach kar
+  // diya hai aur user create button nahi daba kar exit karne lagta hai,
+  // browser native confirmation dikhayega "Changes you made may not be saved".
+  // `creating` state pe hum yeh warning skip karte hain — wo intentional flow
+  // hai (Shopify call ke baad redirect hota hai, page navigate ko block nahi karna).
+  useEffect(() => {
+    const hasUnsavedWork = (items.length > 0 || !!customer || note.trim().length > 0);
+    if (!hasUnsavedWork || creating) return;
+
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';   // Modern browsers ignore custom strings; need this for trigger
+      return '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [items.length, customer, note, creating]);
+
   // Apr 30 2026 — Auto-fetch shipping rate from Shopify shipping_zones when
   // customer city/country is set. Only updates if user hasn't manually edited.
   // International (non-Pakistan) ke liye agar Shopify ne configure nahi kiya
@@ -543,7 +563,21 @@ export default function CreateOrderPage() {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-        <Link href="/orders" style={{ color: '#888', fontSize: 13, textDecoration: 'none' }}>← Orders</Link>
+        <Link
+          href="/orders"
+          onClick={(e) => {
+            // Apr 30 2026 — Same protection as beforeunload, but for in-app
+            // navigation. Next.js Link bypasses beforeunload, so we hook here
+            // and use window.confirm.
+            const hasUnsavedWork = (items.length > 0 || !!customer || note.trim().length > 0);
+            if (hasUnsavedWork && !creating) {
+              if (!window.confirm('Order draft mein hai. Wapas jaane par data gum ho jayega. Sure?')) {
+                e.preventDefault();
+              }
+            }
+          }}
+          style={{ color: '#888', fontSize: 13, textDecoration: 'none' }}
+        >← Orders</Link>
         <div style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>Create order</div>
       </div>
 
