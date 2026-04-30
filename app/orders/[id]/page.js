@@ -176,6 +176,11 @@ export default function SingleOrderPage() {
   const [cancelReason, setCancelReason] = useState('');
   // Apr 2026 — Super-admin force cancel for post-dispatch overrides (RTO/dispatched/delivered cleanup)
   const [forceCancel, setForceCancel] = useState(false);
+  // Apr 30 2026 — Review tab actions (WhatsApp-cancelled orders).
+  // 'confirm_cancel' => push cancellation to Shopify + clear review tags
+  // 'restore'        => bring back to confirmed + WA notify customer
+  const [reviewMode, setReviewMode] = useState(null);   // null | 'confirm_cancel' | 'restore'
+  const [reviewNote, setReviewNote] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
   // Apr 27 2026 — Track which tab to open drawer on. 'customer' jab kebab
@@ -329,6 +334,22 @@ export default function SingleOrderPage() {
   };
 
   const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
+
+  // Apr 30 2026 — Resolve a Review-tab order (WA-cancelled).
+  // action: 'confirm_cancel' | 'restore'. Closes the inline strip on success
+  // and refreshes — order will leave the Review tab.
+  const resolveReview = async (action) => {
+    const successMsg = action === 'confirm_cancel'
+      ? '✓ Cancellation confirmed — pushed to Shopify'
+      : '✓ Order restored — customer notified';
+    await doAction('/api/orders/review/resolve', {
+      order_id: id,
+      action,
+      notes: reviewNote.trim() || undefined,
+    }, successMsg);
+    setReviewMode(null);
+    setReviewNote('');
+  };
 
   // Apr 2026 — Mark as Packed
   // 1. Uses /api/orders/assign with action:'packed' (writes packing_log for HR Leaderboard credit).
@@ -1165,6 +1186,97 @@ export default function SingleOrderPage() {
                             </div>
                           )}
                         </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Apr 30 2026 — Review action strip.
+                    WhatsApp-cancelled orders sit in 'cancelled' status with the
+                    'whatsapp_cancelled' tag, but Shopify side is still ACTIVE
+                    (intentional — manual review before destruction). Staff has
+                    two paths: confirm the cancellation (push to Shopify) or
+                    restore (back to confirmed + WA notify customer). */}
+                {isWaCancelledReview && (
+                  <div style={{ borderTop: `1px solid ${border}`, background: 'rgba(251,191,36,0.05)' }}>
+                    <div style={{ padding: '14px 20px' }}>
+                      <div style={{ fontSize: 13, color: '#fbbf24', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        ⚠️ Customer ne WhatsApp se cancel kiya — review zaroori
+                      </div>
+                      <div style={{ fontSize: 11, color: '#999', marginBottom: 12, lineHeight: 1.5 }}>
+                        ERP mein cancel ho chuka hai but Shopify pe abhi active hai. Dono mein se ek decide karo:
+                      </div>
+
+                      {/* Action buttons row — only when no expand is open */}
+                      {reviewMode === null && (
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => { setReviewMode('restore'); setReviewNote(''); }}
+                            disabled={actionBusy}
+                            style={{ background: '#1a1a1a', border: '1px solid #22c55e', color: '#22c55e', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                            ↩️ Restore order
+                          </button>
+                          <button
+                            onClick={() => { setReviewMode('confirm_cancel'); setReviewNote(''); }}
+                            disabled={actionBusy}
+                            style={{ background: '#1a1a1a', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                            ✓ Confirm cancellation
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Restore expand */}
+                      {reviewMode === 'restore' && (
+                        <div style={{ padding: 12, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
+                          <div style={{ fontSize: 12, color: '#22c55e', marginBottom: 6, fontWeight: 600 }}>↩️ Restore order to confirmed?</div>
+                          <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                            Status confirmed pe wapas, Shopify tag swap (whatsapp_cancelled hatega, whatsapp_confirmed lagega), aur customer ko WhatsApp pe automatic message jayega: "Aapka order reactivate ho gaya hai".
+                          </div>
+                          <textarea
+                            value={reviewNote}
+                            onChange={e => setReviewNote(e.target.value)}
+                            rows={2}
+                            placeholder="Reason / note (optional) — e.g. customer ne phone pe wapas confirm kiya"
+                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                          />
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                            <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
+                              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Back
+                            </button>
+                            <button onClick={() => resolveReview('restore')} disabled={actionBusy}
+                              style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                              {actionBusy ? 'Restoring…' : '↩️ Restore + notify customer'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Confirm-cancel expand */}
+                      {reviewMode === 'confirm_cancel' && (
+                        <div style={{ padding: 12, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8 }}>
+                          <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 6, fontWeight: 600 }}>✕ Confirm WhatsApp cancellation?</div>
+                          <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                            Shopify pe order cancel push hoga (refund + restock auto). Review tags hat jayenge. Yeh order Cancelled tab mein chala jayega — irreversible step normally.
+                          </div>
+                          <textarea
+                            value={reviewNote}
+                            onChange={e => setReviewNote(e.target.value)}
+                            rows={2}
+                            placeholder="Reason / note (optional)"
+                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                          />
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+                            <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
+                              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Back
+                            </button>
+                            <button onClick={() => resolveReview('confirm_cancel')} disabled={actionBusy}
+                              style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                              {actionBusy ? 'Cancelling…' : '✓ Confirm cancel + push to Shopify'}
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
