@@ -451,6 +451,16 @@ export async function PATCH(request, { params }) {
         if (v.compare_at_price !== undefined && v.compare_at_price !== null) variantPatch.compare_at_price = v.compare_at_price === '' ? null : String(v.compare_at_price);
         if (typeof v.sku === 'string') variantPatch.sku = v.sku;
         if (typeof v.barcode === 'string') variantPatch.barcode = v.barcode;
+        // Apr 30 2026 — Option values (size/color/etc) editable from ERP.
+        // Frontend ne variant label split kiya hai " / " se → option1/option2/
+        // option3. Shopify ki Variant API direct option1/option2/option3 fields
+        // accept karti hai. Empty string '' Shopify ko bhejo to wo option clear
+        // kar dega — isliye sirf string non-empty case pass karte hain. Agar
+        // user ne wahi value bheji jo pehle thi, hum diff frontend pe karte
+        // hain (variants_update mein woh field hi nahi aata jab unchanged ho).
+        if (typeof v.option1 === 'string' && v.option1.trim()) variantPatch.option1 = v.option1.trim();
+        if (typeof v.option2 === 'string' && v.option2.trim()) variantPatch.option2 = v.option2.trim();
+        if (typeof v.option3 === 'string' && v.option3.trim()) variantPatch.option3 = v.option3.trim();
         // M2.K — image_id (per-variant image assignment). null/0/'' detaches.
         if (v.image_id !== undefined) {
           if (v.image_id === null || v.image_id === '' || v.image_id === 0) {
@@ -659,6 +669,30 @@ export async function PATCH(request, { params }) {
                 field_name: 'weight',
                 old_value: oldW,
                 new_value: newW,
+              });
+            }
+          }
+
+          // Apr 30 2026 — Variant label change (option values).
+          // Shopify gets option1/option2/option3 separately; for the audit log
+          // we just record the human-readable composite (e.g. "Ruby" → "Red"
+          // or "Small / Red" → "Medium / Red").
+          if (variantPatch.option1 !== undefined || variantPatch.option2 !== undefined || variantPatch.option3 !== undefined) {
+            const oldLabel = String(prev.variant_label ?? '').trim() || '—';
+            const origParts = String(prev.variant_label ?? '').split('/').map(p => p.trim());
+            const newParts = origParts.slice();
+            if (variantPatch.option1 !== undefined) newParts[0] = variantPatch.option1;
+            if (variantPatch.option2 !== undefined) newParts[1] = variantPatch.option2;
+            if (variantPatch.option3 !== undefined) newParts[2] = variantPatch.option3;
+            const newLabel = newParts.filter(Boolean).join(' / ') || '—';
+            if (newLabel !== oldLabel) {
+              logRows.push({
+                ...baseRow,
+                activity: 'variant_label',
+                description: `Variant label: ${oldLabel} → ${newLabel}`,
+                field_name: 'variant_label',
+                old_value: oldLabel,
+                new_value: newLabel,
               });
             }
           }
