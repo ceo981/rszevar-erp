@@ -41,7 +41,7 @@ export async function GET(request) {
   // Build customer summary from orders
   const { data: allOrders } = await supabase
     .from('orders')
-    .select('id, customer_name, customer_phone, customer_city, total_amount, status, created_at')
+    .select('id, customer_name, customer_phone, customer_city, customer_address, total_amount, status, created_at')
     .order('created_at', { ascending: false });
 
   // Group by phone
@@ -53,6 +53,10 @@ export async function GET(request) {
         phone,
         name: o.customer_name || 'Unknown',
         city: o.customer_city || '',
+        // Apr 30 2026 — Address field added so create-order autocomplete can
+        // pre-fill the saved address. Orders are pre-sorted DESC by created_at
+        // above, so the FIRST seen entry per phone is the most recent.
+        address: o.customer_address || '',
         orders: 0,
         total_spend: 0,
         delivered: 0,
@@ -68,7 +72,13 @@ export async function GET(request) {
     if (o.status === 'delivered') c.delivered++;
     if (o.status === 'rto' || o.status === 'returned') c.rto++;
     if (o.status === 'cancelled') c.cancelled++;
-    if (o.created_at > c.last_order) c.last_order = o.created_at;
+    if (o.created_at > c.last_order) {
+      c.last_order = o.created_at;
+      // If a more recent order has a populated address, prefer that.
+      // Pehle wala empty fall back ke liye preserve.
+      if (o.customer_address) c.address = o.customer_address;
+      if (o.customer_city)    c.city    = o.customer_city;
+    }
     if (o.created_at < c.first_order) c.first_order = o.created_at;
   }
 
