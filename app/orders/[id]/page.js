@@ -402,6 +402,39 @@ export default function SingleOrderPage() {
     setForceCancel(false);
   };
 
+  // Apr 2026 — Toggle order type tag (walkin / international / wholesale).
+  // Manual ERP-side toggling — pehle yeh tags rszevar.com platform se aate the,
+  // ab team yahin se manage karegi. Tag sirf informational hai — koi
+  // auto-action trigger nahi karta. Best-effort sync to rszevar.com platform.
+  const toggleOrderTypeTag = async (tag, newValue) => {
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/update-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: id,
+          tag,
+          value: newValue,
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        const action = newValue ? 'added' : 'removed';
+        const platformNote = d.platform_synced === false ? ' (platform sync pending)' : '';
+        flash('success', `✓ ${d.label} ${action}${platformNote}`, 4000);
+        await refreshAll();
+      } else {
+        flash('error', d.error || 'Tag update failed', 5000);
+      }
+    } catch (e) {
+      flash('error', e.message, 5000);
+    }
+    setActionBusy(false);
+  };
+
   // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
   // tracking removed, courier cleared, status reverted (dispatched → confirmed).
   const cancelFulfillment = async () => {
@@ -1745,6 +1778,63 @@ export default function SingleOrderPage() {
               </Card>
             )}
 
+            {/* Apr 2026 — Order Type tags (walk-in / international / wholesale).
+                Yeh tags sirf INFORMATIONAL hain — kisi auto-action ko trigger
+                nahi karte. Manual toggle. Mirror to rszevar.com platform side
+                bhi automatically hota hai (best-effort). */}
+            {!isCancelled && (
+              <Card title="Order Type">
+                <div style={{ fontSize: 11, color: '#666', marginBottom: 10, lineHeight: 1.4 }}>
+                  Customer ya order ke type ka label. Sirf informational — koi auto-action nahi.
+                </div>
+
+                {/* Walk-in toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🚶 Walk-in</div>
+                    <div style={{ fontSize: 10, color: '#666' }}>Customer shop pe aaya / pickup</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_walkin}
+                    onChange={e => toggleOrderTypeTag('walkin', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#f59e0b', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
+                  />
+                </div>
+
+                {/* International toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🌍 International</div>
+                    <div style={{ fontSize: 10, color: '#666' }}>Pakistan ke bahar ka order</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_international}
+                    onChange={e => toggleOrderTypeTag('international', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#22d3ee', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
+                  />
+                </div>
+
+                {/* Wholesale toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🏢 Wholesale</div>
+                    <div style={{ fontSize: 10, color: '#666' }}>Bulk / re-sale buyer</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_wholesale}
+                    onChange={e => toggleOrderTypeTag('wholesale', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#8b5cf6', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
+                  />
+                </div>
+              </Card>
+            )}
+
             {/* Tags */}
             <Card title="Tags">
               {(() => {
@@ -1914,9 +2004,52 @@ export default function SingleOrderPage() {
                   disabled={actionBusy || !fulfillTracking.trim()}
                   style={{ accentColor: '#c9a96e' }}
                 />
-                Customer ko Shopify se shipping email bhejo
+                Customer ko shipping email bhejo
                 {!fulfillTracking.trim() && <span style={{ color: '#666', fontSize: 11 }}>(needs tracking)</span>}
               </label>
+            </div>
+
+            {/* Apr 2026 — Order type quick-toggle inside fulfill modal.
+                Convenience: agar fulfill karte waqt yaad aaye ke yeh walk-in /
+                wholesale / international hai, yahin se mark kar sakte ho —
+                sidebar par jana zaroori nahi. Backend update-tags endpoint
+                par jata hai. */}
+            <div style={{ marginBottom: 14, padding: '10px 12px', background: '#0a0a0a', border: '1px solid #1f1f1f', borderRadius: 6 }}>
+              <div style={{ fontSize: 10, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Order Type (optional)
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_walkin}
+                    onChange={e => toggleOrderTypeTag('walkin', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#f59e0b' }}
+                  />
+                  🚶 Walk-in
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_international}
+                    onChange={e => toggleOrderTypeTag('international', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#22d3ee' }}
+                  />
+                  🌍 International
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_wholesale}
+                    onChange={e => toggleOrderTypeTag('wholesale', e.target.checked)}
+                    disabled={actionBusy}
+                    style={{ accentColor: '#8b5cf6' }}
+                  />
+                  🏢 Wholesale
+                </label>
+              </div>
             </div>
 
             {/* Reason (optional, audit log) */}
