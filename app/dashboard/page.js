@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useUser } from '../context/UserContext';
 
 const STATUS_MAP = {
   pending:    { label: 'Pending',    color: '#fb923c', bg: 'rgba(251,146,60,0.12)' },
@@ -38,6 +39,8 @@ function ActionButton({ icon, label, desc, href, color }) {
 }
 
 export default function DashboardPage() {
+  const { userRole } = useUser();
+  const isPackingStaff = userRole === 'packing_staff';
   const [stats, setStats] = useState(null);
   const [syncStatus, setSyncStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -100,6 +103,9 @@ export default function DashboardPage() {
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 28 }}>
+            {isPackingStaff && (
+              <ActionButton icon="🏷️" label="Pick Order" desc="Order ID se items dekho" href="/picking" color="var(--gold)" />
+            )}
             <ActionButton icon="🔄" label="Sync Shopify Orders" desc="Pull latest orders" href="/orders" color="var(--gold)" />
             <ActionButton icon="📋" label="View All Orders" desc={`${s.total || 0} total orders`} href="/orders" color="var(--blue)" />
             <ActionButton icon="⏳" label="Pending Orders" desc={`${s.pending || 0} need confirmation`} href="/orders" color="var(--orange)" />
