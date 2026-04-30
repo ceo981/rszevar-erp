@@ -237,6 +237,21 @@ export default function SingleOrderPage() {
 
   useEffect(() => { loadOrder(); }, [loadOrder]);
   useEffect(() => { loadTimeline(); }, [loadTimeline]);
+
+  // Apr 2026 — Listen for "openFulfillModal" custom event from drawer.
+  // Drawer dispatches this when user clicks "📋 Open fulfill modal" on the
+  // confirmed-status fulfill section. We open our existing modal here.
+  useEffect(() => {
+    const handler = (e) => {
+      // Only respond if the event matches THIS order id (drawer may live
+      // in a different page context with multiple orders).
+      if (!e?.detail || String(e.detail) === String(id)) {
+        setShowFulfillModal(true);
+      }
+    };
+    window.addEventListener('openFulfillModal', handler);
+    return () => window.removeEventListener('openFulfillModal', handler);
+  }, [id]);
   useEffect(() => { loadPackingStaff(); }, [loadPackingStaff]);
 
   // Apr 2026 — Fetch customer's last 4 orders by phone (for sidebar mini-history)
@@ -692,34 +707,61 @@ export default function SingleOrderPage() {
     && Array.isArray(order.tags)
     && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
 
-  // Primary action based on status (Shopify-style big button)
+  // ─── Primary action based on status (Apr 2026 flow refactor) ─────────────
+  // Office workflow: pending → confirmed → on_packing (after fulfill) → packed → dispatched
+  //   pending      : Confirm Order (manager/CSR call answered)
+  //   confirmed    : Add Tracking / Fulfill (slip nikalo, courier book — primary)
+  //   on_packing   : Mark as Packed (dispatcher confirms physical packing — packer must be assigned first)
+  //   packed       : Dispatch Order (parcel office se nikla)
+  //   attempted/hold: Confirm (back to confirmed — try again)
+  //
+  // Note: courier_status_raw chalti rahegi independently — yeh sab sirf
+  // OFFICE status hai. Booking/tracking metadata fulfill step pe save hoti hai.
   let primaryAction = null;
   if (order.status === 'pending' && canConfirm) {
     primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
-  } else if (order.status === 'confirmed' || order.status === 'on_packing') {
+  } else if (order.status === 'confirmed' && !order.shopify_fulfillment_id) {
+    primaryAction = { label: '📋 Add Tracking / Fulfill', onClick: () => setShowFulfillModal(true) };
+  } else if (order.status === 'on_packing') {
     primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
   } else if (order.status === 'packed') {
-    primaryAction = { label: '🚚 Dispatch Order', onClick: () => { setDrawerInitialTab('actions'); setShowDrawer(true); } };
+    primaryAction = { label: '🚚 Dispatch Order', onClick: () => doAction('/api/orders/status', { order_id: id, status: 'dispatched' }, '✓ Dispatched') };
+  } else if (order.status === 'attempted' || order.status === 'hold') {
+    primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
+  } else if (order.status === 'confirmed' && order.shopify_fulfillment_id) {
+    // Edge case: confirmed + already-fulfilled (e.g. Shopify webhook delayed advance)
+    // Skip the fulfill step, jump straight to packing prompt.
+    primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
   }
 
   const statusOptions = Object.keys(STATUS_CONFIG).filter(s => s !== order.status && s !== 'cancelled');
 
-  // Fulfill dropdown items — only shown if we have a primary action
+  // Fulfill dropdown items — secondary actions next to primary button
   const fulfillSecondary = [
-    { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered },
-    { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered },
-    // Apr 2026 — Manual fulfill (add tracking) — for orders booked outside ERP
-    // (Kangaroo via Shopify app, Leopards via portal) OR tracking-less fulfill
-    // (walk-in / wholesale / pickup). Available on packed status only — before
-    // packed it's premature; after dispatched the cancel-fulfillment flow handles redo.
+    { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
+    { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
+    // Manual fulfill secondary entry — only shown when fulfill is NOT already
+    // the primary action. Useful for emergency fulfill from on_packing/packed
+    // (e.g. user reverted, needs to re-add tracking after cancel-fulfillment).
     {
-      status: '__manual_fulfill__',          // sentinel — handled separately below
+      status: '__manual_fulfill__',
       label: order.shopify_fulfillment_id ? 'Already fulfilled' : '📋 Add tracking / Fulfill',
       icon:  '📋',
-      show: order.status === 'packed' && !order.shopify_fulfillment_id && !isCancelled,
+      show: ['on_packing', 'packed'].includes(order.status) && !order.shopify_fulfillment_id && !isCancelled,
       customAction: () => setShowFulfillModal(true),
     },
   ].filter(x => x.show);
+
+  // ─── Assignment availability ───────────────────────────────────────────
+  // Apr 2026 — Assignment is only valid AFTER fulfillment. Before that
+  // (pending/confirmed), the order is still in CSR/manager territory; the
+  // packer hasn't received it yet. Once fulfilled (status >= on_packing OR
+  // shopify_fulfillment_id present), assignment dropdown unlocks.
+  const assignmentUnlocked = (
+    ['on_packing', 'packed', 'dispatched', 'delivered'].includes(order.status) ||
+    !!order.shopify_fulfillment_id
+  );
+  const assignmentVisible = !isCancelled && order.status !== 'delivered' && order.status !== 'rto';
 
   // Fulfilled/Unfulfilled header badge
   const itemsHeaderLabel =
@@ -1659,29 +1701,49 @@ export default function SingleOrderPage() {
               <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>Same as shipping address</div>
             </Card>
 
-            {/* Assignment */}
-            <Card title="Assigned to" id="assigned-to-card">
-              {order.assigned_to_name ? (
-                <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginBottom: 10 }}>
-                  👤 {order.assigned_to_name}
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: '#555', marginBottom: 10, fontStyle: 'italic' }}>Not assigned yet</div>
-              )}
-              {packingStaff.length > 0 && !isCancelled && (
-                <select
-                  value=""
-                  onChange={e => { if (e.target.value) assignTo(e.target.value); }}
-                  disabled={actionBusy}
-                  style={{ width: '100%', background: '#0f0f0f', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
-                >
-                  <option value="">Change / assign…</option>
-                  {packingStaff.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              )}
-            </Card>
+            {/* Assignment — Apr 2026: only available after fulfillment.
+                Pre-fulfill (pending/confirmed): show hint, hide dropdown.
+                Post-fulfill (on_packing/packed): show dropdown.
+                Dispatched onwards: just show name, no change. */}
+            {assignmentVisible && (
+              <Card title="Assigned to" id="assigned-to-card">
+                {order.assigned_to_name ? (
+                  <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginBottom: 10 }}>
+                    👤 {order.assigned_to_name}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#555', marginBottom: 10, fontStyle: 'italic' }}>Not assigned yet</div>
+                )}
+                {!assignmentUnlocked ? (
+                  // Pre-fulfill: explain why dropdown is hidden
+                  <div style={{
+                    fontSize: 11, color: '#888', background: '#0f0f0f',
+                    border: `1px dashed ${border}`, borderRadius: 6,
+                    padding: '8px 10px', lineHeight: 1.5,
+                  }}>
+                    🔒 Assignment {order.status === 'pending' ? 'Confirm' : 'Fulfill'} ke baad available hogi.
+                    {order.status === 'confirmed' && (
+                      <div style={{ marginTop: 4, color: '#666' }}>
+                        Pehle &quot;📋 Add Tracking / Fulfill&quot; click karo (top mein), phir packer assign hoga.
+                      </div>
+                    )}
+                  </div>
+                ) : packingStaff.length > 0 && !['dispatched', 'delivered', 'rto'].includes(order.status) && (
+                  // Post-fulfill, pre-dispatch: show dropdown
+                  <select
+                    value=""
+                    onChange={e => { if (e.target.value) assignTo(e.target.value); }}
+                    disabled={actionBusy}
+                    style={{ width: '100%', background: '#0f0f0f', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
+                  >
+                    <option value="">Change / assign…</option>
+                    {packingStaff.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                )}
+              </Card>
+            )}
 
             {/* Tags */}
             <Card title="Tags">
