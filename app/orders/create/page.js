@@ -43,25 +43,62 @@ function ProductPicker({ onClose, onAdd }) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState({}); // {variant_id: {qty}}
   const inputRef = useRef(null);
+  // Apr 30 2026 — Stale-fetch guard. Pehle fast typing pe purani fetch nayi
+  // ke baad return ho ke results overwrite kar deti thi (E3058 likha lekin
+  // E3082 wale aate they). Ab AbortController + req-id guard.
+  const abortRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  // Debounced search
+  // Debounced search with AbortController
   useEffect(() => {
-    if (!query || query.length < 2) { setResults([]); return; }
+    if (!query || query.trim().length < 2) {
+      setResults([]);
+      // Cancel any in-flight fetch when user clears input
+      if (abortRef.current) abortRef.current.abort();
+      return;
+    }
     const t = setTimeout(async () => {
+      // Cancel previous in-flight request
+      if (abortRef.current) abortRef.current.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       setLoading(true);
       try {
-        const r = await fetch(`/api/products?search=${encodeURIComponent(query)}&view=flat&limit=15`);
+        const r = await fetch(`/api/products?search=${encodeURIComponent(query.trim())}&view=flat&limit=20`, { signal: ac.signal });
         const d = await r.json();
-        setResults(d.products || []);
-      } catch {}
-      setLoading(false);
+        if (ac.signal.aborted) return;        // superseded — drop response
+        const rows = d.products || [];
+
+        // Apr 30 2026 — Exact-SKU-match boost.
+        // Agar query ek SKU jaisa hai (alphanumeric, 3+ chars) aur kisi row ka
+        // SKU exactly match karta hai, usko top par lao. Phir starts-with
+        // match. Phir baqi (substring) — API ka original order rakhte hain.
+        const q = query.trim().toLowerCase();
+        const exact      = [];
+        const startsWith = [];
+        const rest       = [];
+        for (const p of rows) {
+          const sku = String(p.sku || '').toLowerCase();
+          if (sku && sku === q)              exact.push(p);
+          else if (sku && sku.startsWith(q)) startsWith.push(p);
+          else                                rest.push(p);
+        }
+        setResults([...exact, ...startsWith, ...rest]);
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        // Other errors: keep prior results, end loading
+      }
+      if (!ac.signal.aborted) setLoading(false);
     }, 300);
     return () => clearTimeout(t);
   }, [query]);
 
   const toggle = (v) => {
+    // Apr 30 2026 — Out-of-stock items can be SEEN but NOT selected.
+    // Visual cue is added in the row render below.
+    if ((v.stock_quantity ?? 0) <= 0) return;
     setSelected(s => {
       const next = { ...s };
       if (next[v.shopify_variant_id]) delete next[v.shopify_variant_id];
@@ -98,6 +135,11 @@ function ProductPicker({ onClose, onAdd }) {
           )}
           {results.map(p => {
             const isSelected = !!selected[p.shopify_variant_id];
+            // Apr 30 2026 — Out-of-stock indicator.
+            // stock_quantity 0 ya null/undefined = OUT. Negative theoretically
+            // possible (oversold) — bhi block karo.
+            const stock = Number(p.stock_quantity ?? 0);
+            const isOutOfStock = stock <= 0;
             return (
               <div key={p.id || p.shopify_variant_id} onClick={() => toggle(p)}
                 style={{
@@ -105,24 +147,34 @@ function ProductPicker({ onClose, onAdd }) {
                   padding: '10px 12px', borderRadius: 8,
                   background: isSelected ? 'rgba(201,169,110,0.1)' : 'transparent',
                   border: `1px solid ${isSelected ? gold : 'transparent'}`,
-                  cursor: 'pointer', marginBottom: 4,
+                  cursor: isOutOfStock ? 'not-allowed' : 'pointer',
+                  marginBottom: 4,
+                  opacity: isOutOfStock ? 0.5 : 1,
+                  position: 'relative',
                 }}>
-                <input type="checkbox" checked={isSelected} onChange={() => {}} style={{ cursor: 'pointer' }} />
+                <input type="checkbox" checked={isSelected} disabled={isOutOfStock} onChange={() => {}} style={{ cursor: isOutOfStock ? 'not-allowed' : 'pointer' }} />
                 {p.image_url ? (
-                  <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                  <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, filter: isOutOfStock ? 'grayscale(80%)' : 'none' }} />
                 ) : (
                   <div style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>💍</div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ fontSize: 13, color: isOutOfStock ? '#888' : '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isOutOfStock ? 'line-through' : 'none' }}>
                     {p.title || p.parent_title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                    SKU: {p.sku || '—'} • Stock: {p.stock_quantity ?? 0}
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>SKU: {p.sku || '—'}</span>
+                    {isOutOfStock ? (
+                      <span style={{ background: 'rgba(239,68,68,0.15)', color: danger, border: `1px solid ${danger}`, padding: '1px 8px', borderRadius: 10, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        ✕ Out of stock
+                      </span>
+                    ) : (
+                      <span>Stock: {stock}</span>
+                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 13, color: gold, fontWeight: 600 }}>{fmt(p.selling_price)}</div>
+                  <div style={{ fontSize: 13, color: isOutOfStock ? '#666' : gold, fontWeight: 600 }}>{fmt(p.selling_price)}</div>
                 </div>
               </div>
             );
@@ -185,7 +237,10 @@ function CustomerSearch({ onSelect, onCreateNew }) {
       <input value={query} onChange={e => { setQuery(e.target.value); setShowDropdown(true); }}
         onFocus={() => setShowDropdown(true)}
         placeholder="🔍 Search or create a customer..." style={inpStyle} />
-      {showDropdown && (query.length >= 2 || results.length > 0) && (
+      {/* Apr 30 2026 — Dropdown ab as soon as input focused hota hai khul jaata
+          hai (pehle min 2 chars chahiye thay) taake "+ Create new customer"
+          option turant available rahe — bina kuch type kiye. */}
+      {showDropdown && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
           background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 8,
@@ -208,6 +263,9 @@ function CustomerSearch({ onSelect, onCreateNew }) {
           ))}
           {!loading && query.length >= 2 && results.length === 0 && (
             <div style={{ padding: 12, color: '#666', fontSize: 12, textAlign: 'center' }}>No matching customer</div>
+          )}
+          {!loading && query.length < 2 && (
+            <div style={{ padding: 12, color: '#555', fontSize: 11, textAlign: 'center' }}>Naam, phone ya city type karo search ke liye</div>
           )}
         </div>
       )}
@@ -282,10 +340,19 @@ export default function CreateOrderPage() {
   // Customer
   const [customer, setCustomer] = useState(null); // { name, phone, city, address }
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [customerForm, setCustomerForm] = useState({ first_name: '', last_name: '', phone: '', email: '', address1: '', city: 'Karachi' });
+  // Apr 30 2026 — City default empty (pehle 'Karachi' tha — Islamabad/other-city
+  // wale customers ke liye masla bana raha tha, har dafa manual erase karna padta).
+  const [customerForm, setCustomerForm] = useState({ first_name: '', last_name: '', phone: '', email: '', address1: '', city: '' });
 
   // Shipping + discount
-  const [shippingAmt,  setShippingAmt]  = useState(250);
+  // Apr 30 2026 — Default 0 (pehle hardcoded 250 tha jo har order pe bhi
+  // walk-in/Karachi/international sab pe forced lagta tha). Ab Shopify ke
+  // shipping_zones.json se auto-fetch hota hai jab customer city set hoti
+  // hai. User manually type kare to override flag set ho jata hai aur auto-
+  // fetch dobara overwrite nahi karta.
+  const [shippingAmt,  setShippingAmt]  = useState(0);
+  const [shippingAuto, setShippingAuto] = useState(true);     // false = user edited manually
+  const [shippingHint, setShippingHint] = useState('');       // small label under input
   const [orderDiscount, setOrderDiscount] = useState(null);
   const [showOrderDiscount, setShowOrderDiscount] = useState(false);
 
@@ -314,6 +381,44 @@ export default function CreateOrderPage() {
     : 0;
   const total = Math.max(0, subtotal - orderDiscountAmt + (parseFloat(shippingAmt) || 0));
 
+  // Apr 30 2026 — Auto-fetch shipping rate from Shopify shipping_zones when
+  // customer city/country is set. Only updates if user hasn't manually edited.
+  // International (non-Pakistan) ke liye agar Shopify ne configure nahi kiya
+  // hota to rate=null aata hai → input untouched, hint dikha deta hai.
+  useEffect(() => {
+    if (!shippingAuto) return;          // user has overridden — don't touch
+    if (!customer?.city)  return;
+    // International tag ho to auto-fetch skip — user manual rate dalega
+    // (Shopify pe usually international zone fully configured nahi hota,
+    // aur har country ka rate alag hota hai). Hint user ko bata deta hai.
+    const isInternational = String(tags || '').toLowerCase().includes('international');
+    if (isInternational) {
+      setShippingHint('International order — enter shipping manually');
+      return;
+    }
+    const country = 'Pakistan';
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const params = new URLSearchParams({ country, city: customer.city });
+        if (subtotal > 0) params.set('subtotal', String(subtotal));
+        const r = await fetch(`/api/shopify/shipping-rate?${params}`, { signal: ac.signal });
+        const d = await r.json();
+        if (ac.signal.aborted) return;
+        if (d.success && d.rate !== null && d.rate !== undefined) {
+          setShippingAmt(d.rate);
+          setShippingHint(d.title ? `Auto from Shopify: ${d.title}` : 'Auto from Shopify');
+        } else {
+          setShippingHint('No shipping zone matched — enter manually');
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        setShippingHint('Couldn’t fetch rate — enter manually');
+      }
+    })();
+    return () => ac.abort();
+  }, [customer?.city, shippingAuto, subtotal, tags]);
+
   // ─── Handlers ───────────────────────────────────────────────────────────
   const handleAddProducts = (newItems) => {
     setItems(prev => {
@@ -340,14 +445,16 @@ export default function CreateOrderPage() {
   };
 
   const handleCustomerSelect = (c) => {
-    // From /api/customers result — has { name, phone, city }
+    // From /api/customers result — has { name, phone, city, address }
+    // Apr 30 2026 — Address ab customers API return karta hai (latest order se).
+    // Pehle empty hota tha, isi liye saved customer pe sirf name+phone aata tha.
     const [first_name, ...rest] = (c.name || 'Customer').split(' ');
     setCustomer({
       first_name,
       last_name:  rest.join(' ') || '.',
       phone:      c.phone,
       address1:   c.address || '',
-      city:       c.city || 'Karachi',
+      city:       c.city || '',
     });
   };
 
@@ -402,7 +509,7 @@ export default function CreateOrderPage() {
           },
           shipping_address: {
             address1: customer.address1 || '',
-            city:     customer.city || 'Karachi',
+            city:     customer.city || '',
             country:  'Pakistan',
             phone:    cleanPhone,
           },
@@ -558,14 +665,28 @@ export default function CreateOrderPage() {
                 </button>
                 <span style={{ color: '#bbb' }}>{orderDiscount ? `− ${fmt(orderDiscountAmt)}` : 'Rs 0'}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: '#888' }}>Shipping</span>
-                  <input type="number" min="0" step="1" value={shippingAmt}
-                    onChange={e => setShippingAmt(e.target.value)}
-                    style={{ ...inpStyle, width: 90, padding: '5px 9px', fontSize: 12 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#888' }}>Shipping</span>
+                    <input type="number" min="0" step="1" value={shippingAmt}
+                      onChange={e => { setShippingAmt(e.target.value); setShippingAuto(false); setShippingHint('Manual override'); }}
+                      style={{ ...inpStyle, width: 90, padding: '5px 9px', fontSize: 12 }} />
+                    {!shippingAuto && (
+                      <button
+                        onClick={() => { setShippingAuto(true); setShippingHint(''); }}
+                        title="Re-enable Shopify auto-rate"
+                        style={{ background: 'transparent', border: `1px solid ${border}`, color: gold, borderRadius: 5, padding: '4px 8px', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit' }}
+                      >↻ Auto</button>
+                    )}
+                  </div>
+                  {shippingHint && (
+                    <div style={{ fontSize: 10, color: shippingAuto ? '#22c55e' : '#888', fontStyle: shippingAuto ? 'normal' : 'italic' }}>
+                      {shippingAuto ? '✓ ' : ''}{shippingHint}
+                    </div>
+                  )}
                 </div>
-                <span style={{ color: '#bbb' }}>{fmt(parseFloat(shippingAmt) || 0)}</span>
+                <span style={{ color: '#bbb', alignSelf: 'center' }}>{fmt(parseFloat(shippingAmt) || 0)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${border}`, paddingTop: 10, marginTop: 4, fontSize: 14, fontWeight: 700, color: '#fff' }}>
                 <span>Total</span>
@@ -606,7 +727,7 @@ export default function CreateOrderPage() {
                   <button onClick={() => { setCustomerForm({
                     first_name: customer.first_name, last_name: customer.last_name === '.' ? '' : customer.last_name,
                     phone: customer.phone, email: customer.email || '',
-                    address1: customer.address1 || '', city: customer.city || 'Karachi',
+                    address1: customer.address1 || '', city: customer.city || '',
                   }); setShowCustomerForm(true); }}
                     style={{ flex: 1, background: 'transparent', border: `1px solid ${border}`, color: '#bbb', borderRadius: 6, padding: '6px', fontSize: 11, cursor: 'pointer' }}>Edit</button>
                   <button onClick={() => setCustomer(null)}
