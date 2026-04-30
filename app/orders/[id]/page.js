@@ -898,8 +898,9 @@ export default function SingleOrderPage() {
                     <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
                     <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
                     <div style={{ height: 1, background: border, margin: '4px 0' }} />
-                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
+                   <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
                     <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
+                    <MenuItem icon="🦘" label="Book at Kangaroo" onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
                   </div>
                 )}
               </div>
