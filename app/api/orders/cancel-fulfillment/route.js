@@ -25,6 +25,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { cancelShopifyFulfillment } from '@/lib/shopify';
+import { computeStatusRevertSideEffects, applyStatusRevertSideEffects } from '@/lib/order-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -85,8 +86,23 @@ export async function POST(request) {
 
     // Update ERP — clear all dispatch/courier fields (same fields as the
     // fulfillments/cancelled webhook handler, kept consistent).
-    const newStatus = order.status === 'dispatched' ? 'confirmed' : order.status;
+    //
+    // FIX Apr 2026 — Phase 1 flow refactor.
+    // Pehle: sirf 'dispatched' status → 'confirmed' revert hoti thi.
+    // Ab: on_packing/packed/dispatched/delivered/rto — saare post-fulfillment
+    //     states ko 'confirmed' pe revert karo (fulfillment cancel ho rahi hai
+    //     toh status bhi pre-fulfillment pe wapis jaye).
+    // Saath mein: order_assignments + packing_log credit bhi clear hote hain
+    //     jab post-fulfillment se confirmed pe wapis ja rahe hain (fulfillment
+    //     hi assignment ka trigger thi).
+    const POST_FULFILL_STATUSES = ['on_packing', 'packed', 'dispatched', 'delivered', 'rto'];
+    const newStatus = POST_FULFILL_STATUSES.includes(order.status) ? 'confirmed' : order.status;
     const nowIso = new Date().toISOString();
+
+    // Compute auxiliary reverts (assignment + packing_log) using Phase 2 helper.
+    // computeStatusRevertSideEffects returns deleteAssignments=true,
+    // deletePackingLog=true when going from post-fulfill → confirmed.
+    const revert = computeStatusRevertSideEffects(order.status, newStatus);
 
     const { error: updateErr } = await supabase.from('orders').update({
       status: newStatus,
@@ -102,7 +118,21 @@ export async function POST(request) {
 
     if (updateErr) throw updateErr;
 
-    // Activity log
+    // Apply auxiliary table reverts (best-effort — order row already cleaned)
+    let revertResult = { revertedFields: [], rowsRemoved: { assignments: 0, packing_log: 0 } };
+    if (revert.deleteAssignments || revert.deletePackingLog) {
+      try {
+        revertResult = await applyStatusRevertSideEffects(supabase, order_id, revert);
+      } catch (e) {
+        console.error('[cancel-fulfillment] auxiliary revert failed:', e.message);
+      }
+    }
+
+    // Activity log — include all revert details for transparency
+    const auxRevertNotes = [];
+    if (revertResult.rowsRemoved.assignments > 0) auxRevertNotes.push('assignment removed');
+    if (revertResult.rowsRemoved.packing_log > 0) auxRevertNotes.push(`packing credit removed (${revertResult.rowsRemoved.packing_log} rows)`);
+
     await supabase.from('order_activity_log').insert({
       order_id,
       action: 'fulfillment_cancelled',
@@ -113,6 +143,7 @@ export async function POST(request) {
         order.tracking_number ? `Tracking removed: ${order.tracking_number}` : null,
         order.dispatched_courier ? `Courier was: ${order.dispatched_courier}` : null,
         `Status: ${order.status} → ${newStatus}`,
+        auxRevertNotes.length > 0 ? `Side-effects: ${auxRevertNotes.join(', ')}` : null,
       ].filter(Boolean).join(' | '),
       performed_by: performer,
       performed_by_email: performed_by_email || null,
