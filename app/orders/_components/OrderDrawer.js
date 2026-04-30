@@ -975,6 +975,37 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               {/* ADIL (dispatcher) + CEO — Packed + Dispatched */}
               {/* ══════════════════════════════════════════════ */}
 
+              {/* Apr 2026 — Manual Fulfill button for confirmed status.
+                  Mirrors the order page primary action. Used when:
+                    - Team booked courier in Shopify but webhook hasn't fired yet
+                    - Walk-in / wholesale orders without tracking
+                    - Kangaroo manual booking outside ERP
+                  Status goes confirmed → on_packing. After this, packer can be
+                  assigned + Mark as Packed becomes available.
+                  CSR (canConfirm) bhi see karega — same as primary on /orders/[id]. */}
+              {(canPack || canConfirm) && s === 'confirmed' && !order.shopify_fulfillment_id && (
+                <div style={{ background: card, border: `1px solid #c9a96e44`, borderRadius: 10, padding: '14px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#c9a96e', marginBottom: 8 }}>📋 Add Tracking / Fulfill</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.4 }}>
+                    Slip nikal chuki hai? Tracking + courier add karo, status on packing chala jayega — phir packer assign hoga.
+                  </div>
+                  <button
+                    onClick={() => {
+                      // Close drawer first so order page modal isn't behind it,
+                      // then ask the page to open the fulfill modal.
+                      onClose();
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('openFulfillModal', { detail: order.id }));
+                      }, 250);
+                    }}
+                    disabled={loading}
+                    style={{ background: '#c9a96e22', border: '1px solid #c9a96e66', color: '#c9a96e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}
+                  >
+                    📋 Open fulfill modal
+                  </button>
+                </div>
+              )}
+
               {/* Mark as Packed — Adil/CEO, on_packing status pe */}
               {/* FIX: Pehle 'confirmed' pe bhi show hota tha, par backend mein  */}
               {/* canTransition guard confirmed → packed block karta hai.        */}
