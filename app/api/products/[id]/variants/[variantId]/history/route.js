@@ -194,11 +194,26 @@ export async function GET(request, { params }) {
     let orderEvents = [];
 
     if (variantSku) {
-      // ─── A) FAST PATH — SKU match ───
+      // ─── A) FAST PATH — SKU match, verified against variant_id ───
+      // FIX Apr 30 2026 — Shared-SKU bug:
+      // RS ZEVAR ke kuch products mein multiple variants ka SAME SKU hota hai
+      // (e.g. Radiant Cubic Zirconia ke saare 8 colors ka SKU 'AD027'). Pehle
+      // sirf .eq('sku', variantSku) se match hota tha — toh Purple variant ki
+      // history mein White, Black sab variants ke order events bhi aa jate
+      // they. Stock count to per-variant correct rehta tha (shopify_variant_id
+      // pe), bus history feed mix ho jaata tha.
+      //
+      // Ab: SKU se shortlist karte hain, phir har match ka shopify_line_item_id
+      // shopify_raw.line_items[] mein dhundte hain aur uska variant_id check
+      // karte hain. Mismatch ho to skip. Agar shopify_raw mein line_item missing
+      // ho (legacy/walk-in orders), to fall back to including (avoid losing
+      // events).
       const { data: itemRows, error: iErr } = await supabase
         .from('order_items')
         .select(`
           quantity,
+          shopify_line_item_id,
+          order_id,
           orders:order_id (
             id,
             order_number,
@@ -210,21 +225,61 @@ export async function GET(request, { params }) {
             cancelled_at,
             rto_at,
             dispatched_courier,
-            is_walkin
+            is_walkin,
+            shopify_raw
           )
         `)
         .eq('sku', variantSku)
         .order('id', { ascending: false })
-        .limit(limit);
+        .limit(limit * 3);   // over-fetch since some may be wrong-variant
 
       if (iErr) {
         console.error('[history] order_items SKU query error', iErr);
       }
 
+      const targetVariantIdStr = String(variantId);
+      let kept = 0;
+      let droppedDifferentVariant = 0;
       for (const item of itemRows || []) {
         if (!item.orders) continue;     // dangling order_item with no order
+
+        // Verify this order_item actually belongs to OUR variant.
+        // Look up the matching line_item in shopify_raw.line_items.
+        const lineItems = item.orders.shopify_raw?.line_items || [];
+        let belongsToThisVariant = true;       // default: include
+        if (lineItems.length > 0) {
+          // Try exact line_item_id match first (most accurate)
+          let li = null;
+          if (item.shopify_line_item_id) {
+            li = lineItems.find(x => String(x.id) === String(item.shopify_line_item_id));
+          }
+          // Fallback: search by SKU
+          if (!li) {
+            li = lineItems.find(x => x.sku === variantSku);
+          }
+          if (li && li.variant_id !== undefined && li.variant_id !== null) {
+            belongsToThisVariant = String(li.variant_id) === targetVariantIdStr;
+          }
+          // If li exists but has no variant_id (rare), assume match (legacy data)
+          // If no li found at all, assume match (line_items array malformed)
+        }
+        // No shopify_raw at all → can't verify → include (legacy/walkin orders)
+
+        if (!belongsToThisVariant) {
+          droppedDifferentVariant++;
+          continue;
+        }
+
         const qty = Number(item.quantity) || 1;
-        orderEvents = orderEvents.concat(deriveOrderEvents(item.orders, qty));
+        // Strip shopify_raw before passing to event generator (memory hygiene)
+        const orderForEvent = { ...item.orders };
+        delete orderForEvent.shopify_raw;
+        orderEvents = orderEvents.concat(deriveOrderEvents(orderForEvent, qty));
+        kept++;
+        if (kept >= limit) break;     // satisfy original limit semantics
+      }
+      if (droppedDifferentVariant > 0) {
+        console.log(`[history] Dropped ${droppedDifferentVariant} order_items that shared SKU but belonged to a different variant`);
       }
     } else {
       // ─── B) FALLBACK — variant_id match via shopify_raw JSONB ───
