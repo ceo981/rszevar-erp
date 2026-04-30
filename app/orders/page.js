@@ -1014,7 +1014,7 @@ export default function OrdersPage() {
       {/* ── Search + Secondary filters + Buttons ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Search order, customer, phone, tracking..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
+          placeholder="Search order, customer, phone, tracking, SKU, product..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
 
         {/* Secondary filter — Type / Courier / Payment only (Status handled by tabs) */}
         <FilterDropdown
