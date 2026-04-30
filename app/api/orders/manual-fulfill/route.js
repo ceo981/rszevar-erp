@@ -80,9 +80,10 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    // ── Transition guard: must be in packed/confirmed/on_packing/hold ──
-    // dispatched/delivered/cancelled/rto blocked (would create double-fulfill).
-    const gate = canTransition(order.status, 'dispatched', 'manual');
+    // ── Transition guard: must be in confirmed/on_packing/hold/attempted ──
+    // Target is now 'on_packing' (was 'dispatched'). Manual mode allows any
+    // non-terminal transition, so this check still passes for our use case.
+    const gate = canTransition(order.status, 'on_packing', 'manual');
     if (!gate.allowed) {
       return NextResponse.json(
         {
@@ -146,9 +147,17 @@ export async function POST(request) {
     }
 
     // ── Step 2: Update order in ERP DB ──
+    // FIX Apr 2026 — Fulfillment now lands in 'on_packing', NOT 'dispatched'.
+    // New flow philosophy:
+    //   "Fulfilled" = courier slip printed, parcel still in office.
+    //   "Dispatched" = parcel left the office (set later by dispatcher's
+    //                  Dispatch button in /orders/[id] page).
+    // So we record tracking + courier + fulfillment_id (the metadata that
+    // ARRIVED with the slip), but office_status moves only one step forward
+    // to on_packing — where the packer takes over. dispatched_at stays null
+    // until the actual dispatch action.
     const updatePayload = {
-      status: 'dispatched',
-      dispatched_at: nowIso,
+      status: 'on_packing',
       dispatched_courier: courier,
       tracking_number: trimmedTracking || null,
       courier_tracking_url: trackingUrl || null,
@@ -213,7 +222,7 @@ export async function POST(request) {
       success: true,
       order_id,
       order_number: order.order_number,
-      status: 'dispatched',
+      status: 'on_packing',
       tracking_number: trimmedTracking,
       courier,
       shopify_synced: !!shopifyFulfillmentId,
