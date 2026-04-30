@@ -6,7 +6,7 @@
 // Query param: ?search=<SKU>   (from order items click)
 // ============================================================================
 
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
@@ -54,11 +54,27 @@ export default function InventoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({ search: initialSearch, category: 'all', collection: 'all', stock: 'all', active: 'all' });
+  // Apr 30 2026 — Debounced search + AbortController.
+  // Pehle har keystroke pe fetchProducts fire hota tha (filters dependency).
+  // Multiple in-flight fetches mein purani fetch nayi ke baad complete ho ke
+  // filtered results ko overwrite kar deti thi → 0.5s flash ka cause yahi tha.
+  // Ab: filters.search type karte hi local state update, but actual API hit
+  // 350ms idle hone ke baad. Saath hi AbortController old fetches ko cancel
+  // karta hai.
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
+  const abortRef = useRef(null);
+
+  // Debounce filters.search → debouncedSearch
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(filters.search), 350);
+    return () => clearTimeout(t);
+  }, [filters.search]);
 
   // Apply initialSearch when URL changes (e.g. user clicks SKU from order items)
   useEffect(() => {
     if (initialSearch) {
       setFilters(f => ({ ...f, search: initialSearch }));
+      setDebouncedSearch(initialSearch); // skip debounce for URL-driven nav
       setPage(1);
     }
   }, [initialSearch]);
@@ -89,10 +105,15 @@ export default function InventoryPage() {
   const parentSoldCol = abcWindow === '180d' ? 'parent_units_sold_180d' : 'parent_units_sold_90d';
 
   const fetchProducts = useCallback(async () => {
+    // Apr 30 2026 — Cancel any in-flight request before starting new one.
+    if (abortRef.current) abortRef.current.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '40', sort: sortConfig.sort, order: sortConfig.order, view });
-      if (filters.search) params.set('search', filters.search);
+      if (debouncedSearch) params.set('search', debouncedSearch);
       if (filters.category !== 'all') params.set('category', filters.category);
       if (filters.stock !== 'all') params.set('stock', filters.stock);
       if (filters.active !== 'all') params.set('active', filters.active);
@@ -100,8 +121,10 @@ export default function InventoryPage() {
       params.set('abc_window', abcWindow);
       if (filters.collection !== 'all') params.set('collection', filters.collection);
       if (seoFilter !== 'all') params.set('seo_tier', seoFilter);
-      const res = await fetch(`/api/products?${params}`);
+      const res = await fetch(`/api/products?${params}`, { signal: ac.signal });
       const data = await res.json();
+      // Stale-response guard: if a newer fetch superseded us, skip state update
+      if (ac.signal.aborted) return;
       if (data.success) {
         setProducts(data.products || []);
         setTotal(data.total || 0);
@@ -110,9 +133,12 @@ export default function InventoryPage() {
         setCategories(data.categories || []);
         if (data.collections) setCollections(data.collections);
       }
-    } catch (e) { console.error('Fetch products error:', e); }
-    setLoading(false);
-  }, [page, filters, sortConfig, view, abcFilter, abcWindow, seoFilter]);
+    } catch (e) {
+      if (e.name === 'AbortError') return;     // expected when superseded
+      console.error('Fetch products error:', e);
+    }
+    if (!ac.signal.aborted) setLoading(false);
+  }, [page, filters.category, filters.collection, filters.stock, filters.active, debouncedSearch, sortConfig, view, abcFilter, abcWindow, seoFilter]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
