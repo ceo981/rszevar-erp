@@ -70,7 +70,7 @@ async function getPolicy(supabase) {
 async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const empRes = await supabase
     .from('employees')
-    .select('id, name, role, status, base_salary, advance_limit')
+    .select('id, name, role, status, base_salary, advance_limit, time_bonus_amount')
     .eq('id', employee_id)
     .single();
   if (empRes.error || !empRes.data) {
@@ -78,6 +78,7 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   }
   const emp = empRes.data;
   const baseSalary = parseFloat(emp.base_salary) || 0;
+  const empTimeBonusAmount = parseFloat(emp.time_bonus_amount) || 0;
 
   const { start, end } = monthRange(month);
   const totalDays = daysInMonth(month);
@@ -163,15 +164,32 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
     leaderboardRank = '2nd';
   }
 
+  // ── Time bonus (per-employee "good attendance" bonus) ─────────────────────
+  // Each employee has their own `time_bonus_amount` set in their profile
+  // (HR → Employees → edit). Eligibility rules (per HR policy):
+  //   - Lates within max_lates_allowed (no excess)
+  //   - Half days within max_half_days_allowed (no excess)
+  //   - Zero full absents in the month
+  // Agar koi rule break hai to bonus 0 milta — frontend "⚠️ Time Bonus
+  // nahi mila — lates/half days rule tooti hai" hint dikhata hai using
+  // the time_bonus_eligible flag we return in bonus_breakdown.
+  const timeBonusEligible =
+    excessLates === 0 &&
+    excessHalfDays === 0 &&
+    absentDays === 0 &&
+    empTimeBonusAmount > 0;
+  const timeBonus = timeBonusEligible ? empTimeBonusAmount : 0;
+
   // ── Bonus breakdown ─────────────────────────────────────────────────────
   const manual = Math.max(0, parseFloat(manualBonus) || 0);
-  const timeBonus = 0;   // reserved for future "perfect attendance" bonus
   const totalBonus = leaderboardBonus + timeBonus + manual;
   const bonusBreakdown = {
-    leaderboard:      leaderboardBonus,
-    leaderboard_rank: leaderboardRank,
-    time_bonus:       timeBonus,
-    manual:           manual,
+    leaderboard:          leaderboardBonus,
+    leaderboard_rank:     leaderboardRank,
+    time_bonus:           timeBonus,
+    time_bonus_eligible:  timeBonusEligible,
+    time_bonus_configured: empTimeBonusAmount,    // for UI hint when not eligible
+    manual:               manual,
   };
 
   // ── Pending advances (eligible for deduction this month) ────────────────
@@ -231,6 +249,16 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
     },
     advance_ids: advanceIds,
     advance_count: eligibleAdvances.length,
+    // Apr 30 2026 — Detailed breakdown of pending advances so the UI can
+    // show staff exactly which advances will be deducted on Mark Paid.
+    // Save action is informational; actual lock happens at mark_paid.
+    advances_detail: eligibleAdvances.map(a => ({
+      id: a.id,
+      amount: parseFloat(a.amount) || 0,
+      given_date: a.given_date,
+      deduct_month: a.deduct_month,
+      notes: a.notes || '',
+    })),
     emp: {
       id: emp.id,
       name: emp.name,
