@@ -123,6 +123,30 @@ export async function GET(request) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    // ── SKU / product-name search ────────────────────────────────────────
+    // Apr 30 2026 — Search ab order_items ke andar bhi dekhta hai. User SKU
+    // ya product title likhe to wo orders bhi aane chahiye jismein wo item
+    // exist karta hai.
+    //
+    // Approach: pehle order_items se matching order_ids nikaal lo, phir
+    // unko orders.id IN (...) clause ke through main OR mein add kar do.
+    // Cap 500 IDs taake URL length manageable rahe.
+    let matchedOrderIdsFromItems = null;
+    if (search) {
+      const safeItemSearch = search.replace(/[,()%]/g, ' ').trim();
+      if (safeItemSearch) {
+        const { data: matchingItems } = await supabase
+          .from('order_items')
+          .select('order_id')
+          .or(`sku.ilike.%${safeItemSearch}%,title.ilike.%${safeItemSearch}%`)
+          .limit(2000);
+        if (matchingItems && matchingItems.length > 0) {
+          const uniq = [...new Set(matchingItems.map(i => i.order_id).filter(Boolean))];
+          matchedOrderIdsFromItems = uniq.slice(0, 500);
+        }
+      }
+    }
+
     // Helper to apply shared filters to any query (main + stats)
     const applyFilters = (q) => {
       if (status && status !== 'all') q = q.eq('status', status);
@@ -168,7 +192,20 @@ export async function GET(request) {
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
       if (search) {
-        q = q.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,customer_city.ilike.%${search}%,tracking_number.ilike.%${search}%`);
+        // Apr 30 2026 — Search now includes order_items (SKU + product title).
+        // matchedOrderIdsFromItems is precomputed above (one-shot DB hit).
+        const safeSearch = search.replace(/[,()%]/g, ' ').trim();
+        const orParts = [
+          `order_number.ilike.%${safeSearch}%`,
+          `customer_name.ilike.%${safeSearch}%`,
+          `customer_phone.ilike.%${safeSearch}%`,
+          `customer_city.ilike.%${safeSearch}%`,
+          `tracking_number.ilike.%${safeSearch}%`,
+        ];
+        if (matchedOrderIdsFromItems && matchedOrderIdsFromItems.length > 0) {
+          orParts.push(`id.in.(${matchedOrderIdsFromItems.join(',')})`);
+        }
+        q = q.or(orParts.join(','));
       }
       return q;
     };
