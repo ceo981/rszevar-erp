@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { evaluateAutomatedTransition } from '@/lib/order-status';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -214,14 +215,34 @@ async function syncKangaroo() {
       const rawStatus = result.data?.Orderstatus || result.data?.orderstatus || null;
       const mappedStatus = mapKangarooStatus(rawStatus);
 
-      if (!mappedStatus || LOCKED.includes(order.status) || mappedStatus === order.status) continue;
+      // Always save raw status (informational, no protection needed)
+      const patch = { courier_status_raw: rawStatus, courier_last_synced_at: new Date().toISOString() };
 
-      const patch = { status: mappedStatus, courier_status_raw: rawStatus, courier_last_synced_at: new Date().toISOString() };
-      if (mappedStatus === 'delivered') {
-        patch.delivered_at = new Date().toISOString();
-        results.delivered++;
+      if (!mappedStatus || mappedStatus === order.status) {
+        // No mapped status or no change — just save raw
+        await supabase.from('orders').update(patch).eq('id', order.id);
+        continue;
       }
-      if (mappedStatus === 'returned') results.rto++;
+      if (LOCKED.includes(order.status)) {
+        // Already terminal — skip status update entirely
+        await supabase.from('orders').update(patch).eq('id', order.id);
+        continue;
+      }
+
+      // FIX Apr 2026 — Phase 1 flow refactor.
+      // Pehle: sirf LOCKED check hota tha (terminal states). confirmed/on_packing/
+      // packed orders ka status courier ke "delivered" message se overwrite ho
+      // sakta tha. Ab evaluateAutomatedTransition se proper guard.
+      const decision = evaluateAutomatedTransition(order.status, mappedStatus, 'courier_sync');
+      if (decision.apply) {
+        patch.status = mappedStatus;
+        if (mappedStatus === 'delivered') {
+          patch.delivered_at = new Date().toISOString();
+          results.delivered++;
+        }
+        if (mappedStatus === 'returned') results.rto++;
+      }
+      // else (blocked or noop): patch.status not set — only raw status saved
 
       const { error } = await supabase.from('orders').update(patch).eq('id', order.id);
       if (!error) results.updated++;
