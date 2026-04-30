@@ -192,7 +192,10 @@ export async function GET(request) {
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
       if (search) {
-        // Apr 30 2026 — Search now includes order_items (SKU + product title).
+        // Apr 30 2026 — Search now includes order_items (SKU + product title)
+        // AND Shopify confirmation_number (the short code customers see on the
+        // checkout success page like LCYW8MGUF, before the order_number is
+        // assigned). Customer support often pastes that code from a screenshot.
         // matchedOrderIdsFromItems is precomputed above (one-shot DB hit).
         const safeSearch = search.replace(/[,()%]/g, ' ').trim();
         const orParts = [
@@ -201,6 +204,7 @@ export async function GET(request) {
           `customer_phone.ilike.%${safeSearch}%`,
           `customer_city.ilike.%${safeSearch}%`,
           `tracking_number.ilike.%${safeSearch}%`,
+          `shopify_raw->>confirmation_number.ilike.%${safeSearch}%`,
         ];
         if (matchedOrderIdsFromItems && matchedOrderIdsFromItems.length > 0) {
           orParts.push(`id.in.(${matchedOrderIdsFromItems.join(',')})`);
