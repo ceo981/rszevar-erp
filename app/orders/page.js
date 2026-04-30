@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import OrderDrawer from './_components/OrderDrawer';
 
@@ -478,15 +479,25 @@ export default function OrdersPage() {
   const { profile } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
   const { userEmail } = useUser();
+  // Apr 30 2026 — Read URL `?search=` so deep-links from order detail page
+  // (Customer name → "X orders total" link) land here pre-filtered.
+  const urlSearchParams = useSearchParams();
+  const initialSearchFromUrl = urlSearchParams?.get('search') || '';
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState(''); // debounced version used by API
+  const [search, setSearch] = useState(initialSearchFromUrl);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearchFromUrl); // debounced version used by API
   // Apr 2026 — Default tab: Unfulfilled (operational view "kya pack karna hai").
   // User can switch to "All Orders" anytime by clicking that tab.
-  const [filter, setFilter] = useState({ type: 'fulfillment', value: 'unfulfilled' });
+  // FIX Apr 30 2026 — when arriving with a deep-link search (e.g. customer
+  // phone), default to "All Orders" so wholesale/walk-in/delivered all show.
+  const [filter, setFilter] = useState(
+    initialSearchFromUrl
+      ? { type: null, value: null }
+      : { type: 'fulfillment', value: 'unfulfilled' }
+  );
   // Apr 28 2026 — Date range filter. By default both empty = no date filter.
   // User select karega to backend ko `from` aur `to` params bhejtay hain
   // jo orders list AND tab counts dono ko narrow karte hain.
@@ -1014,7 +1025,7 @@ export default function OrdersPage() {
       {/* ── Search + Secondary filters + Buttons ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Search order, customer, phone, tracking, SKU, product..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
+          placeholder="Search order, customer, phone, tracking, SKU, product, confirmation..." style={{ flex: 1, minWidth: 200, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13 }} />
 
         {/* Secondary filter — Type / Courier / Payment only (Status handled by tabs) */}
         <FilterDropdown
