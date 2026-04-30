@@ -363,6 +363,7 @@ function AuthenticatedShell({ pathname, router, children }) {
   const BOTTOM_NAV_CANDIDATES = [
     { id: 'dashboard', href: '/dashboard', label: 'Home',    icon: '🏠', perm: 'dashboard.view' },
     { id: 'orders',    href: '/orders',    label: 'Orders',  icon: '📋', perm: 'orders.view' },
+    { id: 'picking',   href: '/picking',   label: 'Pick',    icon: '🏷️', perm: 'packing.view' },
     { id: 'packing',   href: '/packing',   label: 'Packing', icon: '🎁', perm: 'packing.view' },
     { id: 'work-submit', href: '/work-submit', label: 'Work', icon: '📝', perm: 'packing.submit' },
     { id: 'inventory', href: '/inventory', label: 'Stock',   icon: '📦', perm: 'inventory.view' },
