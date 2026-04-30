@@ -74,24 +74,49 @@ function ProductPicker({ onClose, onAdd }) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState({}); // {variant_id: variant_obj}
   const inputRef = useRef(null);
+  // Apr 30 2026 — Stale-fetch guard (same fix as create order picker).
+  const abortRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    if (!query || query.length < 2) { setResults([]); return; }
+    if (!query || query.trim().length < 2) {
+      setResults([]);
+      if (abortRef.current) abortRef.current.abort();
+      return;
+    }
     const t = setTimeout(async () => {
+      if (abortRef.current) abortRef.current.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
       setLoading(true);
       try {
-        const r = await fetch(`/api/products?search=${encodeURIComponent(query)}&view=flat&limit=15`);
+        const r = await fetch(`/api/products?search=${encodeURIComponent(query.trim())}&view=flat&limit=20`, { signal: ac.signal });
         const d = await r.json();
-        setResults(d.products || []);
-      } catch {}
-      setLoading(false);
+        if (ac.signal.aborted) return;
+        const rows = d.products || [];
+        // Exact-SKU-match boost (same logic as create order)
+        const q = query.trim().toLowerCase();
+        const exact = [], startsWith = [], rest = [];
+        for (const p of rows) {
+          const sku = String(p.sku || '').toLowerCase();
+          if (sku && sku === q)              exact.push(p);
+          else if (sku && sku.startsWith(q)) startsWith.push(p);
+          else                                rest.push(p);
+        }
+        setResults([...exact, ...startsWith, ...rest]);
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+      if (!ac.signal.aborted) setLoading(false);
     }, 300);
     return () => clearTimeout(t);
   }, [query]);
 
   const toggle = (v) => {
+    // Apr 30 2026 — Block selection of out-of-stock items.
+    if ((v.stock_quantity ?? 0) <= 0) return;
     setSelected(s => {
       const next = { ...s };
       const key = v.shopify_variant_id;
@@ -145,6 +170,8 @@ function ProductPicker({ onClose, onAdd }) {
           {results.map(p => {
             const key = p.shopify_variant_id;
             const isSel = !!selected[key];
+            const stock = Number(p.stock_quantity ?? 0);
+            const isOutOfStock = stock <= 0;
             return (
               <div key={p.id || key} style={{
                 display: 'flex', alignItems: 'center', gap: 12,
@@ -152,19 +179,28 @@ function ProductPicker({ onClose, onAdd }) {
                 background: isSel ? 'rgba(201,169,110,0.1)' : 'transparent',
                 border: `1px solid ${isSel ? gold : 'transparent'}`,
                 marginBottom: 4,
+                opacity: isOutOfStock ? 0.5 : 1,
+                cursor: isOutOfStock ? 'not-allowed' : 'default',
               }}>
-                <input type="checkbox" checked={isSel} onChange={() => toggle(p)} style={{ cursor: 'pointer' }} />
+                <input type="checkbox" checked={isSel} disabled={isOutOfStock} onChange={() => toggle(p)} style={{ cursor: isOutOfStock ? 'not-allowed' : 'pointer' }} />
                 {p.image_url ? (
-                  <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, cursor: 'pointer' }} onClick={() => toggle(p)} />
+                  <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer', filter: isOutOfStock ? 'grayscale(80%)' : 'none' }} onClick={() => toggle(p)} />
                 ) : (
-                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: 'pointer' }}>💍</div>
+                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}>💍</div>
                 )}
-                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggle(p)}>
-                  <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ flex: 1, minWidth: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }} onClick={() => toggle(p)}>
+                  <div style={{ fontSize: 13, color: isOutOfStock ? '#888' : '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isOutOfStock ? 'line-through' : 'none' }}>
                     {p.title || p.parent_title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-                    SKU: {p.sku || '—'} • Stock: {p.stock_quantity ?? 0}
+                  <div style={{ fontSize: 11, color: '#666', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>SKU: {p.sku || '—'}</span>
+                    {isOutOfStock ? (
+                      <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid #ef4444', padding: '1px 8px', borderRadius: 10, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        ✕ Out of stock
+                      </span>
+                    ) : (
+                      <span>Stock: {stock}</span>
+                    )}
                   </div>
                 </div>
                 {isSel ? (
@@ -174,7 +210,7 @@ function ProductPicker({ onClose, onAdd }) {
                     style={{ ...inpStyle, width: 60, padding: '5px 8px', textAlign: 'center' }} />
                 ) : null}
                 <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 75 }}>
-                  <div style={{ fontSize: 13, color: gold, fontWeight: 600 }}>{fmt(p.selling_price)}</div>
+                  <div style={{ fontSize: 13, color: isOutOfStock ? '#666' : gold, fontWeight: 600 }}>{fmt(p.selling_price)}</div>
                 </div>
               </div>
             );
