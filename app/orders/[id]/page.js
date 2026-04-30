@@ -1347,7 +1347,17 @@ export default function SingleOrderPage() {
               }
               overflowVisible
             >
-              <Row label={`Subtotal (${items.length} item${items.length !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
+              {/* FIX Apr 30 2026 — Subtotal items count Shopify se match kare.
+                  Pehle items.length use hota tha (distinct line items count) —
+                  Shopify total QUANTITY dikhata hai (sum of qty across lines).
+                  Multi-quantity items ki wajah se 61 vs 63 ka mismatch ho raha
+                  tha. Ab dono aligned hain. */}
+              {(() => {
+                const totalQty = items.reduce((s, it) => s + (parseInt(it.quantity) || 0), 0);
+                return (
+                  <Row label={`Subtotal (${totalQty} item${totalQty !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
+                );
+              })()}
               {discount > 0 && (
                 <Row
                   label={
