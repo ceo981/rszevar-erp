@@ -69,7 +69,41 @@ export default function InvoicePage() {
     );
   }
 
-  const items = order.order_items || [];
+  // Apr 30 2026 — Per-line discount enrichment.
+  // Pehle invoice mein sirf unit_price × qty = amount dikhta tha. Per-line
+  // Shopify discount (compare_at vs sale, Order Edit ka per-line discount,
+  // wholesale discount) reflect nahi hota tha — customer ko bhi nahi pata
+  // chalta tha kitna saved hua, aur order detail page se invoice ki gintee
+  // match nahi karti thi. Yahan order detail page wala same enrichment
+  // pattern use karte hain: shopify_raw.line_items se total_discount aur
+  // original price milate hain DB row ke saath.
+  const isActiveRawLineItem = (it) => {
+    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
+      return it.current_quantity > 0;
+    }
+    return (it?.quantity || 0) > 0;
+  };
+  const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
+  const enrichItemWithDiscount = (item) => {
+    const raw = rawLineItems.find(r =>
+      (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+      (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+      (r.title && item.title && item.title.startsWith(r.title))
+    );
+    const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+    const rawPrice    = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+    const qty = item.quantity || 1;
+    const effectiveUnitPrice = qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice;
+    return {
+      ...item,
+      original_unit_price: rawPrice,
+      effective_unit_price: effectiveUnitPrice,
+      line_discount: rawDiscount,
+      has_line_discount: rawDiscount > 0.01,
+    };
+  };
+
+  const items = (order.order_items || []).map(enrichItemWithDiscount);
   const subtotal = parseFloat(order.subtotal || 0);
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
@@ -550,23 +584,58 @@ export default function InvoicePage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
-                <tr key={item.id || idx}>
-                  <td>
-                    {item.image_url
-                      ? <img src={item.image_url} alt="" className="thumb" />
-                      : <div style={{ width: 56, height: 56, background: '#faf7f2', borderRadius: 4, border: '1px solid #e5d9c1', textAlign: 'center', lineHeight: '56px', fontSize: 24 }}>📦</div>
-                    }
-                  </td>
-                  <td>
-                    <div className="title">{item.title}</div>
-                    {item.sku && <div className="sku">SKU: {item.sku}</div>}
-                  </td>
-                  <td className="qty">{item.quantity}</td>
-                  <td className="price">{fmt(item.unit_price)}</td>
-                  <td className="total">{fmt(item.total_price || (item.unit_price * item.quantity))}</td>
-                </tr>
-              ))}
+              {items.map((item, idx) => {
+                const qty = item.quantity || 0;
+                // Show strikethrough only when there's a real per-line discount.
+                // Order-level discount is shown separately in the totals section.
+                const showStrike = item.has_line_discount;
+                const lineSub  = (item.original_unit_price || item.unit_price) * qty;        // pre-discount line total
+                const lineNet  = item.total_price || (item.unit_price * qty);                // post-discount
+                return (
+                  <tr key={item.id || idx}>
+                    <td>
+                      {item.image_url
+                        ? <img src={item.image_url} alt="" className="thumb" />
+                        : <div style={{ width: 56, height: 56, background: '#faf7f2', borderRadius: 4, border: '1px solid #e5d9c1', textAlign: 'center', lineHeight: '56px', fontSize: 24 }}>📦</div>
+                      }
+                    </td>
+                    <td>
+                      <div className="title">{item.title}</div>
+                      {item.sku && <div className="sku">SKU: {item.sku}</div>}
+                      {showStrike && (
+                        <div className="sku" style={{ color: '#c0392b', fontWeight: 600, marginTop: 2 }}>
+                          Saved {fmt(item.line_discount)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="qty">{qty}</td>
+                    <td className="price">
+                      {showStrike ? (
+                        <>
+                          <div style={{ textDecoration: 'line-through', color: '#9aa0a6', fontSize: 11 }}>
+                            {fmt(item.original_unit_price)}
+                          </div>
+                          <div style={{ fontWeight: 600 }}>{fmt(item.effective_unit_price)}</div>
+                        </>
+                      ) : (
+                        fmt(item.unit_price)
+                      )}
+                    </td>
+                    <td className="total">
+                      {showStrike ? (
+                        <>
+                          <div style={{ textDecoration: 'line-through', color: '#9aa0a6', fontSize: 11 }}>
+                            {fmt(lineSub)}
+                          </div>
+                          <div>{fmt(lineNet)}</div>
+                        </>
+                      ) : (
+                        fmt(lineNet)
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
