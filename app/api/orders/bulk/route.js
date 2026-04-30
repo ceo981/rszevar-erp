@@ -14,7 +14,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { canTransition, VALID_STATUSES } from '@/lib/order-status';
+import { canTransition, VALID_STATUSES, computeStatusRevertSideEffects, applyStatusRevertSideEffects } from '@/lib/order-status';
 import {
   updateShopifyOrderTags,
   addShopifyOrderNote,
@@ -186,6 +186,12 @@ async function doStatus(supabase, orderId, newStatus, notes, performer, performe
   }
   if (newStatus === 'rto') patch.rto_at = nowIso;
 
+  // Apr 2026 — Status DOWNGRADE side-effect cleanup (mirrors single-status route).
+  // Force-changing status to an earlier point should clear stale artifacts:
+  // assignment, packing_log credit, tracking, dispatched_at, etc.
+  const revert = computeStatusRevertSideEffects(order.status, newStatus);
+  Object.assign(patch, revert.patchAdditions);
+
   // Resilient UPDATE — strip missing optional columns if schema lacks them
   const OPTIONAL_COLS = ['delivered_at', 'rto_at', 'paid_at'];
   let updateErr = null;
@@ -206,10 +212,31 @@ async function doStatus(supabase, orderId, newStatus, notes, performer, performe
   }
   if (updateErr) return { success: false, error: updateErr.message };
 
+  // Apply auxiliary table reverts (best-effort)
+  let revertResult = { revertedFields: [], rowsRemoved: { assignments: 0, packing_log: 0 } };
+  if (revert.deleteAssignments || revert.deletePackingLog) {
+    try {
+      revertResult = await applyStatusRevertSideEffects(supabase, orderId, revert);
+    } catch (e) {
+      console.error('[bulk-status] revert side-effects failed:', e.message);
+    }
+  }
+
+  // Build revert note for activity log transparency
+  let revertNote = '';
+  if (revertResult.revertedFields.length > 0) {
+    const parts = [];
+    if (revertResult.rowsRemoved.assignments > 0) parts.push('assignment removed');
+    if (revertResult.rowsRemoved.packing_log > 0) parts.push(`packing credit removed (${revertResult.rowsRemoved.packing_log} rows)`);
+    if (revertResult.revertedFields.some(f => f.startsWith('tracking') || f === 'shopify_fulfillment_id')) parts.push('tracking + fulfillment cleared');
+    if (revertResult.revertedFields.includes('dispatched_at')) parts.push('dispatched_at cleared');
+    if (parts.length > 0) revertNote = ` Side-effects reverted: ${parts.join(', ')}.`;
+  }
+
   await supabase.from('order_activity_log').insert({
     order_id: orderId,
     action: `status_changed_to_${newStatus}`,
-    notes: notes || `Bulk status → ${newStatus}`,
+    notes: (notes || `Bulk status → ${newStatus}`) + revertNote,
     performed_by: performer,
     performed_by_email: performerEmail,
     performed_at: nowIso,
