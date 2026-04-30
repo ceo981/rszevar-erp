@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { canTransition } from '@/lib/order-status';
+import { evaluateAutomatedTransition } from '@/lib/order-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -383,19 +383,24 @@ export async function POST(request) {
         } else {
           toMarkPaid.push({ id: db.id, order_number: o.order_number, amount: o.net_amount });
         }
-     } else if (o.status === 'rto') {
+      } else if (o.status === 'rto') {
+        // FIX Apr 2026 — Phase 1 flow refactor.
+        // Pehle: sirf simple LOCKED list. confirmed/on_packing orders galti se
+        // settlement RTO mein aaye to canTransition skip ho jaata tha.
+        // Ab: evaluateAutomatedTransition se proper guard. Pre-dispatch orders
+        // BLOCKED honge — protocol violation log ke saath. Sirf dispatched/
+        // attempted orders ka RTO marking allowed (post-dispatch progression).
         const locked = ['delivered', 'paid', 'rto', 'cancelled', 'refunded'];
         if (locked.includes(db.status)) {
           alreadyRTO.push(o.order_number);
         } else {
-          // Defense-in-depth: canTransition guard. Settlement files mein
-          // sirf dispatched orders hone chahiye, lekin agar galti se koi
-          // pending/confirmed order aa jaye to silently RTO mein flip nahi karenge.
-          const gate = canTransition(db.status, 'rto', 'manual');
-          if (!gate.allowed) {
-            skipped.push(o.order_number);
-          } else {
+          // Check if status='rto' is a legal automated transition from db.status
+          const decision = evaluateAutomatedTransition(db.status, 'rto', 'courier_sync');
+          if (decision.apply) {
             toMarkRTO.push({ id: db.id, order_number: o.order_number });
+          } else {
+            // Not allowed — pre-dispatch order somehow in settlement RTO. Skip + log.
+            skipped.push(`${o.order_number} (status: ${db.status} — RTO blocked)`);
           }
         }
       } else {
