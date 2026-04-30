@@ -49,7 +49,7 @@ function StatusPill({ status }) {
 }
 
 export default function PickingPage() {
-  const [orderNum, setOrderNum]   = useState('');
+  const [orderNum, setOrderNum]   = useState('ZEVAR-');
   const [order, setOrder]         = useState(null);
   const [items, setItems]         = useState([]);
   const [searching, setSearching] = useState(false);
@@ -107,7 +107,7 @@ export default function PickingPage() {
   const reset = () => {
     setOrder(null);
     setItems([]);
-    setOrderNum('');
+    setOrderNum('ZEVAR-');
     setMsg('');
     setPickedSet(new Set());
     setTimeout(() => inputRef.current?.focus(), 50);
