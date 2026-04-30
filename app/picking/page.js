@@ -54,8 +54,9 @@ export default function PickingPage() {
   const [items, setItems]         = useState([]);
   const [searching, setSearching] = useState(false);
   const [msg, setMsg]             = useState('');
-  // Visual-only "picked" toggle per item — helps picker track progress.
-  // NOT saved to DB (this page is read-only by design).
+  // "Picked" toggle per item — picker ko sab tap karne padenge tab "Next Order"
+  // button enable hoga. Garbar-proof: bhul ke bina pick ke aage nahi badh sakte.
+  // (Note: still NOT saved to DB — gating sirf is session ke liye hai.)
   const [pickedSet, setPickedSet] = useState(new Set());
   const inputRef = useRef(null);
 
@@ -371,23 +372,30 @@ export default function PickingPage() {
             </div>
           )}
 
-          {/* Search next button */}
+          {/* Search next button — disabled jab tak sab items pick na ho jaye */}
           <button
             onClick={reset}
+            disabled={!allPicked}
             style={{
               width: '100%',
-              background: gold,
-              color: '#000',
-              border: 'none',
+              background: allPicked ? gold : '#1a1a1a',
+              color: allPicked ? '#000' : '#555',
+              border: allPicked ? 'none' : '2px dashed #333',
               borderRadius: 12,
               padding: 16,
               fontSize: 16,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: allPicked ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit',
+              transition: 'all 0.15s',
             }}
           >
-            🔍 Next Order
+            {allPicked
+              ? '🔍 Next Order'
+              : items.length === 0
+                ? 'No items'
+                : `🔒 ${items.length - pickedSet.size} item${items.length - pickedSet.size === 1 ? '' : 's'} abhi pick karne baki`
+            }
           </button>
         </>
       )}
@@ -405,8 +413,8 @@ export default function PickingPage() {
           lineHeight: 1.6,
           textAlign: 'center',
         }}>
-          💡 Tap karke item ko picked mark kar sakte ho.<br/>
-          Yeh sirf tumhari madad ke liye hai — DB mein save nahi hota.
+          💡 Har item ko tap karke pick mark karna hoga.<br/>
+          Sab items pick hone ke baad hi "Next Order" button khulega.
         </div>
       )}
     </div>
