@@ -1675,7 +1675,7 @@ export default function SingleOrderPage() {
             }>
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
               {order.customer_order_count > 0 && (
-                <Link href={`/customers?phone=${encodeURIComponent(order.customer_phone || '')}`}
+                <Link href={`/orders?search=${encodeURIComponent(order.customer_phone || '')}`}
                   style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 6 }}>
                   {order.customer_order_count === 1 ? '1st order' : `${order.customer_order_count} orders total`} →
                 </Link>
