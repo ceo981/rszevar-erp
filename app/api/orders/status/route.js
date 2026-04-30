@@ -16,7 +16,12 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { canTransition, VALID_STATUSES } from '@/lib/order-status';
+import {
+  canTransition,
+  VALID_STATUSES,
+  computeStatusRevertSideEffects,
+  applyStatusRevertSideEffects,
+} from '@/lib/order-status';
 import { markShopifyOrderAsPaid } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
@@ -119,6 +124,14 @@ export async function POST(request) {
       patch.rto_at = nowIso;
     }
 
+    // Apr 2026 — Status DOWNGRADE side-effect cleanup.
+    // When user force-changes status to an earlier point in the workflow,
+    // strip artifacts from later stages (assignment, packing_log credit,
+    // tracking, dispatched_at, etc.) so the order doesn't carry stale data.
+    // Helper computes what to clear based on direction; we merge into patch.
+    const revert = computeStatusRevertSideEffects(order.status, status);
+    Object.assign(patch, revert.patchAdditions);
+
     // Resilient UPDATE — if an optional timestamp column (delivered_at, rto_at,
     // paid_at) doesn't exist in schema, strip it and retry. dispatched_at,
     // confirmed_at are assumed to exist since older code writes to them.
@@ -145,6 +158,17 @@ export async function POST(request) {
     }
     if (updateErr) throw updateErr;
 
+    // Apply auxiliary table reverts (order_assignments, packing_log).
+    // Best-effort — if these fail, order status is still updated correctly.
+    let revertResult = { revertedFields: [], rowsRemoved: { assignments: 0, packing_log: 0 } };
+    if (revert.deleteAssignments || revert.deletePackingLog) {
+      try {
+        revertResult = await applyStatusRevertSideEffects(supabase, order_id, revert);
+      } catch (e) {
+        console.error('[status] revert side-effects failed:', e.message);
+      }
+    }
+
     // Phase 2 (Apr 20 2026): if auto-paid happened (COD delivered flow), also
     // mark Shopify order as paid. Best-effort: failure doesn't roll back ERP.
     let shopifyPaidSynced = false;
@@ -160,10 +184,22 @@ export async function POST(request) {
     }
 
     // Activity log — always attribute performer
+    // Apr 2026: also note any side-effects that were reverted (assignment removed,
+    // packing credit removed, tracking cleared) so the timeline is honest.
+    let revertNote = '';
+    if (revertResult.revertedFields.length > 0) {
+      const parts = [];
+      if (revertResult.rowsRemoved.assignments > 0) parts.push(`assignment removed`);
+      if (revertResult.rowsRemoved.packing_log > 0) parts.push(`packing credit removed (${revertResult.rowsRemoved.packing_log} rows)`);
+      if (revertResult.revertedFields.some(f => f.startsWith('tracking') || f === 'shopify_fulfillment_id')) parts.push(`tracking + fulfillment cleared`);
+      if (revertResult.revertedFields.includes('dispatched_at')) parts.push(`dispatched_at cleared`);
+      if (parts.length > 0) revertNote = ` Side-effects reverted: ${parts.join(', ')}.`;
+    }
+
     await supabase.from('order_activity_log').insert({
       order_id,
       action: `status_changed_to_${status}`,
-      notes: notes || `${order.status} → ${status}`,
+      notes: (notes || `${order.status} → ${status}`) + revertNote,
       performed_by: performed_by || 'Staff',
       performed_by_email: performed_by_email || null,
       performed_at: nowIso,
