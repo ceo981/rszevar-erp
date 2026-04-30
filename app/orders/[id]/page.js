@@ -192,6 +192,15 @@ export default function SingleOrderPage() {
 
   // Phase 2 NEW: confirmation box state for Mark as Paid (irreversible-ish, needs confirmation)
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  // Apr 30 2026 — Payment method picker. When user clicks a specific method
+  // (Cash / Bank Alfalah / Meezan / Easypaisa / JazzCash) we open this with
+  // the method preset. For digital methods, screenshot upload is enabled.
+  // null = no modal open. Object = { method: 'Cash'|..., requireProof: bool }.
+  const [paymentMethodModal, setPaymentMethodModal] = useState(null);
+  const [paymentProofFile, setPaymentProofFile] = useState(null);
+  const [paymentProofUrl, setPaymentProofUrl] = useState('');
+  const [paymentProofUploading, setPaymentProofUploading] = useState(false);
+  const [paymentMethodNote, setPaymentMethodNote] = useState('');
 
   // Apr 2026 — Customer mini-history (last 3 orders by phone) for sidebar inline preview
   const [customerHistory, setCustomerHistory] = useState([]);
@@ -385,7 +394,12 @@ export default function SingleOrderPage() {
   const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
 
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
-  const markAsPaid = async () => {
+  // Apr 30 2026 — Method-aware. Optional payment_method ('Cash' | 'Bank Alfalah' |
+  // 'Meezan Bank' | 'Easypaisa' | 'JazzCash' | 'Manual'), optional proof URL
+  // (Supabase storage public link), and optional staff note. Backwards-
+  // compatible — if no args passed, behaves like the old generic mark-paid.
+  const markAsPaid = async (opts = {}) => {
+    const { payment_method, payment_proof_url, note } = opts;
     setShowPaidConfirm(false);
     setOpenMenu(null);
     setActionBusy(true);
@@ -393,17 +407,25 @@ export default function SingleOrderPage() {
       const r = await fetch('/api/orders/mark-paid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: id, performed_by: performer, performed_by_email: userEmail }),
+        body: JSON.stringify({
+          order_id: id,
+          payment_method,
+          payment_proof_url,
+          note,
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
       });
       const d = await r.json();
       if (d.success) {
+        const methodTag = payment_method ? ` (${payment_method})` : '';
         const msgText = d.shopify_synced
           ? (d.shopify_already_paid
-            ? '✓ Paid (Shopify already paid)'
-            : '✓ Paid — Shopify synced')
+            ? `✓ Paid${methodTag} (Shopify already paid)`
+            : `✓ Paid${methodTag} — Shopify synced`)
           : (d.warning
-            ? `⚠ Paid in ERP — Shopify sync failed: ${d.warning}`
-            : '✓ Paid');
+            ? `⚠ Paid in ERP${methodTag} — Shopify sync failed: ${d.warning}`
+            : `✓ Paid${methodTag}`);
         flash(d.shopify_synced || !d.warning ? 'success' : 'info', msgText, 6000);
         await refreshAll();
       } else {
@@ -1535,14 +1557,138 @@ export default function SingleOrderPage() {
                         style={{
                           position: 'absolute', top: 'calc(100% + 4px)', right: 0,
                           background: '#0f0f0f', border: `1px solid ${border}`,
-                          borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
+                          borderRadius: 8, padding: 5, minWidth: 240, zIndex: 50,
                           boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                         }}
                       >
-                        <MenuItem icon="✓" label="Mark as paid" sub="ERP + Shopify dono sync honge"
+                        {/* Apr 30 2026 — Multi-method payment picker.
+                            Bank/wallet options request screenshot proof.
+                            "Cash" + "Manual" go straight to confirmation.
+                            All flow through same /api/orders/mark-paid endpoint
+                            with an optional payment_method tag for reporting.
+                            Courier auto-paid (Leopards/auto-settle) does NOT
+                            pass payment_method, so it stays as 'COD' — these
+                            two paths don't conflict. */}
+                        <MenuItem icon="🏦" label="Bank Alfalah" sub="Screenshot upload"
+                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Bank Alfalah', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
+                        <MenuItem icon="🏦" label="Meezan Bank" sub="Screenshot upload"
+                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Meezan Bank', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
+                        <MenuItem icon="💳" label="Easypaisa" sub="Screenshot upload"
+                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Easypaisa', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
+                        <MenuItem icon="💳" label="JazzCash" sub="Screenshot upload"
+                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'JazzCash', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
+                        <MenuItem icon="💵" label="Cash" sub="In-hand collection"
+                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Cash', requireProof: false }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
+                        <div style={{ height: 1, background: border, margin: '4px 0' }} />
+                        <MenuItem icon="✓" label="Manual paid" sub="Generic — no method tag"
                           onClick={() => { setOpenMenu(null); setShowPaidConfirm(true); }} />
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Apr 30 2026 — Payment method modal (per-method confirm).
+                  Opens when user picks Cash / Bank Alfalah / Meezan / Easypaisa /
+                  JazzCash from the Collect payment dropdown. Bank + wallet
+                  methods require a screenshot upload (auto-uploads on file
+                  select). Cash skips the upload step. Final confirm calls the
+                  mark-paid endpoint with the payment_method tag and (if
+                  uploaded) proof URL — both get embedded in the activity log
+                  Timeline. */}
+              {paymentMethodModal && !isPaid && !isCancelled && (
+                <div style={{ marginTop: 14, padding: 14, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: '#4ade80', marginBottom: 6, fontWeight: 600 }}>
+                    💰 {paymentMethodModal.method} — confirm payment
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
+                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> {paymentMethodModal.method} ke through paid mark hoga.
+                    {order.shopify_order_id ? ' Shopify pe bhi "Paid" sync hogi.' : ' (Manual order — sirf ERP).'}
+                  </div>
+
+                  {paymentMethodModal.requireProof && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Screenshot proof (JPG/PNG/PDF, max 10MB)</div>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          setPaymentProofFile(f);
+                          setPaymentProofUploading(true);
+                          try {
+                            const fd = new FormData();
+                            fd.append('file', f);
+                            fd.append('order_number', order.order_number || '');
+                            const r = await fetch('/api/orders/payment-proof', { method: 'POST', body: fd });
+                            const d = await r.json();
+                            if (d.success) {
+                              setPaymentProofUrl(d.url);
+                              flash('success', '✓ Proof uploaded');
+                            } else {
+                              flash('error', d.error || 'Upload failed');
+                              setPaymentProofFile(null);
+                            }
+                          } catch (err) {
+                            flash('error', err.message);
+                            setPaymentProofFile(null);
+                          }
+                          setPaymentProofUploading(false);
+                        }}
+                        style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit' }}
+                      />
+                      {paymentProofUploading && (
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>⟳ Uploading…</div>
+                      )}
+                      {paymentProofUrl && !paymentProofUploading && (
+                        <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          ✓ Uploaded —
+                          <a href={paymentProofUrl} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'underline' }}>
+                            view
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Note (optional) — e.g. transaction id</div>
+                    <input
+                      type="text"
+                      value={paymentMethodNote}
+                      onChange={e => setPaymentMethodNote(e.target.value)}
+                      placeholder="TXN-1234567 / Reference"
+                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => { setPaymentMethodModal(null); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }}
+                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        // Defence: digital methods need proof. Cash doesn't.
+                        if (paymentMethodModal.requireProof && !paymentProofUrl) {
+                          flash('error', 'Pehle screenshot upload karo'); return;
+                        }
+                        await markAsPaid({
+                          payment_method: paymentMethodModal.method,
+                          payment_proof_url: paymentProofUrl || undefined,
+                          note: paymentMethodNote.trim() || undefined,
+                        });
+                        setPaymentMethodModal(null);
+                        setPaymentProofFile(null);
+                        setPaymentProofUrl('');
+                        setPaymentMethodNote('');
+                      }}
+                      disabled={actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)}
+                      style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: (actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)) ? 0.5 : 1 }}>
+                      {actionBusy ? 'Marking…' : `✓ Confirm ${paymentMethodModal.method} paid`}
+                    </button>
                   </div>
                 </div>
               )}
