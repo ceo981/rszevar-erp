@@ -409,7 +409,9 @@ export default function VariantEditPage() {
   // Detect unsaved changes
   const isDirty = useMemo(() => {
     if (!draft || !originalVariant) return false;
-    const keys = ['selling_price', 'compare_at_price', 'sku', 'barcode', 'stock_quantity', 'weight'];
+    // Apr 30 2026 — variant_label added to dirty detection so the Save button
+    // activates when user edits the option values (Ruby → Red, etc).
+    const keys = ['selling_price', 'compare_at_price', 'sku', 'barcode', 'stock_quantity', 'weight', 'variant_label'];
     return keys.some(k => String(originalVariant[k] ?? '') !== String(draft[k] ?? ''));
   }, [draft, originalVariant]);
 
@@ -484,6 +486,27 @@ export default function VariantEditPage() {
       }
       if (String(originalVariant.weight ?? '') !== String(draft.weight ?? '')) {
         variantPatch.grams = Number(draft.weight) || 0;
+      }
+      // Apr 30 2026 — variant_label diff. Pehle read-only tha; ab editable.
+      // Split " / " se option1/option2/option3 ban jate hain. Backend Shopify
+      // ko seedha forward kar deta hai. "Default" wala case (single-variant
+      // product) UI mein already block kiya hua hai — yahan extra safety.
+      const origLabel = String(originalVariant.variant_label ?? '').trim();
+      const newLabel  = String(draft.variant_label ?? '').trim();
+      if (origLabel !== newLabel && origLabel !== 'Default' && origLabel !== '') {
+        const parts = newLabel.split('/').map(p => p.trim());
+        const origParts = origLabel.split('/').map(p => p.trim());
+        // Send only changed/non-empty positions; preserve original count
+        // (e.g. if origLabel had 2 parts, don't accidentally clear option2 when
+        // user typed only 1 part — they'd see a clear validation error from
+        // Shopify rather than silent data loss).
+        for (let i = 0; i < Math.max(parts.length, origParts.length); i++) {
+          const newVal = parts[i] || '';
+          const origVal = origParts[i] || '';
+          if (newVal !== origVal && newVal !== '') {
+            variantPatch[`option${i + 1}`] = newVal;
+          }
+        }
       }
 
       const res = await fetch(`/api/products/${productId}`, {
@@ -672,19 +695,56 @@ export default function VariantEditPage() {
           {/* ═══ MAIN CONTENT ═══ */}
           <div>
 
-            {/* Title (read-only — variant labels come from product options) */}
+            {/* Apr 30 2026 — Variant label editable.
+                User edits the visible label (e.g. "Ruby" or "Small / Red").
+                On save, label is split by " / " → option1/option2/option3 and
+                sent to Shopify's variant API. Single-variant products (label
+                = "Default") stay read-only — they have no options to edit. */}
             <Card title="Variant">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
                 {draft.image_url ? (
                   <img src={draft.image_url} alt="" style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', border: `1px solid ${border}`, flexShrink: 0 }} />
                 ) : (
                   <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(201,169,110,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 24 }}>💍</div>
                 )}
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: text1 }}>{draft.variant_label || 'Default'}</div>
-                  <div style={{ fontSize: 11, color: text3, marginTop: 4 }}>
-                    To change the option name (e.g. &quot;Size&quot; values), edit the parent product&apos;s options on Shopify admin.
-                  </div>
+                  {(originalVariant?.variant_label === 'Default' || !originalVariant?.variant_label) ? (
+                    // Single-variant product — no options to edit
+                    <>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: text1 }}>{draft.variant_label || 'Default'}</div>
+                      <div style={{ fontSize: 11, color: text3, marginTop: 4 }}>
+                        Single-variant product — koi options nahi. Naye options add karna ho to Shopify admin se.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Label hint="(option values, e.g. &quot;Ruby&quot; or &quot;Medium / Red&quot;)">Variant label</Label>
+                      <input
+                        type="text"
+                        value={draft.variant_label || ''}
+                        onChange={e => setField('variant_label', e.target.value)}
+                        placeholder="e.g. Ruby"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          background: '#0e0e0e',
+                          color: text1,
+                          border: `1px solid ${border}`,
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                        }}
+                        onFocus={e => e.currentTarget.style.borderColor = gold}
+                        onBlur={e => e.currentTarget.style.borderColor = border}
+                      />
+                      <div style={{ fontSize: 11, color: text3, marginTop: 6, lineHeight: 1.5 }}>
+                        Multiple options ho to <code style={{ background: '#1a1a1a', padding: '1px 5px', borderRadius: 3, color: gold }}>{' / '}</code> se separate karo
+                        (e.g. <code style={{ background: '#1a1a1a', padding: '1px 5px', borderRadius: 3 }}>Small / Red</code>).
+                        Save par seedha Shopify update hota hai. Option ke <em>name</em> (Size, Color) Shopify admin se hi change hote hain.
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </Card>
