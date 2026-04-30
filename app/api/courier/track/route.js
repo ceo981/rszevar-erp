@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { evaluateAutomatedTransition } from '@/lib/order-status';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -92,18 +93,51 @@ export async function GET(request) {
         updated_at: new Date().toISOString(),
       }).eq('id', bookingId);
 
-      // If delivered, mark COD collected
-      if (normalStatus === 'delivered') {
-        const { data: booking } = await supabase.from('courier_bookings').select('order_id').eq('id', bookingId).single();
+      // FIX Apr 2026 — Phase 1 flow refactor.
+      // Pehle: courier API se "delivered"/"rto" mile to seedha orders.status overwrite ho jata tha.
+      // Yeh canTransition guard skip karta tha — confirmed/on_packing orders ka status
+      // bhi galti se delivered ho sakta tha.
+      // Ab: evaluateAutomatedTransition se check karte hain. Sirf agar valid forward
+      // progression hai (e.g. dispatched → delivered), tab status update hota hai.
+      // Otherwise sirf courier_bookings.status update hota hai (informational).
+
+      if (normalStatus === 'delivered' || normalStatus === 'rto') {
+        const targetStatus = normalStatus === 'rto' ? 'returned' : 'delivered';
+        const { data: booking } = await supabase
+          .from('courier_bookings')
+          .select('order_id')
+          .eq('id', bookingId)
+          .single();
+
         if (booking?.order_id) {
-          await supabase.from('orders').update({ status: 'delivered' }).eq('id', booking.order_id);
-        }
-      }
-      // If RTO, mark order returned
-      if (normalStatus === 'rto') {
-        const { data: booking } = await supabase.from('courier_bookings').select('order_id').eq('id', bookingId).single();
-        if (booking?.order_id) {
-          await supabase.from('orders').update({ status: 'returned' }).eq('id', booking.order_id);
+          // Fetch current order status to evaluate transition
+          const { data: orderRow } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', booking.order_id)
+            .single();
+
+          if (orderRow) {
+            const decision = evaluateAutomatedTransition(orderRow.status, targetStatus, 'courier_sync');
+            if (decision.apply) {
+              const patch = { status: targetStatus, updated_at: new Date().toISOString() };
+              if (targetStatus === 'delivered') patch.delivered_at = new Date().toISOString();
+              if (targetStatus === 'returned') patch.rto_at = new Date().toISOString();
+              await supabase.from('orders').update(patch).eq('id', booking.order_id);
+            } else if (decision.blocked) {
+              // Pre-dispatch order me courier "delivered" mile — protocol violation.
+              // Office status untouched. Log for review.
+              await supabase.from('order_activity_log').insert({
+                order_id: booking.order_id,
+                action: 'protocol_violation:courier_track_ahead_of_office',
+                notes:
+                  `Courier API "${normalStatus}" report kar raha hai magar office status abhi "${orderRow.status}" pe hai. ` +
+                  `Office status unchanged — staff ne ERP flow skip kiya.`,
+                performed_by: 'Courier Track',
+                performed_at: new Date().toISOString(),
+              });
+            }
+          }
         }
       }
     }
