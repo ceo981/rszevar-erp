@@ -139,7 +139,12 @@ export async function POST(request) {
       return NextResponse.json({ received: true });
     }
 
-    const lockedStatuses = ['confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto'];
+    // FIX Apr 2026 — Phase 1 flow refactor.
+    // Pehle list: ['confirmed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto']
+    // on_packing aur packed missing the — customer agar fulfillment ke baad
+    // WhatsApp se "cancel" click karta to packed parcel galti se cancelled mark
+    // ho jata. Naye flow mein on_packing + packed bhi locked hain.
+    const lockedStatuses = ['confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'cancelled', 'returned', 'rto', 'refunded'];
     if (lockedStatuses.includes(order.status)) {
       console.log(`[whatsapp-webhook] Order ${orderNumber} already ${order.status} — ignoring button click`);
       if (order.shopify_order_id) {
@@ -206,8 +211,6 @@ export async function POST(request) {
     } else if (action === 'CANCEL') {
       await supabase.from('orders').update({
         status: 'cancelled',
-        cancelled_at: nowIso,
-        cancel_reason: 'Customer cancelled via WhatsApp',
         updated_at: nowIso,
       }).eq('id', order.id);
 
