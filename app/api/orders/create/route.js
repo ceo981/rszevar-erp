@@ -290,6 +290,26 @@ export async function POST(request) {
     // webhook bhi fire hoga aur upsert se safe handle hoga)
     const erpOrder = await upsertOrderInERP(supabase, realOrder);
 
+    // Apr 30 2026 — Internal note ko ERP timeline mein bhi save karo.
+    // Pehle note sirf Shopify order.note pe jata tha — ERP UI usko display
+    // nahi karti thi (Notes card sirf confirmation_notes column read karta
+    // hai). Ab order create hote hi note ek `staff_comment` row ban jata hai
+    // jo Timeline mein turant dikhta hai. Best-effort: insert fail ho to
+    // order success ko break nahi karenge.
+    if (erpOrder?.id && body.note && String(body.note).trim().length > 0) {
+      try {
+        await supabase.from('order_activity_log').insert({
+          order_id: erpOrder.id,
+          action: 'staff_comment',
+          notes: String(body.note).trim(),
+          performed_by: 'ERP Manual Order',
+          performed_at: new Date().toISOString(),
+        });
+      } catch (logErr) {
+        console.error('[create] timeline note insert failed:', logErr.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       shopify_order_id: realOrder.id,
