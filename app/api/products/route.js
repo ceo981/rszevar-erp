@@ -67,18 +67,28 @@ function aggCacheGet() {
 }
 
 async function aggCacheCompute(supabase) {
-  // ─── May 2 2026 HOTFIX ──────────────────────────────────────────────────
-  // Pehla version chunked loop with multiple range() calls tha. Even though
-  // each iteration built a fresh query (so no builder reuse bug), it still
-  // did 5+ round trips for ~5000 rows. With these slim columns (5 fields,
-  // ~150 bytes per row) the entire dataset is ~750KB — easily fits in one
-  // response. Single fetch = simpler + faster + zero risk of pagination
-  // edge cases.
-  const { data: valueRows, error } = await supabase
-    .from('products')
-    .select('stock_quantity, selling_price, shopify_product_id, category, collections')
-    .range(0, MAX_FETCH - 1);
-  if (error) throw error;
+  // ─── May 2 2026 HOTFIX v2 ───────────────────────────────────────────────
+  // Pehla single .range(0, 9999) Supabase ke server-side max_rows cap (1000)
+  // se truncate ho raha tha — sirf 1000 variants count ho rahe thay, jisse
+  // distinctProducts undercount ho jata tha (e.g. 504 instead of 1233).
+  //
+  // Fix: Chunked fetch — har iteration mein FRESH supabase.from() builder
+  // banao (no reuse), 1000-row chunks process karo, max 10K rows cap.
+  // Same pattern jo main allRows fetch mein use kiya hai — proven safe.
+  const valueRows = [];
+  const PAGE = 1000;
+  let off = 0;
+  while (off < MAX_FETCH) {
+    const { data: chunk, error } = await supabase
+      .from('products')
+      .select('stock_quantity, selling_price, shopify_product_id, category, collections')
+      .range(off, off + PAGE - 1);
+    if (error) throw error;
+    if (!chunk || chunk.length === 0) break;
+    valueRows.push(...chunk);
+    if (chunk.length < PAGE) break;
+    off += PAGE;
+  }
 
   let totalStockValue = 0;
   let totalUnits = 0;
@@ -86,7 +96,7 @@ async function aggCacheCompute(supabase) {
   const categorySet = new Set();
   const collMap = new Map();
 
-  for (const r of valueRows || []) {
+  for (const r of valueRows) {
     totalStockValue += (r.stock_quantity || 0) * (r.selling_price || 0);
     totalUnits      += (r.stock_quantity || 0);
     if (r.shopify_product_id) distinctProducts.add(r.shopify_product_id);
@@ -109,7 +119,7 @@ async function aggCacheCompute(supabase) {
     totalStockValue,
     totalUnits,
     distinctProducts: distinctProducts.size,
-    totalVariants: (valueRows || []).length,
+    totalVariants: valueRows.length,
   };
   _aggCache = cache;
   return cache;
