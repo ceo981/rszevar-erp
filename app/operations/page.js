@@ -175,7 +175,7 @@ function ExpenseForm({ form, setForm, onSave, onCancel, saving, mode = 'add' }) 
 }
 
 // ─── CASH & EXPENSES TAB ────────────────────────────────────────
-function CashTab({ isManager, isCEO, currentUserName }) {
+function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
   const [data, setData] = useState({ balance: 0, total_in: 0, total_out: 0, pending_count: 0, logs: [] });
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState('');
@@ -431,9 +431,11 @@ function CashTab({ isManager, isCEO, currentUserName }) {
             + Cash Request karo
           </button>
         )}
+        {canExpenseAdd && (
         <button onClick={() => setShowExpenseModal(true)} style={{ ...btnStyle, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444' }}>
           + Expense Add karo
         </button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: '#555' }}>Month:</span>
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
@@ -832,12 +834,18 @@ function AdvancesTab({ isCEO, currentUserName }) {
 
 // ─── MAIN PAGE ──────────────────────────────────────────────────
 export default function OperationsPage() {
-  const { profile, isSuperAdmin, userEmail, activeUser } = useUser();
+  const { profile, isSuperAdmin, userEmail, activeUser, can } = useUser();
   const [tab, setTab] = useState('cash');
 
-  const role = profile?.role || '';
-  const isCEO = isSuperAdmin || role === 'super_admin';
-  const isManager = role === 'manager' || isCEO;
+  // ── Granular permission gates (May 2 2026) ──
+  // isCEO/isManager were role-based. Ab perm-driven hain:
+  //   - cash_edit = CEO equivalent (approves cash requests, edits any entry)
+  //   - cash_view = wallet read access (can request cash drop)
+  //   - expense_edit = add/edit own expense
+  const isCEO     = can('operations.cash_edit');
+  const isManager = can('operations.cash_view');
+  const canExpenseAdd = can('operations.expense_edit');
+
   // Shared-login aware: prefer the picked packer/staff name over the login's
   // generic name, so audit trails show who actually added the expense etc.
   const currentUserName = activeUser?.name || profile?.full_name || userEmail || 'Unknown';
@@ -867,7 +875,7 @@ export default function OperationsPage() {
         ))}
       </div>
 
-      {tab === 'cash' && <CashTab isManager={isManager} isCEO={isCEO} currentUserName={currentUserName} />}
+      {tab === 'cash' && <CashTab isManager={isManager} isCEO={isCEO} canExpenseAdd={canExpenseAdd} currentUserName={currentUserName} />}
     </div>
   );
 }
