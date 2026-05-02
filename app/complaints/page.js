@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold  = '#c9a96e';
 const card  = '#141414';
@@ -180,6 +181,9 @@ function AddModal({ onClose, onSave }) {
 
 // ── Complaint Detail Panel ────────────────────────────────────
 function ComplaintPanel({ complaint, onClose, onSave }) {
+  const { can } = useUser();
+  const canDelete = can('complaints.delete');
+
   const [lightbox, setLightbox] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const imgs = Array.isArray(complaint.image_urls) ? complaint.image_urls : [];
@@ -270,9 +274,11 @@ function ComplaintPanel({ complaint, onClose, onSave }) {
             Logged: {new Date(complaint.created_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </div>
 
+          {canDelete && (
           <button onClick={del} disabled={deleting} style={{ width: '100%', background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {deleting ? '...' : '🗑️ Delete Complaint'}
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -366,6 +372,9 @@ function LeaderboardTab() {
 
 // ── Main Page ─────────────────────────────────────────────────
 export default function ComplaintsPage() {
+  const { can } = useUser();
+  const canCreate = can('complaints.create');
+
   const [complaints, setComplaints] = useState([]);
   const [summary, setSummary]       = useState({});
   const [loading, setLoading]       = useState(true);
@@ -405,9 +414,11 @@ export default function ComplaintsPage() {
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Complaints</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Customer complaints record karo</p>
         </div>
+        {canCreate && (
         <button onClick={() => setShowAdd(true)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           + Log Complaint
         </button>
+        )}
       </div>
 
       {/* Stats */}
