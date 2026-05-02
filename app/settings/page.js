@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -689,6 +690,15 @@ function SystemView({ data }) {
 
 // ─── Main Settings Page ───────────────────────────────────────────────────
 export default function SettingsPage() {
+  const { can } = useUser();
+  // ── Granular perm gates (May 2 2026) ──
+  // Pehle role==='super_admin' tha. Ab settings.edit perm-driven hai.
+  // Custom roles bhi settings access pa sakte hain via /roles toggle.
+  const canEdit          = can('settings.edit');
+  const canTags          = can('settings.tags');
+  const canBusinessRules = can('settings.business_rules');
+  const canDiagnostics   = can('settings.diagnostics');
+
   const [settings, setSettings] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [activeTab, setActiveTab] = useState('store');
@@ -697,7 +707,9 @@ export default function SettingsPage() {
   const [msg, setMsg] = useState(null);
   const [role, setRole] = useState(null);
 
-  const isSuperAdmin = role === 'super_admin';
+  // isSuperAdmin alias for backwards compat — settings.edit holders are
+  // effectively "super-admin equivalents" for settings UI gating.
+  const isSuperAdmin = canEdit;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -793,9 +805,9 @@ export default function SettingsPage() {
         <div>
           {loading && <div style={{ textAlign: 'center', padding: 60, color: '#555' }}>Loading settings...</div>}
           {!loading && tab.kind === 'audit' && <AuditLogTab />}
-          {!loading && tab.kind === 'tags' && <TagsTab isSuperAdmin={isSuperAdmin} />}
+          {!loading && tab.kind === 'tags' && <TagsTab isSuperAdmin={canTags} />}
           {!loading && tab.kind === 'diagnostics' && <DiagnosticsTab check={tab.check} label={tab.label} />}
-          {!loading && tab.kind === 'whatsapp' && <WhatsAppTab isSuperAdmin={isSuperAdmin} />}
+          {!loading && tab.kind === 'whatsapp' && <WhatsAppTab isSuperAdmin={canEdit} />}
           {!loading && tab.kind === 'settings' && (
             <>
               <div style={sectionStyle}>
@@ -808,9 +820,13 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 {tabSettings.length === 0 && <div style={{ color: '#444', padding: 20, textAlign: 'center', fontSize: 13 }}>No settings in this category yet</div>}
-                {tabSettings.map(s => (
-                  <SettingRow key={s.key} setting={s} value={getCurrentValue(s)} onChange={(v) => handleChange(s.key, v)} disabled={!isSuperAdmin} />
-                ))}
+                {tabSettings.map(s => {
+                  // Business rules tab gated separately; other settings categories use canEdit
+                  const rowEditable = tab.id === 'business_rules' ? canBusinessRules : canEdit;
+                  return (
+                    <SettingRow key={s.key} setting={s} value={getCurrentValue(s)} onChange={(v) => handleChange(s.key, v)} disabled={!rowEditable} />
+                  );
+                })}
               </div>
               {hasChanges && isSuperAdmin && (
                 <div style={{ position: 'sticky', bottom: 16, background: '#0a0a0a', border: `1px solid ${gold}`, borderRadius: 12, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
