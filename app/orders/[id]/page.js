@@ -487,6 +487,80 @@ export default function SingleOrderPage() {
     setActionBusy(false);
   };
 
+  // May 2 2026 — Convert order to credit (udhaar) — Step 6 of customer credits feature.
+  // Uses dedicated /convert-to-credit endpoint instead of toggleOrderTypeTag because:
+  //   1. This change ALSO affects status (auto-deliver if not terminal)
+  //   2. Has revert path that needs warnings if payments already allocated
+  //   3. Different audit trail entry (credit_converted vs tag change)
+  const toggleCreditOrder = async (newValue) => {
+    const isCurrentlyCredit = !!order.is_credit_order;
+    if (isCurrentlyCredit === newValue) return;  // no-op
+
+    let confirmMsg;
+    let url = `/api/orders/${id}/convert-to-credit`;
+    let reasonPrompt;
+
+    if (newValue) {
+      // Converting TO credit
+      const TERMINAL = ['delivered', 'cancelled', 'returned'];
+      const willAutoDeliver = !TERMINAL.includes(order.status);
+      confirmMsg = willAutoDeliver
+        ? `Order ko credit (udhaar) mark karna hai?\n\n` +
+          `Yeh hoga:\n` +
+          `• is_credit_order = true\n` +
+          `• Status auto: ${order.status} → delivered\n` +
+          `• Payment status unpaid rahega\n` +
+          `• Customer Credits dashboard mein dikhe ga\n\n` +
+          `Continue?`
+        : `Order ko credit (udhaar) mark karna hai?\n\nCustomer Credits dashboard mein dikhe ga.\nContinue?`;
+      reasonPrompt = 'Reason / note (optional):';
+    } else {
+      // Reverting from credit
+      url += '?revert=true';
+      confirmMsg =
+        `Credit mark hata dein?\n\n` +
+        `WARNING: Agar is order pe payments allocate hain, woh customer ke khaata mein rahengi.\n` +
+        `Pehle payments void karna behtar hai agar zaroori ho.\n\n` +
+        `Continue?`;
+      reasonPrompt = 'Revert reason:';
+    }
+
+    if (!window.confirm(confirmMsg)) return;
+    const reason = window.prompt(reasonPrompt, '');
+    if (reason === null) return;  // user cancelled
+
+    setActionBusy(true);
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          performed_by: performer,
+          performed_by_email: userEmail,
+          reason: reason || undefined,
+        }),
+      });
+      const text = await r.text();
+      let d;
+      try { d = JSON.parse(text); }
+      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 100)}`); }
+
+      if (d.success) {
+        flash('success', d.message || (newValue ? '✓ Converted to credit order' : '✓ Reverted from credit'), 4000);
+        if (Array.isArray(d.warnings) && d.warnings.length > 0) {
+          // Show warnings as separate alerts after a slight delay (so flash is visible first)
+          setTimeout(() => alert('Warnings:\n\n' + d.warnings.join('\n\n')), 800);
+        }
+        await refreshAll();
+      } else {
+        flash('error', d.error || 'Credit toggle failed', 5000);
+      }
+    } catch (e) {
+      flash('error', e.message, 5000);
+    }
+    setActionBusy(false);
+  };
+
   // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
   // tracking removed, courier cleared, status reverted (dispatched → confirmed).
   const cancelFulfillment = async () => {
@@ -970,6 +1044,33 @@ export default function SingleOrderPage() {
             border: `1px solid ${msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171'}`,
             color:  msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171',
           }}>{msg.text}</div>
+        )}
+
+        {/* May 2 2026 — Partial payment banner. Sirf credit orders pe dikhe ga
+            jo partial pay ho chuke hain. Customer khaata page ka link bhi deta hai. */}
+        {order.is_credit_order && order.payment_status === 'partial' && order.customer_phone && (
+          <div style={{
+            background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+            borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: 12, flexWrap: 'wrap',
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#f59e0b' }}>
+                ⚠ Partially paid · Rs {(order.paid_amount || 0).toLocaleString('en-PK')} of Rs {(order.total_amount || 0).toLocaleString('en-PK')}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(245,158,11,0.85)', marginTop: 3 }}>
+                Balance: Rs {Math.max(0, (order.total_amount || 0) - (order.paid_amount || 0)).toLocaleString('en-PK')} · Customer Credits mein track ho raha hai
+              </div>
+            </div>
+            <a href={`/credits/${encodeURIComponent(order.customer_phone)}`}
+              style={{
+                background: '#f59e0b', color: '#000',
+                border: 'none', borderRadius: 7,
+                padding: '7px 14px', fontSize: 12, fontWeight: 600,
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}>View khaata →</a>
+          </div>
         )}
 
         {/* ─── 2-Column Grid ─── */}
@@ -2110,6 +2211,64 @@ export default function SingleOrderPage() {
                     style={{ accentColor: '#8b5cf6', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
                   />
                 </div>
+              </Card>
+            )}
+
+            {/* May 2 2026 — Credit / Udhaar toggle (Step 6 of customer credits).
+                Yeh DEDICATED card hai (Order Type card se alag) kyunki yeh
+                informational nahi hai — actually status change karta hai
+                (auto-deliver) aur Customer Credits dashboard mein dikhata hai.
+                Visual treatment gold accent ke saath taake clearly different lage. */}
+            {!isCancelled && (
+              <Card title="📒 Credit / Udhaar">
+                <div style={{
+                  fontSize: 11, color: '#666', marginBottom: 10, lineHeight: 1.5,
+                }}>
+                  Trusted customer jo udhaar pe maal le raha hai. Order delivered mark hoga real-time, payment Customer Credits mein track hogi.
+                </div>
+
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  background: order.is_credit_order ? 'rgba(201,169,110,0.08)' : 'transparent',
+                  border: `1px solid ${order.is_credit_order ? 'rgba(201,169,110,0.3)' : border}`,
+                  borderRadius: 6,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>
+                      {order.is_credit_order ? '✓ Credit order' : 'Mark as credit order'}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
+                      {order.is_credit_order
+                        ? 'Customer Credits dashboard mein active hai'
+                        : 'On click: status auto-delivered, payment unpaid rahega'}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!order.is_credit_order}
+                    onChange={e => toggleCreditOrder(e.target.checked)}
+                    disabled={actionBusy}
+                    style={{
+                      accentColor: '#c9a96e',
+                      width: 16, height: 16,
+                      cursor: actionBusy ? 'wait' : 'pointer',
+                    }}
+                  />
+                </div>
+
+                {order.is_credit_order && order.customer_phone && (
+                  <a href={`/credits/${encodeURIComponent(order.customer_phone)}`}
+                    style={{
+                      display: 'block', marginTop: 10,
+                      padding: '6px 10px', textAlign: 'center',
+                      background: 'transparent', border: '1px solid rgba(201,169,110,0.3)',
+                      borderRadius: 6, color: '#c9a96e',
+                      fontSize: 11, fontWeight: 500, textDecoration: 'none',
+                    }}>
+                    View khaata →
+                  </a>
+                )}
               </Card>
             )}
 
