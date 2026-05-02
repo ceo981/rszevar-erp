@@ -729,6 +729,9 @@ function getGroupTotalStock(variants) {
 // Modal opens at viewport center (escapes any overflow/clipping issues)
 function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear, size = 44, groupLabel }) {
   const [open, setOpen] = useState(false);
+  // ── Variant image preview lightbox (May 2 2026) ──
+  // Eye icon click → fullsize preview taa-ke colors clearly dikhein.
+  const [previewIdx, setPreviewIdx] = useState(null);
 
   const displayId = selectedId ?? inheritedId;
   const displayImg = images.find(i => i._id === displayId);
@@ -737,6 +740,19 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
   const titleText = isInheriting
     ? `Inherited from group — click to override`
     : (displayImg ? 'Click to change image' : 'Click to pick image');
+
+  // ── Preview lightbox keyboard nav ──
+  useEffect(() => {
+    if (previewIdx === null) return;
+    const total = images.length;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setPreviewIdx(null);
+      else if (e.key === 'ArrowLeft')  setPreviewIdx(i => (i - 1 + total) % total);
+      else if (e.key === 'ArrowRight') setPreviewIdx(i => (i + 1) % total);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewIdx, images]);
 
   return (
     <>
@@ -799,29 +815,47 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
             ) : (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
-                  {images.map(img => {
+                  {images.map((img, idx) => {
                     const isSelected     = img._id === selectedId;
                     const isInheritedImg = !selectedId && img._id === inheritedId;
                     return (
-                      <button
-                        key={img._id}
-                        onClick={() => { onSelect(img._id); setOpen(false); }}
-                        title={img.filename}
-                        style={{
-                          padding: 0, background: 'none',
-                          border: `2px solid ${isSelected ? gold : (isInheritedImg ? 'rgba(201,169,110,0.45)' : 'transparent')}`,
-                          borderRadius: 6, cursor: 'pointer', overflow: 'hidden',
-                          aspectRatio: '1/1', position: 'relative',
-                        }}
-                      >
-                        <img src={img.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                        {isSelected && (
-                          <div style={{ position: 'absolute', top: 4, right: 4, background: gold, color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>SELECTED</div>
-                        )}
-                        {isInheritedImg && (
-                          <div style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(255,255,255,0.92)', color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 600, letterSpacing: 0.3 }}>INHERITED</div>
-                        )}
-                      </button>
+                      <div key={img._id} style={{ position: 'relative' }}>
+                        <button
+                          onClick={() => { onSelect(img._id); setOpen(false); }}
+                          title={img.filename}
+                          style={{
+                            padding: 0, background: 'none', width: '100%',
+                            border: `2px solid ${isSelected ? gold : (isInheritedImg ? 'rgba(201,169,110,0.45)' : 'transparent')}`,
+                            borderRadius: 6, cursor: 'pointer', overflow: 'hidden',
+                            aspectRatio: '1/1', position: 'relative', display: 'block',
+                          }}
+                        >
+                          <img src={img.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          {isSelected && (
+                            <div style={{ position: 'absolute', top: 4, right: 4, background: gold, color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>SELECTED</div>
+                          )}
+                          {isInheritedImg && (
+                            <div style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(255,255,255,0.92)', color: '#080808', borderRadius: 3, padding: '2px 5px', fontSize: 9, fontWeight: 600, letterSpacing: 0.3 }}>INHERITED</div>
+                          )}
+                        </button>
+                        {/* Eye icon — fullsize preview (May 2 2026) */}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setPreviewIdx(idx); }}
+                          title="Badi preview dekho"
+                          style={{
+                            position: 'absolute', bottom: 4, right: 4,
+                            width: 24, height: 24, borderRadius: '50%',
+                            background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
+                            color: '#fff', fontSize: 13, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            padding: 0, lineHeight: 1, fontFamily: 'inherit',
+                            transition: 'transform 0.1s, background 0.15s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.85)'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.65)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                        >👁</button>
+                      </div>
                     );
                   })}
                 </div>
@@ -845,6 +879,91 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Variant image preview lightbox (May 2 2026) ── */}
+      {previewIdx !== null && images[previewIdx] && (
+        <div
+          onClick={() => setPreviewIdx(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1100,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, cursor: 'zoom-out',
+          }}
+        >
+          <div style={{
+            position: 'absolute', top: 18, left: 24,
+            color: '#fff', fontSize: 13, fontWeight: 500,
+            background: 'rgba(0,0,0,0.5)', padding: '6px 12px', borderRadius: 20,
+            fontFamily: 'inherit',
+          }}>
+            #{previewIdx + 1} of {images.length}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setPreviewIdx(null); }}
+            style={{
+              position: 'absolute', top: 18, right: 24,
+              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+              color: '#fff', borderRadius: '50%', width: 36, height: 36,
+              fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            title="Band karo (Esc)"
+          >×</button>
+          {images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewIdx(i => (i - 1 + images.length) % images.length); }}
+              style={{
+                position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
+                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+              title="Pichli (←)"
+            >‹</button>
+          )}
+          {images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewIdx(i => (i + 1) % images.length); }}
+              style={{
+                position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)',
+                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+              title="Agli (→)"
+            >›</button>
+          )}
+          <img
+            src={images[previewIdx].previewUrl}
+            alt={images[previewIdx].filename || ''}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '85vh',
+              objectFit: 'contain', borderRadius: 6,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              cursor: 'default',
+            }}
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(images[previewIdx]._id);
+              setPreviewIdx(null);
+              setOpen(false);
+            }}
+            style={{
+              position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+              background: gold, color: '#080808', border: 'none',
+              borderRadius: 8, padding: '10px 22px', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+              boxShadow: '0 4px 16px rgba(201,169,110,0.4)',
+            }}
+          >✓ Yeh image select karo</button>
         </div>
       )}
     </>
