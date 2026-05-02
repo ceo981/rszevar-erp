@@ -5,8 +5,14 @@
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useUser } from '@/context/UserContext';
 
 export default function BlogTestPage() {
+  const { can } = useUser();
+  const canView     = can('blog.view');
+  const canGenerate = can('blog.generate');
+  const canPublish  = can('blog.publish');
   const [formData, setFormData] = useState({
     topic: 'Kundan vs Zircon vs Turkish Jewelry: A Buyer\'s Complete Guide',
     keyword: 'kundan vs zircon vs turkish jewelry',
@@ -79,6 +85,24 @@ export default function BlogTestPage() {
     }
   };
 
+  // ── Access denied (no blog.view) ──
+  if (!canView) {
+    return (
+      <div style={{ maxWidth: 600, margin: '40px auto', padding: 60, fontFamily: 'system-ui', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <p style={{ color: '#666', marginBottom: 18, fontSize: 13 }}>
+          Blog page ki ijazat tumhe nahi hai. CEO se{' '}
+          <code style={{ background: '#f3f3f3', padding: '2px 6px', borderRadius: 4 }}>blog.view</code>{' '}
+          permission grant karwane ko bolo.
+        </p>
+        <Link href="/" style={{ background: '#000', color: '#fff', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'inline-block' }}>
+          ← Dashboard pe wapas
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 24, fontFamily: 'system-ui' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
@@ -126,6 +150,7 @@ export default function BlogTestPage() {
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
         </div>
 
+        {canGenerate && (
         <button onClick={handleGenerate} disabled={loading}
           style={{
             background: loading ? '#999' : '#000', color: 'white',
@@ -134,6 +159,12 @@ export default function BlogTestPage() {
           }}>
           {loading ? `Generating... ${elapsedTime}s` : '🚀 Generate Article (Smart Links)'}
         </button>
+        )}
+        {!canGenerate && (
+          <div style={{ fontSize: 12, color: '#999', padding: '10px 0' }}>
+            🔒 Generate karne ki ijazat nahi (need <code>blog.generate</code>).
+          </div>
+        )}
         {loading && (
           <p style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
             Fetching catalog → Claude Sonnet 4.6 writing → 40-100s typical
@@ -246,6 +277,7 @@ export default function BlogTestPage() {
                 ? 'All links valid! Safe to push.'
                 : '⚠️ Fix invalid links before pushing (regenerate or edit manually).'}
             </p>
+            {canPublish && (
             <button onClick={handlePushToShopify}
               disabled={pushLoading || result.post.status === 'pushed'}
               style={{
@@ -257,6 +289,12 @@ export default function BlogTestPage() {
               }}>
               {pushLoading ? 'Pushing...' : '📤 Push to Shopify (as draft)'}
             </button>
+            )}
+            {!canPublish && (
+              <div style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
+                🔒 Shopify publish ki ijazat nahi (need <code>blog.publish</code>).
+              </div>
+            )}
           </div>
         </div>
       )}
