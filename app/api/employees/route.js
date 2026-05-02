@@ -107,6 +107,69 @@ export async function POST(request) {
     return NextResponse.json({ success: true, reactivated: true });
   }
 
+  // ── TERMINATE (May 2 2026) ─────────────────────────────────────────────
+  // Permanent exit — resignation, termination, abandonment etc.
+  // Soft-delete (deactivate) se alag — ye proper exit record hai with final
+  // settlement amount + reason + last working day captured.
+  //
+  // Required fields:
+  //   id                       — employee.id
+  //   termination_date         — YYYY-MM-DD (last working day)
+  //   termination_reason       — one of: resigned/terminated/abandoned/mutual/retired/other
+  //   final_settlement_amount  — number (Rs.) — positive = pay them, negative = recover from
+  // Optional:
+  //   termination_notes        — text
+  //   mark_settled_now         — boolean: agar payment abhi ho gaya, settled_at bhi set karo
+  if (action === 'terminate') {
+    const {
+      id,
+      termination_date,
+      termination_reason,
+      final_settlement_amount,
+      termination_notes,
+      mark_settled_now,
+    } = fields;
+
+    if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 });
+    if (!termination_date) return NextResponse.json({ success: false, error: 'termination_date required (last working day)' }, { status: 400 });
+    if (!termination_reason) return NextResponse.json({ success: false, error: 'termination_reason required' }, { status: 400 });
+
+    const validReasons = ['resigned', 'terminated', 'abandoned', 'mutual', 'retired', 'other'];
+    if (!validReasons.includes(termination_reason)) {
+      return NextResponse.json({ success: false, error: `Invalid reason. Use: ${validReasons.join(', ')}` }, { status: 400 });
+    }
+
+    const patch = {
+      status: 'inactive',
+      termination_date,
+      termination_reason,
+      final_settlement_amount: final_settlement_amount === '' || final_settlement_amount === null || final_settlement_amount === undefined
+        ? null
+        : Number(final_settlement_amount),
+      termination_notes: termination_notes?.trim() || null,
+    };
+    if (mark_settled_now) {
+      patch.final_settlement_paid_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase.from('employees').update(patch).eq('id', id);
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, terminated: true });
+  }
+
+  // ── MARK SETTLED — final settlement payment recorded ──
+  // Use case: terminate ke time settled flag off tha, baad mein payment ho gayi.
+  if (action === 'mark_settled') {
+    const { id } = fields;
+    if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 });
+    const { error } = await supabase
+      .from('employees')
+      .update({ final_settlement_paid_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, settled: true });
+  }
+
   if (action === 'add_salary') {
     const { error } = await supabase.from('salary_payments').insert({
       employee_id: fields.employee_id,
