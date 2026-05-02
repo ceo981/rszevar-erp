@@ -91,11 +91,16 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'allocation_mode must be fifo or manual' }, { status: 400 });
     }
 
-    // ── 2. Fetch customer's unpaid+partial active orders ──
+    // ── 2. Fetch customer's unpaid+partial CREDIT orders ──
+    // FILTER: is_credit_order = true — payments only allocate to udhaar orders.
+    // Regular COD orders (pending courier settlement) MUST NOT be allocated
+    // accidentally — those get marked paid via Leopards/PostEx settlement
+    // sync, not via this manual payment flow.
     const { data: openOrders, error: ordersErr } = await supabase
       .from('orders')
       .select('id, order_number, total_amount, paid_amount, payment_status, status, created_at')
       .eq('customer_phone', phone)
+      .eq('is_credit_order', true)
       .in('payment_status', ['unpaid', 'partial'])
       .in('status', ACTIVE_STATUSES)
       .order('created_at', { ascending: true });  // FIFO order
