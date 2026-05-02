@@ -453,8 +453,13 @@ function CustomItemModal({ onClose, onAdd }) {
 export default function OrderEditPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { profile, userEmail, activeUser } = useUser();
+  const { profile, userEmail, activeUser, can } = useUser();
   const performer = activeUser?.name || profile?.full_name || profile?.email || 'Staff';
+
+  // ── Route-level permission guard (May 2 2026) ──
+  // Sidebar route nahi hai, isliye AppShell ka redirect skip ho jata.
+  // Direct URL pe aane wale users ko block karte hain.
+  const canEditOrderItems = can('orders.edit_items');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -479,6 +484,11 @@ export default function OrderEditPage() {
 
   // ── Begin edit on mount ──
   useEffect(() => {
+    // Permission guard — bounce out if user lacks orders.edit_items
+    if (!canEditOrderItems) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -652,6 +662,23 @@ export default function OrderEditPage() {
     if (hasChanges && !window.confirm('Saari changes discard ho jayengi. Wapas chalein?')) return;
     router.push(`/orders/${id}`);
   };
+
+  // ── Access denied (no orders.edit_items permission) ──
+  if (!canEditOrderItems) {
+    return (
+      <div style={{ padding: 40, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
+          Order line items edit karne ki ijazat tumhe nahi hai. CEO se request karo
+          ya <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>orders.edit_items</code> permission grant karwane ko bolo.
+        </div>
+        <Link href={`/orders/${id}`} style={{ ...btnGhost, display: 'inline-block', textDecoration: 'none' }}>
+          ← Order pe wapas jao
+        </Link>
+      </div>
+    );
+  }
 
   // ── Loading / error states ──
   if (loading) {
