@@ -303,11 +303,39 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
   useEffect(() => {
     // DB se fresh items fetch (images updated ho sakti hain)
+    // FIX May 2026 — Pehle setOrderItems(d.items) seedha overwrite kar deta tha,
+    // jisse buildItems ki discount enrichment (has_line_discount, original_unit_price,
+    // effective_unit_price, line_discount) gayab ho jati thi 1 second baad. Drawer
+    // mein strikethrough discount UI suddenly disappear ho jati thi. Ab API se aaye
+    // items ko bhi enrichWithDiscount se enrich karte hain shopify_raw matching ke through.
     fetch(`/api/orders?action=items&order_id=${order.id}`)
       .then(r => r.json())
-      .then(d => { if (d.items?.length > 0) setOrderItems(d.items); })
+      .then(d => {
+        if (d.items?.length > 0) {
+          // Re-enrich with discount info from order's shopify_raw.line_items
+          const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
+          const enriched = d.items.map(item => {
+            const raw = rawLineItems.find(r =>
+              (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+              (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+              (r.title && item.title && item.title.startsWith(r.title))
+            );
+            const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+            const rawPrice    = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+            const qty = item.quantity || 1;
+            return {
+              ...item,
+              original_unit_price: rawPrice,
+              effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
+              line_discount: rawDiscount,
+              has_line_discount: rawDiscount > 0.01,
+            };
+          });
+          setOrderItems(enriched);
+        }
+      })
       .catch(() => {});
-  }, [order.id]);
+  }, [order.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Load packing staff
@@ -379,7 +407,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     let itemsText = leopardsForm.notes || '';
     if (!itemsText) {
       try {
-        const ir = await fetch(`/api/orders?id=${order.id}&include_items=true`);
+        // FIX May 2026 — was calling /api/orders?id=X&include_items=true which
+        // is NOT a supported query — `id` and `include_items` params are ignored
+        // by the route. Correct endpoint is action=items&order_id=X.
+        const ir = await fetch(`/api/orders?action=items&order_id=${order.id}`);
         const id = await ir.json();
         if (id.items?.length) {
           itemsText = id.items.map(i => `${i.title}${i.variant_title ? ` (${i.variant_title})` : ''} SKU:${i.sku || ''} x${i.quantity}`).join(', ');
@@ -466,15 +497,25 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
       const r = await fetch('/api/orders/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: order.id, ...editForm }),
+        body: JSON.stringify({
+          order_id: order.id,
+          ...editForm,
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
       });
-      const d = await r.json();
+      // Defensive parse — Vercel can return plain text on infra errors (413, 504).
+      let d;
+      const text = await r.text();
+      try { d = JSON.parse(text); }
+      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 120)}`); }
+
       if (d.success) {
         setMsg('✅ Customer info updated!' + (d.warning ? ` ⚠️ ${d.warning}` : '') + (d.shopify_synced ? ' Shopify sync ✓' : ''));
         // Reset notes field after successful save
         setEditForm(f => ({ ...f, notes: '' }));
         onRefresh();
-      } else setMsg('❌ ' + d.error);
+      } else setMsg('❌ ' + (d.error || 'Save failed'));
     } catch(e) { setMsg('❌ ' + e.message); }
     setLoading(false);
   };
