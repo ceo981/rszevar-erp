@@ -312,47 +312,55 @@ export async function GET(request) {
     const abcWindow = searchParams.get('abc_window') || '90d';
     const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
 
-    // ── Slim SELECT — drop heavy text/JSONB columns not used by listing UI ──
-    let query = supabase.from('products').select(LIST_COLUMNS);
+    // ── SELECT * — original safe behavior. Heavy text/JSONB columns
+    // (description_html, images_data, tags) come along, but the BIG perf
+    // win comes from the 60s aggregate cache below — not from column slimming.
+    //
+    // ─── May 2 2026 BUILDER REUSE FIX ───────────────────────────────────
+    // Pehla version `let query = ...; while () { await query.range() }`
+    // pattern use karta tha — newer supabase-js mein same builder ko multiple
+    // baar await karne se silent fail hota hai. Fix: applyFilters() helper
+    // jo har iteration mein FRESH builder banata hai. Filters once defined,
+    // applied to fresh query each chunk → no reuse → no silent failure.
+    const applyFilters = () => {
+      let q = supabase.from('products').select('*');
+      if (search) {
+        const safeSearch = search.replace(/[,()%]/g, ' ').trim();
+        if (safeSearch) {
+          q = q.or(
+            `title.ilike.%${safeSearch}%,parent_title.ilike.%${safeSearch}%,sku.ilike.%${safeSearch}%,category.ilike.%${safeSearch}%,vendor.ilike.%${safeSearch}%`
+          );
+        }
+      }
+      if (category && category !== 'all') q = q.eq('category', category);
+      if (stockFilter === 'out') q = q.eq('stock_quantity', 0);
+      if (stockFilter === 'low') q = q.lte('stock_quantity', 3).gt('stock_quantity', 0);
+      if (activeFilter === 'active') q = q.eq('is_active', true);
+      if (activeFilter === 'draft') q = q.eq('is_active', false);
+      if (abc !== 'all') q = q.eq(abcCol, abc);
+      const seoTier = searchParams.get('seo_tier');
+      if (seoTier && seoTier !== 'all') q = q.eq('seo_tier', seoTier);
+      if (collection && collection !== 'all') {
+        q = q.contains('collections', [{ handle: collection }]);
+      }
+      q = q.order(sort, { ascending: order === 'asc' });
+      return q;
+    };
 
-    if (search) {
-      const safeSearch = search.replace(/[,()%]/g, ' ').trim();
-      if (safeSearch) {
-        query = query.or(
-          `title.ilike.%${safeSearch}%,parent_title.ilike.%${safeSearch}%,sku.ilike.%${safeSearch}%,category.ilike.%${safeSearch}%,vendor.ilike.%${safeSearch}%`
-        );
+    // ── Chunked fetch — fresh builder each iteration (no reuse) ──
+    const allRows = [];
+    {
+      const PAGE = 1000;
+      let off = 0;
+      while (off < MAX_FETCH) {
+        const { data: chunk, error } = await applyFilters().range(off, off + PAGE - 1);
+        if (error) throw error;
+        if (!chunk || chunk.length === 0) break;
+        allRows.push(...chunk);
+        if (chunk.length < PAGE) break;
+        off += PAGE;
       }
     }
-    if (category && category !== 'all') query = query.eq('category', category);
-    if (stockFilter === 'out') query = query.eq('stock_quantity', 0);
-    if (stockFilter === 'low') query = query.lte('stock_quantity', 3).gt('stock_quantity', 0);
-    if (activeFilter === 'active') query = query.eq('is_active', true);
-    if (activeFilter === 'draft') query = query.eq('is_active', false);
-    if (abc !== 'all') query = query.eq(abcCol, abc);
-
-    const seoTier = searchParams.get('seo_tier');
-    if (seoTier && seoTier !== 'all') query = query.eq('seo_tier', seoTier);
-
-    if (collection && collection !== 'all') {
-      query = query.contains('collections', [{ handle: collection }]);
-    }
-
-    query = query.order(sort, { ascending: order === 'asc' });
-
-    // ─── May 2 2026 HOTFIX ───────────────────────────────────────────────
-    // Pehla version chunked loop use karta tha (await query.range() multiple
-    // times on SAME builder reference). Newer supabase-js versions mein woh
-    // pattern second iteration pe silent fail ho jata hai — empty data,
-    // empty error, lekin assumption "loop done" → allRows blank → frontend
-    // pe sab stats 0 dikhte hain (Total Products: 0, Total Variants: 0).
-    //
-    // Fix: SINGLE .range() call. Slim columns (LIST_COLUMNS drops heavy
-    // description_html/images_data/tags JSONB) means ~5000 product rows
-    // ka payload ~1MB hai — single response easily handle karta hai.
-    // No more builder reuse → no more silent failure.
-    const { data: allRowsData, error: allRowsErr } = await query.range(0, MAX_FETCH - 1);
-    if (allRowsErr) throw allRowsErr;
-    const allRows = allRowsData || [];
 
     // ── Stats counts via HEAD queries (no row transfer) ──
     // These COUNT queries are very cheap — just scan an index, no data pulled.
