@@ -8,9 +8,16 @@
  *   phone               — alternative to conversation_id
  *   caption             — optional caption (image/video/document only)
  *   voice               — 'true' for voice note (audio only; renders as PTT on WhatsApp)
- *   user_id, user_email — for audit trail
+ *
+ * SECURITY (May 2026):
+ *   /api/whatsapp/* is exempted from middleware auth (Meta webhook needs that).
+ *   Lekin yeh send route admin-only honi chahiye. Pehle koi bhi attacker
+ *   multipart POST karke arbitrary images/videos customers ko bhej sakta tha
+ *   RS ZEVAR ke business number se. Ab session-based auth check enforced hai,
+ *   aur sent_by_user_id session se aata hai (impersonation-proof).
  *
  * Flow:
+ *   0. Auth check (NEW)
  *   1. Validate file & size (per-type limits).
  *   2. Infer `type` from mime (image/video/audio/document).
  *   3. Upload file to Meta /media → get media_id.
@@ -25,6 +32,7 @@
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createAuthClient } from '@/lib/supabase/server';
 import { sendMedia } from '../../../../../lib/whatsapp';
 import { uploadMediaToMeta, cacheOutboundMediaBuffer } from '../../../../../lib/whatsapp-media';
 import { handleOutgoingMessage } from '../../../../../lib/whatsapp-inbox';
@@ -73,14 +81,46 @@ const MIME_TO_TYPE = (mime) => {
 
 export async function POST(request) {
   try {
+    // ── SECURITY FIX (May 2026) — Explicit auth check ─────────────────────
+    // Mirror of the same check on /api/whatsapp/inbox/send. Middleware bypass
+    // /api/whatsapp/* ke liye legitimate hai (Meta webhook), but media send
+    // ko bhi anonymous nahi hona chahiye. Session se logged-in user uthate
+    // hain, profile is_active verify karte hain, aur sent_by_user_id session
+    // se derive karte hain (form fields se nahi).
+    const authClient = await createAuthClient();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email, full_name, is_active')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!profile || profile.is_active === false) {
+      return NextResponse.json(
+        { success: false, error: 'Account not active' },
+        { status: 403 }
+      );
+    }
+
+    const sentByUserId = user.id;
+    const sentByEmail  = profile.email || user.email || null;
+
     const form = await request.formData();
     const file = form.get('file');
     const conversation_id = form.get('conversation_id');
     const phoneRaw = form.get('phone');
     const caption = (form.get('caption') || '').toString().slice(0, 1024);
     const isVoice = String(form.get('voice') || '').toLowerCase() === 'true';
-    const user_id = form.get('user_id') || null;
-    const user_email = form.get('user_email') || null;
+    // SECURITY: form ke user_id / user_email IGNORE karte hain — session se
+    // derive karte hain. Frontend galti se bhi bheje to no impact.
 
     if (!file || typeof file === 'string') {
       return NextResponse.json({ success: false, error: 'file is required (multipart/form-data)' }, { status: 400 });
@@ -119,7 +159,7 @@ export async function POST(request) {
         .from('whatsapp_conversations')
         .select('customer_phone')
         .eq('id', conversation_id)
-        .single();
+        .maybeSingle();
       phone = conv?.customer_phone;
     }
     if (!phone) {
@@ -177,7 +217,7 @@ export async function POST(request) {
       size,
       ...(isVoice ? { voice: true } : {}),
       ...(caption ? { caption } : {}),
-      ...(user_email ? { sent_by_email: user_email } : {}),
+      ...(sentByEmail ? { sent_by_email: sentByEmail } : {}),
     };
 
     const saved = await handleOutgoingMessage({
@@ -185,7 +225,7 @@ export async function POST(request) {
       message_type: type,
       body: caption || null,
       wa_message_id: sendResult.message_id,
-      sent_by_user_id: user_id || null,
+      sent_by_user_id: sentByUserId,
       sent_by_system: false,
       metadata: savedMetadata,
     });
