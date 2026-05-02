@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -312,6 +313,12 @@ function SalaryPanel({ emp, onClose }) {
 
 // ── Main Employees Page ───────────────────────────────────────
 export default function EmployeesPage() {
+  const { can } = useUser();
+  const canCreate     = can('employees.create');
+  const canEdit       = can('employees.edit');
+  const canDelete     = can('employees.delete');
+  const canViewSalary = can('employees.view_salary');
+
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -364,18 +371,20 @@ export default function EmployeesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Team</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>{active} active · {fmt(totalSalary)}/month total payroll</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>{active} active{canViewSalary && ` · ${fmt(totalSalary)}/month total payroll`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {employees.length === 0 && (
+          {canCreate && employees.length === 0 && (
             <button onClick={seedTeam} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
               📥 Load My Team
             </button>
           )}
+          {canCreate && (
           <button onClick={() => { setEditEmp(null); setShowModal(true); }}
             style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             + Add Employee
           </button>
+          )}
         </div>
       </div>
 
@@ -387,7 +396,7 @@ export default function EmployeesPage() {
           { label: 'Total Staff', value: employees.length, color: '#fff' },
           { label: 'Active', value: active, color: '#22c55e' },
           { label: 'On Leave', value: employees.filter(e => e.status === 'on_leave').length, color: '#f97316' },
-          { label: 'Monthly Payroll', value: fmt(totalSalary), color: gold },
+          { label: 'Monthly Payroll', value: canViewSalary ? fmt(totalSalary) : '••••', color: gold },
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
@@ -408,9 +417,11 @@ export default function EmployeesPage() {
             <div>
               <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
               <div style={{ marginBottom: 8 }}>No team members yet</div>
+              {canCreate && (
               <button onClick={seedTeam} style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 📥 Load My Team (13 members)
               </button>
+              )}
             </div>
           ) : 'No results'}
         </div>
@@ -440,11 +451,11 @@ export default function EmployeesPage() {
                 </div>
                 <div>
                   <div style={{ color: '#555', marginBottom: 2 }}>Monthly Salary</div>
-                  <div style={{ color: gold, fontWeight: 600 }}>{emp.base_salary || emp.salary ? fmt(emp.base_salary || emp.salary) : '—'}</div>
+                  <div style={{ color: gold, fontWeight: 600 }}>{!canViewSalary ? '••••' : (emp.base_salary || emp.salary ? fmt(emp.base_salary || emp.salary) : '—')}</div>
                 </div>
                 <div>
                   <div style={{ color: '#555', marginBottom: 2 }}>Advance Limit</div>
-                  <div style={{ color: '#f97316' }}>{emp.advance_limit ? fmt(emp.advance_limit) : '—'}</div>
+                  <div style={{ color: '#f97316' }}>{!canViewSalary ? '••••' : (emp.advance_limit ? fmt(emp.advance_limit) : '—')}</div>
                 </div>
                 <div>
                   <div style={{ color: '#555', marginBottom: 2 }}>Joined</div>
@@ -461,15 +472,19 @@ export default function EmployeesPage() {
               {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: '#1a1a1a', borderRadius: 6 }}>{emp.notes}</div>}
 
               <div style={{ display: 'flex', gap: 6 }}>
+                {canEdit && (
                 <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
                   style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   ✏️ Edit
                 </button>
+                )}
+                {canViewSalary && (
                 <button onClick={() => setSalaryEmp(emp)}
                   style={{ flex: 1, background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   💰 Salary
                 </button>
-                {emp.name !== 'Abdul Rehman' && (
+                )}
+                {canDelete && emp.name !== 'Abdul Rehman' && (
                   <button onClick={() => deleteEmp(emp.id)}
                     style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     🗑
