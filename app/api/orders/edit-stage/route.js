@@ -11,6 +11,7 @@
 //   - add_custom     { title, price, quantity, taxable?, requires_shipping? }
 //   - add_discount   { line_item_id, discount_type, discount_value, description? }
 //   - update_ship    { shipping_line_id, price }
+//   - add_ship       { title, price }   ← NEW (May 2 2026): shipping line jab order pe nahi
 //
 // Returns the updated calculatedOrder state (normalized).
 // ============================================================================
@@ -22,6 +23,7 @@ import {
   stageAddCustomItem,
   stageAddLineDiscount,
   stageUpdateShipping,
+  stageAddShipping,
 } from '@/lib/shopify-order-edit';
 
 export const runtime = 'nodejs';
@@ -83,6 +85,14 @@ export async function POST(request) {
         updated = await stageUpdateShipping({
           calculated_order_id,
           shipping_line_id: params.shipping_line_id,
+          price: Number(params.price),
+        });
+        break;
+
+      case 'add_ship':
+        updated = await stageAddShipping({
+          calculated_order_id,
+          title: params.title || 'Shipping',
           price: Number(params.price),
         });
         break;
