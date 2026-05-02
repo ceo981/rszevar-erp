@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const dark = '#0f0f0f';
@@ -401,14 +402,31 @@ function SettlementsTab() {
 }
 
 // ─── Main Page ────────────────────────────────────────────────
-const TABS = [
-  { id: 'sync', label: '⟳ Live Sync' },
-  { id: 'rto', label: '🔴 RTO Alerts' },
-  { id: 'settlements', label: '💰 COD Settlements' },
+const ALL_TABS = [
+  { id: 'sync',        label: '⟳ Live Sync',        perm: 'courier.sync' },
+  { id: 'rto',         label: '🔴 RTO Alerts',      perm: 'courier.rto_alerts' },
+  { id: 'settlements', label: '💰 COD Settlements', perm: 'courier.settle' },
 ];
 
 export default function CourierSyncPage() {
-  const [tab, setTab] = useState('sync');
+  const { can } = useUser();
+
+  // ── Tab visibility filter ──
+  const TABS = ALL_TABS.filter(t => can(t.perm));
+  const defaultTab = TABS[0]?.id || 'sync';
+
+  const [tab, setTab] = useState(defaultTab);
+
+  // Edge case: zero perms → empty state
+  if (TABS.length === 0) {
+    return (
+      <div style={{ fontFamily: 'Inter, sans-serif', padding: 60, textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#666' }}>Courier Sync ke kisi tab ki ijazat tumhe nahi hai.</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: '0' }}>
