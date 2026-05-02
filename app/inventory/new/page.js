@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AiEnhanceModal from '../_components/AiEnhanceModal';
 import { calculateSeoScore } from '../../../lib/seo-score';
+import { useUser } from '@/context/UserContext';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
 const gold = '#c9a96e';
@@ -1109,6 +1110,12 @@ function BulkEditModal({
 // ────────────────────────────────────────────────────────────────────────────
 export default function NewProductPage() {
   const router = useRouter();
+  const { can } = useUser();
+
+  // ── Route-level permission guard (May 2 2026) ──
+  // Sidebar link inventory/page.js mein already gated, but direct URL access
+  // bhi block karna chahiye. Actual guard return main render se pehle hai.
+  const canCreate = can('inventory.create');
 
   // Form state
   const [draft, setDraft] = useState({
@@ -1600,6 +1607,24 @@ export default function NewProductPage() {
       setCreating(false);
     }
   };
+
+  // ── Access denied (no inventory.create permission) ──
+  if (!canCreate) {
+    return (
+      <div style={{ padding: 60, maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
+          Naya product create karne ki ijazat tumhe nahi hai. CEO se{' '}
+          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>inventory.create</code>{' '}
+          permission grant karwane ko bolo.
+        </div>
+        <Link href="/inventory" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+          ← Inventory list pe wapas
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
