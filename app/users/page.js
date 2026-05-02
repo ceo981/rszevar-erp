@@ -18,7 +18,14 @@ const ROLE_LABELS = {
 const ALL_ROLES = Object.keys(ROLE_LABELS);
 
 export default function UsersPage() {
-  const { profile: me, isSuperAdmin } = useUser();
+  const { profile: me, isSuperAdmin, can } = useUser();
+  // ── Granular perm gates (May 2 2026) ──
+  // Pehle isSuperAdmin tha. Ab perm-driven so non-CEO admins can also manage users.
+  const canView       = can('users.view');
+  const canEdit       = can('users.edit');
+  const canDelete     = can('users.delete');
+  const canRoleChange = can('users.role_change');
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
@@ -35,11 +42,10 @@ export default function UsersPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Only super admins can view the team roster. Everyone else sees the
-    // access-denied screen (see render guard below).
-    if (isSuperAdmin) loadUsers();
+    // Only users with `users.view` perm can see the team roster.
+    if (canView) loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin]);
+  }, [canView]);
 
   async function loadUsers() {
     setLoading(true);
@@ -157,10 +163,8 @@ export default function UsersPage() {
     setBusyId(null);
   }
 
-  // ── Access guard: only super admin can see this page ──
-  // Non-super-admins might reach /users via direct URL or stale bookmark.
-  // Show a clear denied state rather than the roster.
-  if (me && !isSuperAdmin) {
+  // ── Access guard: only users with `users.view` perm see the roster ──
+  if (me && !canView) {
     return (
       <div style={{ padding: '80px 24px', maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
@@ -312,8 +316,8 @@ export default function UsersPage() {
                       <select
                         value={u.role}
                         onChange={(e) => updateRole(u.id, e.target.value)}
-                        disabled={busyId === u.id || (isSelf && u.role === 'super_admin')}
-                        title={isSelf && u.role === 'super_admin' ? 'Apna super_admin role change nahi kar sakte' : ''}
+                        disabled={!canRoleChange || busyId === u.id || (isSelf && u.role === 'super_admin')}
+                        title={!canRoleChange ? 'Role change ki ijazat nahi (need users.role_change)' : (isSelf && u.role === 'super_admin' ? 'Apna super_admin role change nahi kar sakte' : '')}
                         style={{
                           background: 'var(--bg)',
                           border: '1px solid var(--border2)',
@@ -322,7 +326,8 @@ export default function UsersPage() {
                           borderRadius: 'var(--radius)',
                           fontSize: 12,
                           fontFamily: 'inherit',
-                          cursor: 'pointer',
+                          cursor: canRoleChange ? 'pointer' : 'not-allowed',
+                          opacity: canRoleChange ? 1 : 0.5,
                         }}
                       >
                         {ALL_ROLES.map((r) => (
@@ -351,8 +356,8 @@ export default function UsersPage() {
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {/* Edit Name (super admin) */}
-                        {isSuperAdmin && (
+                        {/* Edit Name */}
+                        {canEdit && (
                           <button
                             onClick={() => openEditName(u)}
                             disabled={busyId === u.id}
@@ -373,6 +378,7 @@ export default function UsersPage() {
                           </button>
                         )}
                         {/* Activate / Deactivate */}
+                        {canEdit && (
                         <button
                           onClick={() => toggleActive(u)}
                           disabled={busyId === u.id || isSelf}
@@ -391,8 +397,9 @@ export default function UsersPage() {
                         >
                           {u.is_active ? 'Deactivate' : 'Activate'}
                         </button>
-                        {/* Delete (super admin, not self) */}
-                        {isSuperAdmin && !isSelf && (
+                        )}
+                        {/* Delete */}
+                        {canDelete && !isSelf && (
                           <button
                             onClick={() => openDelete(u)}
                             disabled={busyId === u.id}
