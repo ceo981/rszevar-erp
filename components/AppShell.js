@@ -18,9 +18,17 @@ import AIAdvisorFloat from './AIAdvisorFloat';
 
 // ── Module registry ─────────────────────────────────────────────────────────
 // Har module ka `href` hi uska URL hai. Sidebar is `href` pe Link render karta hai.
+//
+// May 2 2026 — Group hint via comments. Sidebar abhi flat list hai (ek hi
+// level, no nesting). Future mein agar dropdown/grouping chahiye to har
+// module pe `parent: 'orders'` field add karke render logic update karenge.
+// Abhi ke liye flat-but-adjacent placement use karte hain (order matters):
+//   - Customer Credits seedha Orders ke neeche → visually grouped
+//   - Same orders.view permission → koi extra role setup nahi
 const MODULES = [
   { id: 'dashboard',    href: '/dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
+  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'orders.view' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
   { id: 'accounts',     href: '/accounts',     label: 'Accounts',      icon: '💰', perm: 'financial.view' },
   { id: 'courier',      href: '/courier',      label: 'Courier',       icon: '🚚', perm: 'courier.view' },
