@@ -393,6 +393,11 @@ function AuthenticatedShell({ pathname, router, children }) {
       profile, isSuperAdmin, canViewFinancial,
       userRole: profile?.role, userEmail: user?.email,
       activeUser, setActiveUser, performer,
+      // ── Granular permissions (May 2 2026) ──
+      // Expose the full Set + can() helper so any component can do:
+      //   const { can } = useUser();
+      //   {can('orders.cancel') && <CancelButton />}
+      permissions, can,
     }}>
       <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
 
