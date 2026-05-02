@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -7,6 +8,10 @@ const border = '#222';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 
 export default function ReportsPage() {
+  const { can } = useUser();
+  const canFinancial = can('reports.financial_view');
+  const canPrint     = can('reports.print');
+
   const [type, setType] = useState('daily');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [data, setData] = useState(null);
@@ -154,7 +159,7 @@ export default function ReportsPage() {
             style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? 'Generating...' : '📊 Generate Report'}
           </button>
-          {data && (
+          {data && canPrint && (
             <button onClick={printPDF}
               style={{ background: '#1e1e1e', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '10px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               🖨️ Download PDF
@@ -170,22 +175,24 @@ export default function ReportsPage() {
         <>
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{data.label}</div>
+            {canPrint && (
             <button onClick={printPDF} style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
               🖨️ Download / Print PDF
             </button>
+            )}
           </div>
 
           {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Total Orders', value: s.total_orders, color: '#fff' },
-              { label: 'Total COD', value: fmt(s.total_cod), color: gold },
+              { label: 'Total COD', value: canFinancial ? fmt(s.total_cod) : '••••', color: gold },
               { label: 'Delivered', value: `${s.delivered} (${s.delivery_rate}%)`, color: '#22c55e' },
               { label: 'RTO', value: `${s.rto} (${s.rto_rate}%)`, color: '#ef4444' },
               { label: 'Pending', value: s.pending, color: '#fb923c' },
-              { label: 'Delivered COD', value: fmt(s.delivered_cod), color: '#22c55e' },
-              { label: 'RTO COD Lost', value: fmt(s.rto_cod), color: '#ef4444' },
-              { label: 'Avg Order', value: fmt(s.avg_order), color: '#3b82f6' },
+              { label: 'Delivered COD', value: canFinancial ? fmt(s.delivered_cod) : '••••', color: '#22c55e' },
+              { label: 'RTO COD Lost', value: canFinancial ? fmt(s.rto_cod) : '••••', color: '#ef4444' },
+              { label: 'Avg Order', value: canFinancial ? fmt(s.avg_order) : '••••', color: '#3b82f6' },
             ].map(st => (
               <div key={st.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
                 <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{st.label}</div>
