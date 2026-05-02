@@ -89,14 +89,35 @@ export function PaymentBadge({ payment_status }) {
 // ─── OrderDrawer (the main export) ───────────────────────────────────────
 export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultTab = 'actions' }) {
   const isPage = variant === 'page';
-  const { profile } = useUser();
+  const { profile, userEmail, can } = useUser();
   const userRole    = profile?.role || '';
-  const { userEmail } = useUser();
+
+  // ── Role-based gates (preserved for true admin overrides only) ──────────
+  // isCEO is reserved for CEO/Admin-only manual overrides (force cancel,
+  // manual delivered/RTO override). Everything else uses granular can() perms.
   const isCEO       = userRole === 'super_admin' || userRole === 'admin';
-  const isOpsManager = userRole === 'manager';
-  const isDispatcher = userRole === 'dispatcher';
-  const canConfirm  = isCEO || isOpsManager;
-  const canPack     = isCEO || isDispatcher;
+
+  // ── Granular permission gates (May 2 2026) ──────────────────────────────
+  // Each action button checks its own permission. CEO toggle on /roles page
+  // controls who can do what — no more hardcoded role-to-button mapping.
+  const canConfirm           = can('orders.confirm');
+  const canAssign            = can('orders.assign');
+  const canUnassign          = can('orders.unassign');
+  const canMarkPacked        = can('orders.dispatch');           // packed flip is part of dispatch flow
+  const canDispatch          = can('orders.dispatch');
+  const canManualFulfill     = can('orders.manual_fulfill');
+  const canCancel            = can('orders.cancel');
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
+  const canEditCustomer      = can('orders.edit_customer');
+  const canEditShipping      = can('orders.edit_shipping');
+  const canEditOrderInfo     = canEditCustomer || canEditShipping;
+  const canComment           = can('orders.comment');
+  const canViewAmount        = can('orders.view_amount');
+
+  // Backwards-compat aliases (kept so internal markup edits remain minimal).
+  // Individual action sections below use the specific perm helpers above.
+  const canPack     = canMarkPacked;
+
 
   // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
   const [isMobile, setIsMobile] = useState(false);
@@ -906,7 +927,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {/* Reassign Packer — confirmed/on_packing orders */}
-              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+              {canAssign && (s === 'confirmed' || s === 'on_packing') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
                     👤 Packer Assignment
@@ -931,7 +952,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {/* Unconfirm + Unassign — confirmed/on_packing pe CEO/Manager ke liye */}
-              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+              {canUnassign && (s === 'confirmed' || s === 'on_packing') && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={async () => {
@@ -1024,7 +1045,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   Status goes confirmed → on_packing. After this, packer can be
                   assigned + Mark as Packed becomes available.
                   CSR (canConfirm) bhi see karega — same as primary on /orders/[id]. */}
-              {(canPack || canConfirm) && s === 'confirmed' && !order.shopify_fulfillment_id && (
+              {(canManualFulfill || canConfirm) && s === 'confirmed' && !order.shopify_fulfillment_id && (
                 <div style={{ background: card, border: `1px solid #c9a96e44`, borderRadius: 10, padding: '14px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#c9a96e', marginBottom: 8 }}>📋 Add Tracking / Fulfill</div>
                   <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.4 }}>
@@ -1052,7 +1073,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               {/* canTransition guard confirmed → packed block karta hai.        */}
               {/* Confirmed pe pehle packer assign karo → status on_packing     */}
               {/* → phir Mark as Packed.                                         */}
-              {canPack && s === 'on_packing' && (
+              {canMarkPacked && s === 'on_packing' && (
                 <div style={{ background: card, border: `1px solid #06b6d433`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#06b6d4', marginBottom: 10 }}>📦 Mark as Packed</div>
 
@@ -1086,7 +1107,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               {/* secondary — sirf jab Shopify pe book NAHI hua (rare case).           */}
               {/* Pehle wala issue: secondary modals direct hi dispatch flow the —     */}
               {/* Shopify-booked orders pe click karne se DOUBLE BOOKING ho jaati.     */}
-              {canPack && s === 'packed' && (
+              {canDispatch && s === 'packed' && (
                 <div style={{ background: card, border: '1px solid #a855f744', borderRadius: 10, padding: '14px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>🚚 Dispatch Order</div>
 
@@ -1170,14 +1191,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   edit hua aur dobara book karna hai. Tracking + courier clear
                   ho jate, status dispatched → confirmed wapas, Shopify side
                   bhi cancel hoti hai (ya already cancelled hai toh skip). */}
-              {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
+              {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
                 <button onClick={cancelFulfillment} disabled={loading}
                   style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   🔄 Cancel Fulfillment (remove tracking)
                 </button>
               )}
 
-              {s !== 'cancelled' && s !== 'delivered' && (
+              {canCancel && s !== 'cancelled' && s !== 'delivered' && (
                 <div style={{ background: card, border: '1px solid #330000', borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
                   <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
@@ -1216,7 +1237,8 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
           {tab === 'timeline' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {/* Comment Input */}
+              {/* Comment Input — only for users with orders.comment perm */}
+              {canComment && (
               <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Staff Note / Comment</div>
                 <textarea
@@ -1238,6 +1260,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   </button>
                 </div>
               </div>
+              )}
 
               {/* Timeline Entries — super_admin sees all, staff hides webhook/system noise */}
               {(() => {
@@ -1340,9 +1363,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           {tab === 'customer' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Apr 27 2026 — Customer Info Edit (always-editable inline form).
-                  Pehle yahan read-only card tha aur edit ke liye Actions tab pe
-                  alag toggle button tha. Ab Shopify-style: form direct yahan
-                  hai, kebab menu se aate hi user can edit. */}
+                  May 2 2026 — Now gated by orders.edit_customer / orders.edit_shipping.
+                  If user lacks both perms, only the read-only "Purane Orders" list shows. */}
+              {canEditOrderInfo && (
               <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>👤 Edit Customer Info</span>
@@ -1389,6 +1412,30 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   </div>
                 )}
               </div>
+              )}
+
+              {/* Read-only fallback when user lacks edit perms — show customer info as cards */}
+              {!canEditOrderInfo && (
+                <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
+                  <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>👤 Customer Info</div>
+                  <div style={{ fontSize: 13, color: '#fff', marginBottom: 8 }}>{order.customer_name || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>📞 {order.customer_phone || '—'}</div>
+                  <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>📍 {order.customer_city || '—'}</div>
+                  {order.customer_address && (
+                    <div style={{ fontSize: 12, color: '#888', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{order.customer_address}</div>
+                  )}
+                  {order.tags && Array.isArray(order.tags) && order.tags.length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${border}` }}>
+                      <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>Tags</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {order.tags.map((tag, ti) => (
+                          <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Previous Orders */}
               <div>
