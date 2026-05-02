@@ -349,16 +349,57 @@ export default function EmployeesPage() {
     load();
   };
 
-  const deleteEmp = async (id) => {
-    if (!confirm('Delete this employee?')) return;
-    await fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) });
+  const deleteEmp = async (id, name) => {
+    // ── SOFT DELETE (May 2 2026) ──
+    // Hard delete dangerous tha (packing_log + attendance + salary FK refs).
+    // Ab confirmed message se clear karte ke "Deactivate" ho raha — historical
+    // data preserved rahe.
+    if (!confirm(
+      `${name || 'Is employee'} ko Deactivate karna hai?\n\n` +
+      `• Assign list (/packing) se gayab ho jayega\n` +
+      `• Past packing_log, attendance, salary records SAFE rahenge\n` +
+      `• Wapas active karne ke liye "Reactivate" use karna\n\n` +
+      `Continue?`
+    )) return;
+    const r = await fetch('/api/employees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id }),
+    });
+    const d = await r.json();
+    if (!d.success) {
+      alert(`❌ Deactivate fail: ${d.error}`);
+      return;
+    }
     load();
   };
 
-  const filtered = employees.filter(e =>
-    e.name?.toLowerCase().includes(search.toLowerCase()) ||
-    e.role?.toLowerCase().includes(search.toLowerCase())
-  );
+  const reactivateEmp = async (id, name) => {
+    if (!confirm(`${name} ko wapas Active karna hai?`)) return;
+    const r = await fetch('/api/employees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reactivate', id }),
+    });
+    const d = await r.json();
+    if (!d.success) {
+      alert(`❌ Reactivate fail: ${d.error}`);
+      return;
+    }
+    load();
+  };
+
+  // Show inactive employees toggle (default off — clean view)
+  const [showInactive, setShowInactive] = useState(false);
+
+  const filtered = employees.filter(e => {
+    // Hide inactive unless toggle is on
+    if (!showInactive && e.status === 'inactive') return false;
+    return (
+      e.name?.toLowerCase().includes(search.toLowerCase()) ||
+      e.role?.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   const totalSalary = employees.filter(e => e.status === 'active').reduce((s, e) => s + parseFloat(e.salary || 0), 0);
   const active = employees.filter(e => e.status === 'active').length;
@@ -405,9 +446,24 @@ export default function EmployeesPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or role..."
-        style={{ width: '100%', maxWidth: 360, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
+      {/* Search + Inactive toggle */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or role..."
+          style={{ flex: 1, maxWidth: 360, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, boxSizing: 'border-box' }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#888', cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={e => setShowInactive(e.target.checked)}
+            style={{ cursor: 'pointer' }}
+          />
+          Show inactive {employees.filter(e => e.status === 'inactive').length > 0 && (
+            <span style={{ background: '#1a1a1a', color: '#888', borderRadius: 10, padding: '1px 8px', fontSize: 10 }}>
+              {employees.filter(e => e.status === 'inactive').length}
+            </span>
+          )}
+        </label>
+      </div>
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#444' }}>Loading team...</div>
@@ -428,7 +484,14 @@ export default function EmployeesPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
           {filtered.map(emp => (
-            <div key={emp.id} style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px 18px' }}>
+            <div key={emp.id} style={{
+              background: card,
+              border: `1px solid ${emp.status === 'inactive' ? '#330000' : border}`,
+              borderRadius: 10,
+              padding: '16px 18px',
+              opacity: emp.status === 'inactive' ? 0.55 : 1,
+              transition: 'opacity 0.2s',
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                 <Avatar name={emp.name} role={emp.role} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -484,10 +547,19 @@ export default function EmployeesPage() {
                   💰 Salary
                 </button>
                 )}
-                {canDelete && emp.name !== 'Abdul Rehman' && (
-                  <button onClick={() => deleteEmp(emp.id)}
+                {/* Soft delete (deactivate) OR reactivate based on current status */}
+                {canDelete && emp.name !== 'Abdul Rehman' && emp.status !== 'inactive' && (
+                  <button onClick={() => deleteEmp(emp.id, emp.name)}
+                    title="Deactivate — historical data safe rahegi, sirf assign list se hatega"
                     style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    🗑
+                    🚫 Deactivate
+                  </button>
+                )}
+                {canDelete && emp.status === 'inactive' && (
+                  <button onClick={() => reactivateEmp(emp.id, emp.name)}
+                    title="Wapas active karo"
+                    style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ✅ Reactivate
                   </button>
                 )}
               </div>
