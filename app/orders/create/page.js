@@ -327,6 +327,103 @@ function DiscountModal({ initial, onClose, onSave, label }) {
   );
 }
 
+// ─── Manual Item Modal ────────────────────────────────────────────────────
+// May 2 2026 — Allows adding a custom (non-Shopify) line item to the order.
+// Use cases: special orders, customizations, repairs, ad-hoc items not in
+// catalog, friend/family adjustments, etc.
+//
+// Backend (/api/orders/create) already supports this — when an item has no
+// `shopify_variant_id`, it's sent to Shopify as a custom line item with
+// title + price. We just expose the UI for it here.
+function ManualItemModal({ onClose, onAdd }) {
+  const [title, setTitle] = useState('');
+  const [price, setPrice] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [sku, setSku] = useState('');
+
+  const canSave = title.trim().length > 0 && parseFloat(price) > 0 && quantity >= 1;
+
+  const save = () => {
+    if (!canSave) return;
+    onAdd({
+      // No shopify_variant_id → backend treats this as custom line item
+      shopify_variant_id: null,
+      shopify_product_id: null,
+      title: title.trim(),
+      sku: sku.trim() || undefined,
+      unit_price: parseFloat(price),
+      quantity: parseInt(quantity) || 1,
+      use_custom_price: true,
+      image_url: null,
+      is_manual: true,  // UI-only flag — for display badge
+    });
+    onClose();
+  };
+
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>✏️ Add manual item</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
+          Custom item jo Shopify catalog mein nahi hai. Repairs, special orders, ya ad-hoc charges ke liye use karo.
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <div style={labelStyle}>Item title <span style={{ color: danger }}>*</span></div>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+            placeholder="e.g. Custom resize service, Special order" style={inpStyle} autoFocus />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <div style={labelStyle}>Price (Rs) <span style={{ color: danger }}>*</span></div>
+            <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)}
+              placeholder="500" style={inpStyle} />
+          </div>
+          <div>
+            <div style={labelStyle}>Quantity <span style={{ color: danger }}>*</span></div>
+            <input type="number" min="1" step="1" value={quantity} onChange={e => setQuantity(e.target.value)}
+              style={inpStyle} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={labelStyle}>SKU (optional)</div>
+          <input type="text" value={sku} onChange={e => setSku(e.target.value)}
+            placeholder="e.g. CUSTOM-001 (sirf reference ke liye)" style={inpStyle} />
+        </div>
+
+        {parseFloat(price) > 0 && quantity >= 1 && (
+          <div style={{
+            marginBottom: 18, padding: '10px 12px',
+            background: 'rgba(201,169,110,0.05)', border: '1px solid rgba(201,169,110,0.2)',
+            borderRadius: 7, fontSize: 12, color: '#bbb',
+          }}>
+            Line total: <strong style={{ color: gold }}>{fmt(parseFloat(price) * (parseInt(quantity) || 1))}</strong>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={save} disabled={!canSave}
+            style={{
+              background: canSave ? gold : '#1a1a1a',
+              border: `1px solid ${canSave ? gold : border}`,
+              color: canSave ? '#000' : '#555',
+              borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 600,
+              cursor: canSave ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+            }}>Add to order</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────
 export default function CreateOrderPage() {
   const router = useRouter();
@@ -334,6 +431,7 @@ export default function CreateOrderPage() {
   // Items
   const [items, setItems] = useState([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [showManualItem, setShowManualItem] = useState(false);  // May 2 2026 — manual/custom item modal
   const [lineDiscountIdx, setLineDiscountIdx] = useState(null);
   const [editPriceIdx, setEditPriceIdx] = useState(null);
 
@@ -605,6 +703,13 @@ export default function CreateOrderPage() {
                 style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Browse
               </button>
+              {/* May 2 2026 — Manual item button (custom/non-Shopify items).
+                  Backend already supports it; this exposes the UI. */}
+              <button onClick={() => setShowManualItem(true)}
+                title="Custom item add karo jo Shopify catalog mein nahi hai"
+                style={{ background: 'transparent', border: `1px dashed ${gold}`, color: gold, borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>
+                ✏️ Manual item
+              </button>
             </div>
 
             {items.length > 0 && (
@@ -628,7 +733,17 @@ export default function CreateOrderPage() {
                           <div style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>💍</div>
                         )}
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word' }}>{item.title}</div>
+                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span>{item.title}</span>
+                            {item.is_manual && (
+                              <span style={{
+                                fontSize: 9, color: gold, background: 'rgba(201,169,110,0.1)',
+                                border: `1px solid rgba(201,169,110,0.3)`, borderRadius: 3,
+                                padding: '1px 6px', fontWeight: 600, letterSpacing: 0.5,
+                                textTransform: 'uppercase',
+                              }}>Manual</span>
+                            )}
+                          </div>
                           {item.sku && <div style={{ fontSize: 10, color: '#666', marginTop: 2, fontFamily: 'monospace' }}>SKU: {item.sku}</div>}
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 5, flexWrap: 'wrap' }}>
                             {editPriceIdx === idx ? (
@@ -833,6 +948,12 @@ export default function CreateOrderPage() {
 
       {/* Modals */}
       {showProductPicker && <ProductPicker onClose={() => setShowProductPicker(false)} onAdd={handleAddProducts} />}
+      {showManualItem && (
+        <ManualItemModal
+          onClose={() => setShowManualItem(false)}
+          onAdd={(item) => setItems(arr => [...arr, item])}
+        />
+      )}
       {lineDiscountIdx !== null && (
         <DiscountModal initial={items[lineDiscountIdx]?.discount}
           label="Line item discount"
