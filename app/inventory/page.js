@@ -122,7 +122,19 @@ export default function InventoryPage() {
       if (filters.collection !== 'all') params.set('collection', filters.collection);
       if (seoFilter !== 'all') params.set('seo_tier', seoFilter);
       const res = await fetch(`/api/products?${params}`, { signal: ac.signal });
-      const data = await res.json();
+      // May 2026 — Defensive parse. Vercel can return plain text on infra
+      // errors (504 timeout, 413 payload, 502 gateway). The previous direct
+      // .json() call threw "Unexpected token 'A', 'An error o'..." which
+      // surfaced to the user as a cryptic banner.
+      const text = await res.text();
+      if (ac.signal.aborted) return;
+      let data;
+      try { data = JSON.parse(text); }
+      catch {
+        console.error('[/api/products] non-JSON response:', text.slice(0, 200));
+        if (!ac.signal.aborted) setLoading(false);
+        return;
+      }
       // Stale-response guard: if a newer fetch superseded us, skip state update
       if (ac.signal.aborted) return;
       if (data.success) {
@@ -152,6 +164,71 @@ export default function InventoryPage() {
     }
     loadAbcStats();
   }, [abcWindow, computeResult]);
+
+  // ── May 2026 — Missing-images diagnostic ───────────────────────────────────
+  // Detects active products whose images_data + image_url are both empty in
+  // ERP. These are usually products that synced before Shopify-side images
+  // were added, or where the products/update webhook fired with HMAC mismatch.
+  // Banner gives Abdul a one-click way to refresh just the affected products.
+  const [missingImages, setMissingImages] = useState({ count: 0, products: [], loaded: false });
+  const [refreshingMissing, setRefreshingMissing] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState(null);
+
+  useEffect(() => {
+    async function loadDiagnostics() {
+      try {
+        const res = await fetch('/api/products/diagnostics?check=missing_images');
+        const text = await res.text();
+        let d;
+        try { d = JSON.parse(text); } catch { return; }
+        if (d?.success) {
+          setMissingImages({
+            count: d.count || 0,
+            products: d.products || [],
+            loaded: true,
+          });
+        }
+      } catch { /* silent — diagnostic is non-critical */ }
+    }
+    loadDiagnostics();
+  }, [syncResult, computeResult]);  // re-check after sync or recompute
+
+  const refreshSingleProduct = async (shopifyProductId) => {
+    try {
+      const res = await fetch(`/api/products/${shopifyProductId}/refresh`, { method: 'POST' });
+      const text = await res.text();
+      let d;
+      try { d = JSON.parse(text); } catch { return { success: false, error: 'non-JSON response' }; }
+      return d;
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  };
+
+  const refreshAllMissing = async () => {
+    if (!missingImages.products?.length) return;
+    if (!confirm(`${missingImages.count} products ko Shopify se refresh karna hai? Yeh thoda waqt lega (har product ~1-2s).`)) return;
+    setRefreshingMissing(true);
+    setRefreshProgress({ done: 0, total: missingImages.count, errors: [] });
+    const errors = [];
+    let done = 0;
+    for (const p of missingImages.products) {
+      const r = await refreshSingleProduct(p.shopify_product_id);
+      if (!r?.success) {
+        errors.push(`${p.parent_title}: ${r?.error || 'unknown error'}`);
+      }
+      done += 1;
+      setRefreshProgress({ done, total: missingImages.count, errors: [...errors] });
+      // Throttle to be kind to Shopify rate limits
+      await new Promise(r => setTimeout(r, 250));
+    }
+    setRefreshingMissing(false);
+    // Reload diagnostics + products
+    fetchProducts();
+    setTimeout(() => {
+      setRefreshProgress(null);
+    }, 5000);
+  };
 
   const handleSync = async () => {
     setSyncing(true); setSyncResult(null);
@@ -453,6 +530,127 @@ export default function InventoryPage() {
           </span>
           {!seoResult.in_progress && (
             <button onClick={() => setSeoResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 16 }}>×</button>
+          )}
+        </div>
+      )}
+
+      {/* May 2026 — Missing-images diagnostic banner. Shows when there are
+          products marked active where ERP has no image_url AND empty
+          images_data. Common cause: webhook fired before Shopify-side images
+          were added, OR product was created via ERP without uploading images. */}
+      {missingImages.loaded && missingImages.count > 0 && !refreshingMissing && !refreshProgress && (
+        <div style={{
+          padding: '14px 18px', marginBottom: 12,
+          borderRadius: 'var(--radius)',
+          background: 'rgba(251,191,36,0.08)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          fontSize: 13,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18 }}>⚠️</span>
+              <div>
+                <div style={{ color: '#fbbf24', fontWeight: 600 }}>
+                  {missingImages.count} product{missingImages.count === 1 ? '' : 's'} mein images missing hain
+                </div>
+                <div style={{ color: 'var(--text3)', fontSize: 11, marginTop: 2 }}>
+                  Yeh products active hain but ERP DB mein image_url + images_data dono khali hain. Shopify pe images ho sakti hain — refresh karne se aa jaayengi.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={refreshAllMissing}
+                style={{
+                  background: 'rgba(251,191,36,0.15)',
+                  border: '1px solid rgba(251,191,36,0.4)',
+                  color: '#fbbf24',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                🔄 Refresh all {missingImages.count}
+              </button>
+              <button
+                onClick={() => setMissingImages(s => ({ ...s, count: 0 }))}
+                title="Hide for this session"
+                style={{
+                  background: 'transparent', border: '1px solid var(--border)',
+                  color: 'var(--text3)', borderRadius: 6, padding: '6px 10px',
+                  fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                ×
+              </button>
+            </div>
+          </div>
+
+          {/* Sample list (first 5) — gives Abdul a quick sense of which products */}
+          {missingImages.products.length > 0 && (
+            <div style={{ marginTop: 4, paddingTop: 8, borderTop: '1px solid rgba(251,191,36,0.15)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                First {Math.min(5, missingImages.products.length)} affected:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {missingImages.products.slice(0, 5).map(p => (
+                  <div key={p.shopify_product_id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    fontSize: 12, padding: '4px 8px',
+                    background: 'rgba(251,191,36,0.04)', borderRadius: 4,
+                  }}>
+                    <span style={{ color: '#ddd' }}>
+                      {p.parent_title}
+                      {p.sku && <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 11 }}>· {p.sku}</span>}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        const r = await refreshSingleProduct(p.shopify_product_id);
+                        if (r?.success) {
+                          // Remove from list locally
+                          setMissingImages(s => ({
+                            ...s,
+                            count: Math.max(0, s.count - 1),
+                            products: s.products.filter(x => x.shopify_product_id !== p.shopify_product_id),
+                          }));
+                          fetchProducts();
+                        } else {
+                          alert(`Refresh failed: ${r?.error || 'unknown'}`);
+                        }
+                      }}
+                      style={{
+                        background: 'transparent', border: '1px solid rgba(251,191,36,0.4)',
+                        color: '#fbbf24', borderRadius: 4, padding: '2px 8px',
+                        fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      }}>
+                      Refresh →
+                    </button>
+                  </div>
+                ))}
+                {missingImages.products.length > 5 && (
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, fontStyle: 'italic' }}>
+                    + {missingImages.products.length - 5} aur — "Refresh all" pe click karo
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bulk refresh progress */}
+      {refreshProgress && (
+        <div style={{
+          padding: '12px 16px', marginBottom: 12,
+          borderRadius: 'var(--radius)',
+          background: 'rgba(96,165,250,0.08)',
+          border: '1px solid rgba(96,165,250,0.3)',
+          fontSize: 13, color: '#60a5fa',
+        }}>
+          {refreshingMissing ? '⟳ Refreshing' : '✓ Done'} — {refreshProgress.done} / {refreshProgress.total} products
+          {refreshProgress.errors.length > 0 && (
+            <span style={{ color: '#ef4444', marginLeft: 12, fontSize: 11 }}>
+              · {refreshProgress.errors.length} failed
+            </span>
           )}
         </div>
       )}
