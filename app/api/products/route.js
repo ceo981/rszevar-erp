@@ -10,6 +10,12 @@ import { calculateSeoScore } from '@/lib/seo-score';
 //             parent_units_sold_*, parent_seo_score, parent_seo_tier)
 // Phase D M2.C: New POST handler — creates product on Shopify with images,
 //             collections, SEO meta in one call, then mirrors to DB
+// May 2026:   GET handler optimized — heavy SELECT '*' (which pulled
+//             description_html, images_data, tags JSONB) replaced with slim
+//             column list. Categories/collections distinct values cached 60s
+//             (rarely change). Total stock value cached 60s. This fixes the
+//             "Unexpected token 'A', 'An error o'..." page-crash error caused
+//             by Vercel function timeout on ~5000-row full scans.
 // ============================================================================
 
 export const runtime = 'nodejs';
@@ -22,6 +28,96 @@ const API_VERSION    = '2024-01';
 const GRAPHQL_VERSION = '2025-01';
 
 const MAX_FETCH = 10000;
+
+// Slim column list for inventory listing — excludes heavy text/JSONB fields
+// (description_html, images_data, tags, push_response, etc.) that aren't used
+// in the grid render. This drops payload size by ~70% which is the main cause
+// of past timeouts when fetching 1200+ products.
+//
+// IMPORTANT: keep this in sync with what /inventory/page.js actually reads
+// from each variant row (e.g. stock_quantity, abc_*, revenue_*, etc.)
+const LIST_COLUMNS = [
+  'id', 'shopify_product_id', 'shopify_variant_id',
+  'title', 'parent_title', 'sku', 'barcode',
+  'category', 'vendor',
+  'selling_price', 'cost_price', 'compare_at_price',
+  'stock_quantity', 'min_stock_level', 'reserved_quantity',
+  'image_url',
+  'is_active',
+  'collections',
+  'abc_90d', 'abc_180d',
+  'revenue_90d', 'revenue_180d',
+  'units_sold_90d', 'units_sold_180d',
+  'seo_score', 'seo_tier',
+  'last_sold_at',
+  'updated_at',
+].join(', ');
+
+// ── Module-level caches with TTL ─────────────────────────────────────────────
+// Inventory page hits this endpoint on every keystroke, filter change, page
+// nav. Distinct categories/collections/total-stock change very rarely (only
+// after Shopify sync). Caching for 60s drops 3 of 4 full table scans on most
+// page loads.
+const AGG_TTL_MS = 60_000;
+let _aggCache = null; // { at: number, categories, collections, totalStockValue, totalUnits, distinctProducts }
+
+function aggCacheGet() {
+  if (_aggCache && (Date.now() - _aggCache.at) < AGG_TTL_MS) return _aggCache;
+  return null;
+}
+
+async function aggCacheCompute(supabase) {
+  // Single query: pull only the columns we need to compute everything.
+  // Even at 5000+ variant rows this is <1MB of data.
+  const valueRows = [];
+  const PAGE = 1000;
+  let off = 0;
+  while (off < MAX_FETCH) {
+    const { data: chunk, error } = await supabase
+      .from('products')
+      .select('stock_quantity, selling_price, shopify_product_id, category, collections')
+      .range(off, off + PAGE - 1);
+    if (error) throw error;
+    if (!chunk || chunk.length === 0) break;
+    valueRows.push(...chunk);
+    if (chunk.length < PAGE) break;
+    off += PAGE;
+  }
+
+  let totalStockValue = 0;
+  let totalUnits = 0;
+  const distinctProducts = new Set();
+  const categorySet = new Set();
+  const collMap = new Map();
+
+  for (const r of valueRows) {
+    totalStockValue += (r.stock_quantity || 0) * (r.selling_price || 0);
+    totalUnits      += (r.stock_quantity || 0);
+    if (r.shopify_product_id) distinctProducts.add(r.shopify_product_id);
+    if (r.category) categorySet.add(r.category);
+    if (Array.isArray(r.collections)) {
+      for (const c of r.collections) {
+        if (c?.handle && !collMap.has(c.handle)) {
+          collMap.set(c.handle, c.title || c.handle);
+        }
+      }
+    }
+  }
+
+  const cache = {
+    at: Date.now(),
+    categories: [...categorySet].sort(),
+    collections: [...collMap.entries()]
+      .map(([handle, title]) => ({ handle, title }))
+      .sort((a, b) => a.title.localeCompare(b.title)),
+    totalStockValue,
+    totalUnits,
+    distinctProducts: distinctProducts.size,
+    totalVariants: valueRows.length,
+  };
+  _aggCache = cache;
+  return cache;
+}
 
 // ── ABC ranking helpers ────────────────────────────────────────────────────
 const ABC_RANK = { A: 4, B: 3, C: 2, D: 1 };
@@ -94,14 +190,21 @@ async function fetchProductExtras(productId) {
   }
 }
 
-// ── Location ID helper (cached for this request) ───────────────────────────
+// ── Location ID helper (cached with 10 min TTL across warm Lambdas) ───────
+// Comment said "cached for this request" but it's actually module-scope —
+// persists across requests on warm Lambdas. TTL keeps recovery automatic.
 let _cachedLocationId = null;
+let _cachedLocationAt = 0;
+const _LOCATION_TTL_MS = 10 * 60 * 1000;
 async function getPrimaryLocationId() {
-  if (_cachedLocationId) return _cachedLocationId;
+  if (_cachedLocationId && (Date.now() - _cachedLocationAt) < _LOCATION_TTL_MS) {
+    return _cachedLocationId;
+  }
   const data = await shopifyREST('locations.json');
   const loc = (data.locations || []).find(l => l.active) || data.locations?.[0];
   if (!loc) throw new Error('No active Shopify location');
   _cachedLocationId = String(loc.id);
+  _cachedLocationAt = Date.now();
   return _cachedLocationId;
 }
 
@@ -213,7 +316,8 @@ export async function GET(request) {
     const abcWindow = searchParams.get('abc_window') || '90d';
     const abcCol = abcWindow === '180d' ? 'abc_180d' : 'abc_90d';
 
-    let query = supabase.from('products').select('*');
+    // ── Slim SELECT — drop heavy text/JSONB columns not used by listing UI ──
+    let query = supabase.from('products').select(LIST_COLUMNS);
 
     if (search) {
       const safeSearch = search.replace(/[,()%]/g, ' ').trim();
@@ -239,6 +343,7 @@ export async function GET(request) {
 
     query = query.order(sort, { ascending: order === 'asc' });
 
+    // Fetch matching variant rows in chunks of 1000 — bounded by MAX_FETCH.
     const allRows = [];
     {
       const PAGE = 1000;
@@ -253,6 +358,8 @@ export async function GET(request) {
       }
     }
 
+    // ── Stats counts via HEAD queries (no row transfer) ──
+    // These COUNT queries are very cheap — just scan an index, no data pulled.
     const [totalRowsRes, outRes, lowRes, activeRes] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('stock_quantity', 0),
@@ -260,59 +367,39 @@ export async function GET(request) {
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
     ]);
 
-    const valueRows = [];
-    const PAGE = 1000;
-    let offset = 0;
-    while (offset < MAX_FETCH) {
-      const { data: chunk, error: chunkErr } = await supabase
-        .from('products')
-        .select('stock_quantity, selling_price, shopify_product_id')
-        .range(offset, offset + PAGE - 1);
-      if (chunkErr) throw chunkErr;
-      if (!chunk || chunk.length === 0) break;
-      valueRows.push(...chunk);
-      if (chunk.length < PAGE) break;
-      offset += PAGE;
+    // ── Cached aggregates: stock value, units, distinct products, categories, collections ──
+    let agg = aggCacheGet();
+    if (!agg) {
+      try {
+        agg = await aggCacheCompute(supabase);
+      } catch (e) {
+        // If the agg query fails, don't block the page — return placeholder zeros
+        console.error('[/api/products] agg compute failed:', e.message);
+        agg = {
+          at: Date.now(),
+          categories: [],
+          collections: [],
+          totalStockValue: 0,
+          totalUnits: 0,
+          distinctProducts: 0,
+          totalVariants: 0,
+        };
+      }
     }
-
-    const total_stock_value = valueRows.reduce((s, p) => s + (p.stock_quantity || 0) * (p.selling_price || 0), 0);
-    const total_units = valueRows.reduce((s, p) => s + (p.stock_quantity || 0), 0);
-    const distinctProducts = new Set(valueRows.map(p => p.shopify_product_id).filter(Boolean)).size;
 
     const productStats = {
       total: totalRowsRes.count || 0,
       total_variants: totalRowsRes.count || 0,
-      total_products: distinctProducts,
+      total_products: agg.distinctProducts,
       out_of_stock: outRes.count || 0,
       low_stock: lowRes.count || 0,
       active: activeRes.count || 0,
-      total_stock_value,
-      total_units,
+      total_stock_value: agg.totalStockValue,
+      total_units: agg.totalUnits,
     };
 
-    const { data: cats } = await supabase
-      .from('products')
-      .select('category')
-      .not('category', 'is', null)
-      .range(0, MAX_FETCH - 1);
-    const categories = [...new Set((cats || []).map(c => c.category).filter(Boolean))].sort();
-
-    const { data: collRows } = await supabase
-      .from('products')
-      .select('collections')
-      .not('collections', 'eq', '[]')
-      .range(0, MAX_FETCH - 1);
-    const collMap = new Map();
-    for (const row of collRows || []) {
-      for (const c of row.collections || []) {
-        if (c.handle && !collMap.has(c.handle)) {
-          collMap.set(c.handle, c.title || c.handle);
-        }
-      }
-    }
-    const collections = Array.from(collMap.entries())
-      .map(([handle, title]) => ({ handle, title }))
-      .sort((a, b) => a.title.localeCompare(b.title));
+    const categories = agg.categories;
+    const collections = agg.collections;
 
     let products, total;
     if (view === 'grouped') {
@@ -337,6 +424,7 @@ export async function GET(request) {
       stats: productStats,
       categories,
       collections,
+      _agg_cache_age_ms: Date.now() - agg.at,
     });
   } catch (error) {
     console.error('Products fetch error:', error);
