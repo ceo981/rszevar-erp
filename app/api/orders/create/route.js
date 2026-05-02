@@ -104,10 +104,32 @@ function buildShopifyPayload(body) {
     return li;
   });
 
-  // Address fields — first_name aur last_name dono chahiye
+  // Address fields — first_name aur last_name dono chahiye Shopify ke liye.
+  //
+  // ─── May 2 2026 BUG FIX ───────────────────────────────────────────────
+  // Pehla code: `first_name: customer.first_name || 'Customer'`
+  // Issue: jab user form mein single name dale (e.g. "Furqan") aur woh
+  // last_name field mein chala jaye, first_name empty rehta tha → fallback
+  // 'Customer' lag jata tha → Shopify mein "Customer Furqan" save hota tha.
+  //
+  // Fix: Smart fallback. If first_name empty hai but last_name hai, last_name
+  // ko first_name banao aur last_name ko '.' kar do (Shopify both required).
+  // Both empty case mein 'Customer' fallback last resort.
+  let firstName = customer.first_name?.trim() || '';
+  let lastName  = customer.last_name?.trim() || '';
+  if (!firstName && lastName) {
+    firstName = lastName;
+    lastName = '.';
+  } else if (!firstName && !lastName) {
+    firstName = 'Customer';
+    lastName = '.';
+  } else if (!lastName) {
+    lastName = '.';
+  }
+
   const addr = {
-    first_name: customer.first_name || 'Customer',
-    last_name:  customer.last_name  || '.',
+    first_name: firstName,
+    last_name:  lastName,
     phone:      customer.phone || '',
     address1:   shipping_address?.address1 || '',
     address2:   shipping_address?.address2 || '',
