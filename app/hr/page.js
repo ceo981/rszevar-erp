@@ -3,14 +3,14 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
-const TABS = [
-  { id: 'attendance',  label: '📅 Attendance',  },
-  { id: 'advances',    label: '💸 Advances',    },
-  { id: 'leaves',      label: '🌴 Leaves',       },
-  { id: 'overtime',    label: '⏰ Overtime',      },
-  { id: 'salary',      label: '💰 Salary',        },
-  { id: 'leaderboard', label: '🏆 Leaderboard',  },
-  { id: 'policy',      label: '⚙️ HR Policy',    },
+const ALL_TABS = [
+  { id: 'attendance',  label: '📅 Attendance',   perm: 'hr.attendance_view' },
+  { id: 'advances',    label: '💸 Advances',     perm: 'hr.advance_view' },
+  { id: 'leaves',      label: '🌴 Leaves',        perm: 'hr.leaves_view' },
+  { id: 'overtime',    label: '⏰ Overtime',       perm: 'hr.overtime_view' },
+  { id: 'salary',      label: '💰 Salary',         perm: 'hr.payroll_view' },
+  { id: 'leaderboard', label: '🏆 Leaderboard',   perm: 'hr.leaderboard_view' },
+  { id: 'policy',      label: '⚙️ HR Policy',     perm: 'hr.policy_edit' },
 ];
 
 function fmt(n) { return Number(n || 0).toLocaleString(); }
@@ -1240,12 +1240,29 @@ function PolicyTab() {
 // MAIN HR PAGE
 // ─────────────────────────────────────────────
 export default function HRPage() {
-  const [activeTab, setActiveTab] = useState('attendance');
+  const { can } = useUser();
+
+  // ── Permission-filtered tabs ──
+  const TABS = ALL_TABS.filter(t => can(t.perm));
+  const defaultTab = TABS[0]?.id || 'attendance';
+
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [employees, setEmployees] = useState([]);
 
   useEffect(() => {
     fetch('/api/employees').then(r => r.json()).then(d => setEmployees(d.employees || []));
   }, []);
+
+  // Edge case: no perms → empty state
+  if (TABS.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', minHeight: '100vh', background: '#0f172a', color: '#e2e8f0' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#94a3b8' }}>HR ke kisi bhi tab ki ijazat tumhe nahi hai. CEO se grant karwane ko bolo.</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px', minHeight: '100vh', background: '#0f172a', color: '#e2e8f0' }}>
