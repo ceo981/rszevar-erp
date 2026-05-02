@@ -911,6 +911,11 @@ function BulkEditModal({
 // ────────────────────────────────────────────────────────────────────────────
 function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLabel }) {
   const [open, setOpen] = useState(false);
+  // ── Variant image preview lightbox (May 2 2026) ──
+  // User ne yeh feature mangi: thumbnail pe eye icon click karne se badi preview
+  // khule taa-ke colors clearly dikhain — variant pe konsi pic dalni hai pehle
+  // verify ho jaye. Nav prev/next + ESC close.
+  const [previewIdx, setPreviewIdx] = useState(null);
   const selected = (images || []).find(i => String(i.id) === String(selectedId));
 
   useEffect(() => {
@@ -919,6 +924,19 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [open]);
+
+  // ── Preview lightbox keyboard nav ──
+  useEffect(() => {
+    if (previewIdx === null) return;
+    const total = (images || []).length;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setPreviewIdx(null);
+      else if (e.key === 'ArrowLeft')  setPreviewIdx(i => (i - 1 + total) % total);
+      else if (e.key === 'ArrowRight') setPreviewIdx(i => (i + 1) % total);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewIdx, images]);
 
   const circleStyle = {
     width: size, height: size, borderRadius: '50%',
@@ -1003,33 +1021,51 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10,
               }}>
-                {(images || []).map(img => {
+                {(images || []).map((img, idx) => {
                   const isSelected = String(img.id) === String(selectedId);
                   return (
-                    <button
-                      key={img.id}
-                      type="button"
-                      onClick={() => { onSelect(img.id); setOpen(false); }}
-                      title={img.alt || `Image ${img.position || ''}`}
-                      style={{
-                        width: '100%', aspectRatio: '1 / 1',
-                        border: `2px solid ${isSelected ? gold : border}`,
-                        borderRadius: 8, overflow: 'hidden',
-                        background: bgPage, padding: 0, cursor: 'pointer',
-                        position: 'relative',
-                        boxShadow: isSelected ? `0 0 0 3px rgba(201,169,110,0.2)` : 'none',
-                      }}
-                    >
-                      <img src={img.src} alt={img.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                      {isSelected && (
-                        <div style={{
-                          position: 'absolute', top: 4, right: 4,
-                          background: gold, color: '#080808', borderRadius: '50%',
-                          width: 20, height: 20, fontSize: 12, fontWeight: 700,
+                    <div key={img.id} style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        onClick={() => { onSelect(img.id); setOpen(false); }}
+                        title={img.alt || `Image ${img.position || ''}`}
+                        style={{
+                          width: '100%', aspectRatio: '1 / 1',
+                          border: `2px solid ${isSelected ? gold : border}`,
+                          borderRadius: 8, overflow: 'hidden',
+                          background: bgPage, padding: 0, cursor: 'pointer',
+                          position: 'relative', display: 'block',
+                          boxShadow: isSelected ? `0 0 0 3px rgba(201,169,110,0.2)` : 'none',
+                        }}
+                      >
+                        <img src={img.src} alt={img.alt || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        {isSelected && (
+                          <div style={{
+                            position: 'absolute', top: 4, right: 4,
+                            background: gold, color: '#080808', borderRadius: '50%',
+                            width: 20, height: 20, fontSize: 12, fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>✓</div>
+                        )}
+                      </button>
+                      {/* Eye icon — fullsize preview (May 2 2026) */}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPreviewIdx(idx); }}
+                        title="Badi preview dekho"
+                        style={{
+                          position: 'absolute', bottom: 4, right: 4,
+                          width: 24, height: 24, borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
+                          color: '#fff', fontSize: 13, cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>✓</div>
-                      )}
-                    </button>
+                          padding: 0, lineHeight: 1, fontFamily: 'inherit',
+                          transition: 'transform 0.1s, background 0.15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.85)'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.65)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                      >👁</button>
+                    </div>
                   );
                 })}
               </div>
@@ -1040,6 +1076,91 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Variant image preview lightbox (May 2 2026) ── */}
+      {previewIdx !== null && images && images[previewIdx] && (
+        <div
+          onClick={() => setPreviewIdx(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 340,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20, cursor: 'zoom-out',
+          }}
+        >
+          <div style={{
+            position: 'absolute', top: 18, left: 24,
+            color: '#fff', fontSize: 13, fontWeight: 500,
+            background: 'rgba(0,0,0,0.5)', padding: '6px 12px', borderRadius: 20,
+            fontFamily: 'inherit',
+          }}>
+            #{previewIdx + 1} of {images.length}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setPreviewIdx(null); }}
+            style={{
+              position: 'absolute', top: 18, right: 24,
+              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+              color: '#fff', borderRadius: '50%', width: 36, height: 36,
+              fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            title="Band karo (Esc)"
+          >×</button>
+          {images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewIdx(i => (i - 1 + images.length) % images.length); }}
+              style={{
+                position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
+                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+              title="Pichli (←)"
+            >‹</button>
+          )}
+          {images.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewIdx(i => (i + 1) % images.length); }}
+              style={{
+                position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)',
+                background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+              title="Agli (→)"
+            >›</button>
+          )}
+          <img
+            src={images[previewIdx].src}
+            alt={images[previewIdx].alt || ''}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw', maxHeight: '85vh',
+              objectFit: 'contain', borderRadius: 6,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+              cursor: 'default',
+            }}
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(images[previewIdx].id);
+              setPreviewIdx(null);
+              setOpen(false);
+            }}
+            style={{
+              position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+              background: gold, color: '#080808', border: 'none',
+              borderRadius: 8, padding: '10px 22px', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit',
+              boxShadow: '0 4px 16px rgba(201,169,110,0.4)',
+            }}
+          >✓ Yeh image select karo</button>
         </div>
       )}
     </>
