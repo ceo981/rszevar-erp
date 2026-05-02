@@ -95,19 +95,29 @@ export async function GET(request, { params }) {
     // Replace order.order_items with resolved+enriched list (page just reads this)
     order.order_items = items;
 
-    // ── Fetch latest assignment (for assigned_to_name) ──
+    // ── Fetch latest assignment (for assigned_to_name + packing team flag) ──
     const { data: assignments } = await supabase
       .from('order_assignments')
-      .select('order_id, employee:assigned_to(name)')
+      .select('order_id, assigned_to, notes, employee:assigned_to(name)')
       .eq('order_id', order.id)
       .order('created_at', { ascending: false })
       .limit(1);
 
     let assigned_to_name = null;
-    if (assignments?.[0]?.employee?.name) {
-      assigned_to_name = assignments[0].employee.name;
-    } else if (Array.isArray(order.tags)) {
-      // Fallback: Shopify packing:NAME tag
+    let assigned_via_team = false;  // true = "Packing Team" shared assignment
+    if (assignments?.[0]) {
+      const a = assignments[0];
+      // Case 1: Packing Team (shared) — notes='packing_team', assigned_to=NULL
+      if (a.notes === 'packing_team' || (!a.assigned_to && a.notes?.toLowerCase().includes('packing team'))) {
+        assigned_to_name = 'Packing Team';
+        assigned_via_team = true;
+      } else if (a.employee?.name) {
+        // Case 2: Individual packer
+        assigned_to_name = a.employee.name;
+      }
+    }
+    // Case 3 (fallback): Shopify packing:NAME tag
+    if (!assigned_to_name && Array.isArray(order.tags)) {
       const packingTag = order.tags.find(t => String(t).toLowerCase().startsWith('packing:'));
       if (packingTag) {
         const rawName = packingTag.split(':')[1] || '';
@@ -132,7 +142,7 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      order: { ...order, assigned_to_name, customer_order_count },
+      order: { ...order, assigned_to_name, assigned_via_team, customer_order_count },
     });
   } catch (error) {
     console.error('[api/orders/id] error:', error);
