@@ -67,22 +67,18 @@ function aggCacheGet() {
 }
 
 async function aggCacheCompute(supabase) {
-  // Single query: pull only the columns we need to compute everything.
-  // Even at 5000+ variant rows this is <1MB of data.
-  const valueRows = [];
-  const PAGE = 1000;
-  let off = 0;
-  while (off < MAX_FETCH) {
-    const { data: chunk, error } = await supabase
-      .from('products')
-      .select('stock_quantity, selling_price, shopify_product_id, category, collections')
-      .range(off, off + PAGE - 1);
-    if (error) throw error;
-    if (!chunk || chunk.length === 0) break;
-    valueRows.push(...chunk);
-    if (chunk.length < PAGE) break;
-    off += PAGE;
-  }
+  // ─── May 2 2026 HOTFIX ──────────────────────────────────────────────────
+  // Pehla version chunked loop with multiple range() calls tha. Even though
+  // each iteration built a fresh query (so no builder reuse bug), it still
+  // did 5+ round trips for ~5000 rows. With these slim columns (5 fields,
+  // ~150 bytes per row) the entire dataset is ~750KB — easily fits in one
+  // response. Single fetch = simpler + faster + zero risk of pagination
+  // edge cases.
+  const { data: valueRows, error } = await supabase
+    .from('products')
+    .select('stock_quantity, selling_price, shopify_product_id, category, collections')
+    .range(0, MAX_FETCH - 1);
+  if (error) throw error;
 
   let totalStockValue = 0;
   let totalUnits = 0;
@@ -90,7 +86,7 @@ async function aggCacheCompute(supabase) {
   const categorySet = new Set();
   const collMap = new Map();
 
-  for (const r of valueRows) {
+  for (const r of valueRows || []) {
     totalStockValue += (r.stock_quantity || 0) * (r.selling_price || 0);
     totalUnits      += (r.stock_quantity || 0);
     if (r.shopify_product_id) distinctProducts.add(r.shopify_product_id);
@@ -113,7 +109,7 @@ async function aggCacheCompute(supabase) {
     totalStockValue,
     totalUnits,
     distinctProducts: distinctProducts.size,
-    totalVariants: valueRows.length,
+    totalVariants: (valueRows || []).length,
   };
   _aggCache = cache;
   return cache;
@@ -343,20 +339,20 @@ export async function GET(request) {
 
     query = query.order(sort, { ascending: order === 'asc' });
 
-    // Fetch matching variant rows in chunks of 1000 — bounded by MAX_FETCH.
-    const allRows = [];
-    {
-      const PAGE = 1000;
-      let off = 0;
-      while (off < MAX_FETCH) {
-        const { data: chunk, error } = await query.range(off, off + PAGE - 1);
-        if (error) throw error;
-        if (!chunk || chunk.length === 0) break;
-        allRows.push(...chunk);
-        if (chunk.length < PAGE) break;
-        off += PAGE;
-      }
-    }
+    // ─── May 2 2026 HOTFIX ───────────────────────────────────────────────
+    // Pehla version chunked loop use karta tha (await query.range() multiple
+    // times on SAME builder reference). Newer supabase-js versions mein woh
+    // pattern second iteration pe silent fail ho jata hai — empty data,
+    // empty error, lekin assumption "loop done" → allRows blank → frontend
+    // pe sab stats 0 dikhte hain (Total Products: 0, Total Variants: 0).
+    //
+    // Fix: SINGLE .range() call. Slim columns (LIST_COLUMNS drops heavy
+    // description_html/images_data/tags JSONB) means ~5000 product rows
+    // ka payload ~1MB hai — single response easily handle karta hai.
+    // No more builder reuse → no more silent failure.
+    const { data: allRowsData, error: allRowsErr } = await query.range(0, MAX_FETCH - 1);
+    if (allRowsErr) throw allRowsErr;
+    const allRows = allRowsData || [];
 
     // ── Stats counts via HEAD queries (no row transfer) ──
     // These COUNT queries are very cheap — just scan an index, no data pulled.
