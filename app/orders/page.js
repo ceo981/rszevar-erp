@@ -490,6 +490,9 @@ export default function OrdersPage() {
   const canBulkStatus   = canBulk && can('orders.dispatch'); // status changes touch dispatch flow
   const canBulkCancel   = canBulk && can('orders.cancel');
   const canViewAmount   = can('orders.view_amount');
+  // ── Protocol Audit perms (May 2 2026) — CEO-only by default ──
+  const canAuditProtocol  = can('orders.protocol_audit');
+  const canVerifyProtocol = can('orders.protocol_verify');
   // Apr 30 2026 — Read URL `?search=` so deep-links from order detail page
   // (Customer name → "X orders total" link) land here pre-filtered.
   const urlSearchParams = useSearchParams();
@@ -497,6 +500,9 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState(null);
   const [globalCounts, setGlobalCounts] = useState({});
+  // May 2 2026 — Protocol audit reasons map { order_id: { skipped_assignment, ... } }
+  // Only populated when audit filter is active.
+  const [protocolReasons, setProtocolReasons] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(initialSearchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearchFromUrl); // debounced version used by API
@@ -572,6 +578,8 @@ export default function OrdersPage() {
       setHasMore(newOrders.length === PER_PAGE);
       if (d.stats) setStats(d.stats);
       if (d.global_counts) setGlobalCounts(d.global_counts);
+      // May 2 2026 — Protocol audit: capture reasons map (or clear if not audit filter)
+      setProtocolReasons(d.protocol_reasons || {});
     } catch (e) {
       if (e.name === 'AbortError') return; // expected — naya request le chuka
     }
@@ -716,6 +724,40 @@ export default function OrdersPage() {
   const handleBulkConfirm = () => {
     if (!window.confirm(`${selectedIds.size} order${selectedIds.size > 1 ? 's' : ''} confirm karne hain?\n\n(Sirf pending/processing/attempted/hold orders confirm honge)`)) return;
     runBulk({ action: 'confirm' });
+  };
+
+  // ── Protocol Audit verify (May 2 2026) ──
+  // CEO ek order ko "verified" mark karta — ye order Protocol Audit tab se gayab.
+  // Use case: violation intentional thi (CEO ne khud handle kiya, manager approval, etc).
+  const verifyProtocol = async (order_id, order_number) => {
+    const note = window.prompt(
+      `Order ${order_number} ko Protocol OK mark karna hai?\n\nReason (optional):`,
+      ''
+    );
+    // null = user cancelled. Empty string = OK without reason.
+    if (note === null) return;
+    try {
+      const r = await fetch('/api/orders/protocol-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id,
+          performed_by: performer,
+          performed_by_email: userEmail,
+          note: note.trim() || undefined,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) {
+        alert(`❌ Verify fail: ${d.error}`);
+        return;
+      }
+      // Optimistic: remove order from current view
+      setOrders(prev => prev.filter(o => o.id !== order_id));
+      setGlobalCounts(prev => ({ ...prev, protocol_unfollowed: Math.max(0, (prev.protocol_unfollowed || 0) - 1) }));
+    } catch (e) {
+      alert(`❌ ${e.message}`);
+    }
   };
 
   const syncFromShopify = async () => {
@@ -979,6 +1021,19 @@ export default function OrdersPage() {
             // ── Closed / Exceptions ──
             { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled, groupStart: true },
             { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
+            // ── Protocol Audit (May 2 2026) — CEO-only highlighted tab ──
+            // Operations ne kahan shortcut liya: skipped assignment / packing scan
+            // / confirmation. CEO verify karke close kar sakta intentional cases.
+            ...(canAuditProtocol ? [{
+              label: '🚨 Protocol Audit',
+              value: 'protocol_unfollowed',
+              filterType: 'audit',
+              color: '#ef4444',
+              count: globalCounts.protocol_unfollowed || 0,
+              tooltip: 'Office protocol skip hua — confirm/assign/pack ke kadam chod ke aage badh gaye orders',
+              groupStart: true,
+              highlighted: true, // special red border styling
+            }] : []),
           ].map(tab => {
             const tabFilterType = tab.filterType || 'status';
             const isActive = tab.value === null
@@ -993,14 +1048,21 @@ export default function OrdersPage() {
                   setPage(1);
                 }}
                 style={{
-                  background: isActive ? tab.color + '18' : 'transparent',
-                  border: isActive ? `1px solid ${tab.color}55` : `1px solid transparent`,
+                  // Protocol Audit tab special styling: red glow when count > 0 to draw CEO attention
+                  background: tab.highlighted && tab.count > 0
+                    ? (isActive ? tab.color + '22' : 'rgba(239,68,68,0.08)')
+                    : (isActive ? tab.color + '18' : 'transparent'),
+                  border: tab.highlighted && tab.count > 0
+                    ? `1px solid ${tab.color}66`
+                    : (isActive ? `1px solid ${tab.color}55` : `1px solid transparent`),
                   borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
-                  color: isActive ? tab.color : '#555',
+                  color: isActive
+                    ? tab.color
+                    : (tab.highlighted && tab.count > 0 ? tab.color : '#555'),
                   borderRadius: '8px 8px 0 0',
                   padding: '8px 12px',
                   fontSize: 12,
-                  fontWeight: isActive ? 600 : 400,
+                  fontWeight: isActive ? 600 : (tab.highlighted && tab.count > 0 ? 600 : 400),
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -1009,6 +1071,9 @@ export default function OrdersPage() {
                   fontFamily: 'inherit',
                   transition: 'all 0.15s',
                   marginLeft: tab.groupStart ? 8 : 0,
+                  boxShadow: tab.highlighted && tab.count > 0
+                    ? `0 0 0 1px ${tab.color}33, 0 0 12px ${tab.color}22`
+                    : 'none',
                 }}
               >
                 {tab.label}
@@ -1257,7 +1322,7 @@ export default function OrdersPage() {
                     </td>
                     <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
                     <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <a
                           href={`/orders/${order.id}`}
                           target="_blank"
@@ -1270,7 +1335,44 @@ export default function OrdersPage() {
                           style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                           Actions →
                         </button>
+                        {/* Protocol Audit verify button (May 2 2026) */}
+                        {filter.type === 'audit' && filter.value === 'protocol_unfollowed' && canVerifyProtocol && (
+                          <button
+                            onClick={e => { e.stopPropagation(); verifyProtocol(order.id, order.order_number); }}
+                            title="Mark as protocol OK — order tab se gayab ho jayega"
+                            style={{
+                              background: '#001a0a', border: '1px solid #003300',
+                              color: '#22c55e', borderRadius: 6,
+                              padding: '5px 10px', fontSize: 11, fontWeight: 600,
+                              cursor: 'pointer', fontFamily: 'inherit',
+                            }}>
+                            ✓ Verify
+                          </button>
+                        )}
                       </div>
+                      {/* Violation reason badges — only in audit view */}
+                      {filter.type === 'audit' && filter.value === 'protocol_unfollowed' && protocolReasons[order.id] && (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                          {protocolReasons[order.id].skipped_assignment && (
+                            <span title="Order packed/dispatched without anyone being assigned"
+                              style={{ background: '#3a0000', color: '#f87171', fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, letterSpacing: 0.3 }}>
+                              🔴 NO ASSIGN
+                            </span>
+                          )}
+                          {protocolReasons[order.id].skipped_packing_log && (
+                            <span title="No packing scan log — force-packed without ERP scan"
+                              style={{ background: '#3a1a00', color: '#fb923c', fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, letterSpacing: 0.3 }}>
+                              🟠 NO SCAN
+                            </span>
+                          )}
+                          {protocolReasons[order.id].skipped_confirmation && (
+                            <span title="Dispatched/delivered without ever being confirmed"
+                              style={{ background: '#3a3300', color: '#fbbf24', fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, letterSpacing: 0.3 }}>
+                              🟡 NO CONFIRM
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
