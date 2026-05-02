@@ -1,230 +1,199 @@
 // ============================================================================
-// RS ZEVAR ERP — Commit Order Edit
-// POST /api/orders/edit-commit  { order_id, calculated_order_id, reason,
-//                                  notify_customer, performed_by, performed_by_email }
+// RS ZEVAR ERP — Order Customer Info Edit  (RESTORED May 2026)
+// POST /api/orders/edit
 // ----------------------------------------------------------------------------
-// Commits the staged edits to the real Shopify order, then syncs the updated
-// order + line items back to ERP so the UI reflects truth immediately (instead
-// of waiting for the orders/edited webhook to arrive).
+// PURPOSE: Edit customer-facing fields on an order (name, phone, address, city)
+// from ERP and sync back to Shopify. This is the "Edit contact information /
+// Edit shipping address" handler — NOT line-items edit (that's edit-commit).
 //
-// Steps:
-//   1. Guards (order exists, status allowed, role allowed)
-//   2. Shopify orderEditCommit (THE atomic change)
-//   3. Fetch fresh order from Shopify (REST) → transform to ERP shape
-//   4. Replace order_items rows (delete old, insert new from Shopify truth)
-//   5. Update orders table totals/subtotal/shipping/discount/updated_at
-//   6. Activity log with reason + performer
+// PREVIOUSLY: The file content was accidentally overwritten with a near-copy of
+// /api/orders/edit-commit/route.js, which expected `calculated_order_id` and
+// returned 400 on every save attempt. The drawer + kebab-menu "Save + Sync to
+// Shopify" silently failed for weeks. This file restores the original behavior.
 //
-// If step 2 succeeds but 3–5 fail, the Shopify order IS edited but ERP may be
-// stale. The orders/edited webhook is a safety net — it'll reconcile within
-// seconds. We return success=true with warning=<sync error> so UI can alert.
+// REQUEST BODY:
+//   {
+//     order_id: number,
+//     customer_name?: string,
+//     customer_phone?: string,
+//     customer_address?: string,
+//     customer_city?: string,
+//     notes?: string,                 // audit log only
+//     performed_by?: string,
+//     performed_by_email?: string,
+//     skip_shopify?: boolean          // optional — ERP-only edit (rare cases)
+//   }
+//
+// RESPONSE:
+//   { success, shopify_synced, warning?, patch }
+//
+// FLOW:
+//   1. Fetch existing order (must exist)
+//   2. Compute diff vs body — only changed fields go into update
+//   3. Update orders table
+//   4. If shopify_order_id present and !skip_shopify: PUT shipping_address
+//   5. Activity log with before/after + reason
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { commitOrderEdit } from '@/lib/shopify-order-edit';
-import { fetchOrder, transformLineItems } from '@/lib/shopify';
+import { createServerClient } from '@/lib/supabase';
+import { updateShopifyOrderAddress } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
-
-const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'on_packing', 'packed', 'hold']);
-const ALLOWED_ROLES    = new Set(['super_admin', 'admin', 'manager', 'customer_support']);
-
-async function checkRole(email) {
-  if (!email) return null;
-  const { data } = await supabase.from('profiles').select('role').eq('email', email).single();
-  return data?.role || null;
-}
-
-// Resync a single order's line items + totals from Shopify truth
-async function resyncOrderFromShopify(orderRow) {
-  // ─── FIX Apr 2026 — Shopify eventual consistency ──────────────────────────
-  // Bug: User adds an item via edit page → commits → goes back → item GAYAB
-  // (but total includes it).
-  //
-  // Root cause: orderEditCommit (GraphQL) returns immediately, but REST
-  // /orders/{id}.json can be stale for up to ~2s. fetchOrder() runs
-  // immediately after commit and returns OLD line_items array (missing the
-  // newly-added item). resync then writes stale items to ERP, while
-  // total_amount comes from commitResult.new_total (which is fresh). End
-  // result: items disappear from view but total reflects the new item.
-  //
-  // Fix: wait briefly, fetch, and retry once if the REST response looks
-  // suspiciously stale (heuristic: line_items length is less than what we
-  // had before the commit). Webhook is the backup safety net.
-  await new Promise(r => setTimeout(r, 1500));
-
-  let so = await fetchOrder(orderRow.shopify_order_id);
-  if (!so) throw new Error('Shopify order not found after commit');
-
-  // Verify-and-retry: compare fetched active line item count against current
-  // DB count. If fetched is LESS, that's either a deletion (legitimate) OR a
-  // stale read (bug). Retry once after another 1s — if it was a real deletion,
-  // the retry returns same data (harmless ~1s extra latency). If it was stale,
-  // retry should now have fresh data including the addition.
-  try {
-    const { count: dbItemCount } = await supabase
-      .from('order_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('order_id', orderRow.id);
-
-    const fetchedActive = (so.line_items || []).filter(li => {
-      // Inline isActiveLineItem logic — avoids importing for one check
-      if (li.current_quantity !== undefined && li.current_quantity !== null) {
-        return li.current_quantity > 0;
-      }
-      return (li.quantity || 0) > 0;
-    }).length;
-
-    if (typeof dbItemCount === 'number' && fetchedActive < dbItemCount) {
-      console.log(`[edit-commit] count mismatch (fetched ${fetchedActive} < db ${dbItemCount}) — retrying after 1s`);
-      await new Promise(r => setTimeout(r, 1000));
-      const retry = await fetchOrder(orderRow.shopify_order_id);
-      if (retry) so = retry;
-    }
-  } catch (countErr) {
-    // Defensive — if count check fails for any reason, just proceed with
-    // first fetch. Webhook will reconcile if there's still an issue.
-    console.warn('[edit-commit] count check failed (proceeding):', countErr.message);
-  }
-  // ─── End fix ──────────────────────────────────────────────────────────────
-
-  const subtotal = parseFloat(so.subtotal_price || so.current_subtotal_price || 0);
-  const shippingFee = parseFloat(
-    (so.shipping_lines || [])
-      .reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0),
-  );
-  const discount = parseFloat(so.total_discounts || so.current_total_discounts || 0);
-  const total = parseFloat(so.total_price || so.current_total_price || 0);
-
-  // Pre-fetch SKU → image map (same pattern as webhook)
-  let skuImageMap = {};
-  try {
-    const { data: productImages } = await supabase
-      .from('products')
-      .select('sku, image_url')
-      .not('sku', 'is', null)
-      .not('image_url', 'is', null);
-    for (const p of productImages || []) {
-      if (p.sku && p.image_url && !skuImageMap[p.sku]) skuImageMap[p.sku] = p.image_url;
-    }
-  } catch {}
-
-  const newItems = transformLineItems(so, skuImageMap).map(i => ({
-    ...i,
-    order_id: orderRow.id,
-  }));
-
-  // Replace order_items atomically-ish: delete old, insert new
-  await supabase.from('order_items').delete().eq('order_id', orderRow.id);
-  if (newItems.length > 0) {
-    const { error: insErr } = await supabase.from('order_items').insert(newItems);
-    if (insErr) throw new Error(`order_items insert: ${insErr.message}`);
-  }
-
-  // Update orders totals
-  const { error: updErr } = await supabase.from('orders').update({
-    subtotal,
-    shipping_fee: shippingFee,
-    discount,
-    total_amount: total,
-    updated_at: new Date().toISOString(),
-    shopify_synced_at: new Date().toISOString(),
-  }).eq('id', orderRow.id);
-  if (updErr) throw new Error(`orders update: ${updErr.message}`);
-
-  return { subtotal, shipping_fee: shippingFee, discount, total_amount: total, items_count: newItems.length };
-}
+// Statuses jin pe customer info edit allowed hai. RTO/cancelled/delivered ke
+// baad address change ka koi practical use nahi — courier already done.
+// Super-admin manual override ke liye `force` future mein add ho sakta hai.
+const EDITABLE_STATUSES = new Set([
+  'pending',
+  'confirmed',
+  'on_packing',
+  'packed',
+  'dispatched',  // Sometimes courier-side address change request aati hai
+  'attempted',
+  'hold',
+]);
 
 export async function POST(request) {
+  const supabase = createServerClient();
+  const startTime = Date.now();
+
   try {
+    const body = await request.json();
     const {
       order_id,
-      calculated_order_id,
-      reason,
-      notify_customer,
+      customer_name,
+      customer_phone,
+      customer_address,
+      customer_city,
+      notes,
       performed_by,
       performed_by_email,
-    } = await request.json();
+      skip_shopify,
+    } = body;
 
-    if (!order_id || !calculated_order_id) {
+    if (!order_id) {
       return NextResponse.json(
-        { success: false, error: 'order_id + calculated_order_id required' },
+        { success: false, error: 'order_id required' },
         { status: 400 },
       );
     }
 
-    // Role gate
-    if (performed_by_email) {
-      const role = await checkRole(performed_by_email);
-      if (role && !ALLOWED_ROLES.has(role)) {
-        return NextResponse.json(
-          { success: false, error: `Role '${role}' ko order edit ki permission nahi hai` },
-          { status: 403 },
-        );
-      }
-    }
-
+    // ── 1. Fetch order ──
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, order_number, status, shopify_order_id, payment_status, total_amount')
+      .select('id, order_number, status, shopify_order_id, customer_name, customer_phone, customer_address, customer_city')
       .eq('id', order_id)
       .single();
 
     if (fetchErr || !order) {
-      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
-    }
-    if (!order.shopify_order_id) {
-      return NextResponse.json({ success: false, error: 'No Shopify link' }, { status: 400 });
-    }
-    if (!ALLOWED_STATUSES.has(order.status)) {
       return NextResponse.json(
-        { success: false, error: `Status '${order.status}' ke order ab edit commit nahi ho sakta` },
+        { success: false, error: 'Order not found' },
+        { status: 404 },
+      );
+    }
+
+    if (!EDITABLE_STATUSES.has(order.status)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Order status '${order.status}' pe customer info edit nahi ho sakti`,
+        },
         { status: 400 },
       );
     }
 
-    const performer = performed_by || 'Staff';
-    const nowIso = new Date().toISOString();
+    // ── 2. Diff before/after ──
+    const before = {
+      customer_name: order.customer_name || '',
+      customer_phone: order.customer_phone || '',
+      customer_address: order.customer_address || '',
+      customer_city: order.customer_city || '',
+    };
 
-    // Step 1: Shopify commit
-    const staffNote = reason ? `ERP Edit by ${performer}: ${reason}` : `ERP Edit by ${performer}`;
-    const commitResult = await commitOrderEdit({
-      calculated_order_id,
-      notify_customer: !!notify_customer,
-      staff_note: staffNote,
-    });
+    const patch = {};
+    const isStr = (v) => typeof v === 'string';
 
-    // Step 2: ERP resync (best-effort — webhook is backup)
-    let syncError = null;
-    let syncResult = null;
-    try {
-      syncResult = await resyncOrderFromShopify(order);
-    } catch (e) {
-      syncError = e.message;
-      console.error('[edit-commit] ERP resync error (webhook will retry):', e.message);
+    if (isStr(customer_name)    && customer_name.trim()    && customer_name.trim()    !== before.customer_name)    patch.customer_name    = customer_name.trim();
+    if (isStr(customer_phone)   && customer_phone.trim()   && customer_phone.trim()   !== before.customer_phone)   patch.customer_phone   = customer_phone.trim();
+    if (isStr(customer_address) && customer_address.trim() && customer_address.trim() !== before.customer_address) patch.customer_address = customer_address.trim();
+    if (isStr(customer_city)    && customer_city.trim()    && customer_city.trim()    !== before.customer_city)    patch.customer_city    = customer_city.trim();
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'Koi field change nahi hua — kuch save karne ki zaroorat nahi',
+        shopify_synced: false,
+        patch: {},
+        duration_ms: Date.now() - startTime,
+      });
     }
 
-    // Step 3: Activity log — include what changed if we synced successfully
-    const changeNote = syncResult
-      ? `Order edited by ${performer}. New total: Rs ${syncResult.total_amount.toLocaleString('en-PK')} ` +
-        `(was Rs ${parseFloat(order.total_amount || 0).toLocaleString('en-PK')}). ` +
-        `Items: ${syncResult.items_count}. ` +
-        (notify_customer ? 'Customer notified via Shopify email.' : 'Customer NOT notified.') +
-        (reason ? ` Reason: ${reason}` : '')
-      : `Order edited in Shopify by ${performer}. ERP sync pending (webhook will reconcile).` +
-        (reason ? ` Reason: ${reason}` : '');
+    // ── 3. Update ERP ──
+    const nowIso = new Date().toISOString();
+    const { error: updErr } = await supabase
+      .from('orders')
+      .update({ ...patch, updated_at: nowIso })
+      .eq('id', order_id);
+
+    if (updErr) {
+      throw new Error(`ERP update failed: ${updErr.message}`);
+    }
+
+    // ── 4. Sync to Shopify (best-effort) ──
+    let shopifySynced = false;
+    let shopifyError = null;
+
+    if (order.shopify_order_id && !skip_shopify) {
+      try {
+        // Build complete address payload — Shopify needs full shipping_address
+        // object even if only one field changed. Use new value if patched, else
+        // keep original.
+        const finalName    = patch.customer_name    ?? before.customer_name;
+        const finalPhone   = patch.customer_phone   ?? before.customer_phone;
+        const finalAddress = patch.customer_address ?? before.customer_address;
+        const finalCity    = patch.customer_city    ?? before.customer_city;
+
+        // Shopify wants first_name + last_name split. Heuristic: split on first space.
+        const nameParts = String(finalName || 'Customer').trim().split(/\s+/);
+        const firstName = nameParts[0] || 'Customer';
+        const lastName  = nameParts.slice(1).join(' ') || '.';
+
+        await updateShopifyOrderAddress(order.shopify_order_id, {
+          first_name: firstName,
+          last_name: lastName,
+          name: finalName,
+          phone: finalPhone || '',
+          address1: finalAddress || '',
+          city: finalCity || 'Karachi',
+          country: 'Pakistan',
+          country_code: 'PK',
+        });
+        shopifySynced = true;
+      } catch (e) {
+        shopifyError = e.message;
+        console.error('[orders/edit] Shopify sync error:', e.message);
+      }
+    }
+
+    // ── 5. Activity log ──
+    const performer = performed_by || 'Staff';
+    const changeStr = Object.keys(patch)
+      .map(k => `${k.replace('customer_', '')}: "${before[k]}" → "${patch[k]}"`)
+      .join(' | ');
 
     await supabase.from('order_activity_log').insert({
       order_id,
-      action: 'order_edited',
-      notes: changeNote,
+      action: 'customer_edited',
+      notes: [
+        changeStr,
+        notes && String(notes).trim() ? `Reason: ${String(notes).trim()}` : null,
+        shopifySynced ? '+ Shopify synced' : null,
+        shopifyError ? `Shopify sync failed: ${shopifyError}` : null,
+        skip_shopify ? '(Shopify sync skipped on request)' : null,
+      ].filter(Boolean).join(' | '),
       performed_by: performer,
       performed_by_email: performed_by_email || null,
       performed_at: nowIso,
@@ -232,15 +201,16 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      order_id,
-      order_number: order.order_number,
-      shopify_new_total: commitResult.new_total,
-      erp_synced: !syncError,
-      warning: syncError,
-      ...(syncResult || {}),
+      shopify_synced: shopifySynced,
+      warning: shopifyError ? `ERP saved but Shopify sync failed: ${shopifyError}` : null,
+      patch,
+      duration_ms: Date.now() - startTime,
     });
   } catch (e) {
-    console.error('[edit-commit] error:', e.message);
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    console.error('[orders/edit] error:', e.message);
+    return NextResponse.json(
+      { success: false, error: e.message },
+      { status: 500 },
+    );
   }
 }
