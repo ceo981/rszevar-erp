@@ -166,7 +166,12 @@ function DonutChart({ data, title }) {
 
 // ── Main Analytics Page ───────────────────────────────────────
 export default function AnalyticsPage() {
-  const { canViewFinancial } = useUser();
+  const { can } = useUser();
+  // ── Granular perm gate (May 2 2026) ──
+  // Pehle canViewFinancial (super_admin only) tha. Ab analytics.view_revenue.
+  // Default mein sirf super_admin/admin ko milta hai.
+  const canViewFinancial = can('analytics.view_revenue');
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('30');
