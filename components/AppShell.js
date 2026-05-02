@@ -19,36 +19,34 @@ import AIAdvisorFloat from './AIAdvisorFloat';
 // ── Module registry ─────────────────────────────────────────────────────────
 // Har module ka `href` hi uska URL hai. Sidebar is `href` pe Link render karta hai.
 //
-// May 2 2026 — Group hint via comments. Sidebar abhi flat list hai (ek hi
-// level, no nesting). Future mein agar dropdown/grouping chahiye to har
-// module pe `parent: 'orders'` field add karke render logic update karenge.
-// Abhi ke liye flat-but-adjacent placement use karte hain (order matters):
-//   - Customer Credits seedha Orders ke neeche → visually grouped
-//   - Same orders.view permission → koi extra role setup nahi
+// May 2 2026 — Permission keys updated to match new granular DB schema.
+// Each sidebar button now has its OWN view-level permission (e.g., credits.view,
+// messages.view, employees.view) instead of borrowing from parent modules.
+// CEO can hide any sidebar button from any role via /roles page.
 const MODULES = [
   { id: 'dashboard',    href: '/dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
-  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'orders.view' },
+  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'credits.view' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
-  { id: 'accounts',     href: '/accounts',     label: 'Accounts',      icon: '💰', perm: 'financial.view' },
+  { id: 'accounts',     href: '/accounts',     label: 'Accounts',      icon: '💰', perm: 'accounts.view' },
   { id: 'courier',      href: '/courier',      label: 'Courier',       icon: '🚚', perm: 'courier.view' },
-  { id: 'courier-sync', href: '/courier/sync', label: 'Courier Sync',  icon: '⟳',  perm: 'courier.view' },
+  { id: 'courier-sync', href: '/courier/sync', label: 'Courier Sync',  icon: '⟳',  perm: 'courier_sync.view' },
   { id: 'customers',    href: '/customers',    label: 'Customers',     icon: '👥', perm: 'customers.view' },
-  { id: 'messages',     href: '/messages',     label: 'Messages',      icon: '💬', perm: 'customers.view' },
-  { id: 'complaints',   href: '/complaints',   label: 'Complaints',    icon: '📢', perm: 'customers.view' },
+  { id: 'messages',     href: '/messages',     label: 'Messages',      icon: '💬', perm: 'messages.view' },
+  { id: 'complaints',   href: '/complaints',   label: 'Complaints',    icon: '📢', perm: 'complaints.view' },
   { id: 'analytics',    href: '/analytics',    label: 'Analytics',     icon: '📊', perm: 'analytics.view' },
   { id: 'dead-stock',   href: '/dead-stock',   label: 'Dead Stock',    icon: '🪦', perm: 'deadstock.view' },
   { id: 'reports',      href: '/reports',      label: 'Reports',       icon: '📄', perm: 'reports.view' },
-  { id: 'employees',    href: '/employees',    label: 'Team',          icon: '👤', perm: 'settings.edit' },
+  { id: 'employees',    href: '/employees',    label: 'Team',          icon: '👤', perm: 'employees.view' },
   { id: 'hr',           href: '/hr',           label: 'HR & Payroll',  icon: '👥', perm: 'hr.view' },
   { id: 'operations',   href: '/operations',   label: 'Operations',    icon: '🏭', perm: 'operations.view' },
   { id: 'ai-advisor',   href: '/ai-advisor',   label: 'RS ZEVAR AI',   icon: '💎', perm: 'ai.use' },
-  { id: 'picking',      href: '/picking',      label: 'Pick Order',    icon: '🏷️', perm: 'packing.view' },
+  { id: 'picking',      href: '/picking',      label: 'Pick Order',    icon: '🏷️', perm: 'picking.view' },
   { id: 'packing',      href: '/packing',      label: 'Packing',       icon: '🎁', perm: 'packing.view' },
-  { id: 'work-submit',  href: '/work-submit',  label: 'Submit Work',   icon: '📋', perm: 'packing.submit' },
+  { id: 'work-submit',  href: '/work-submit',  label: 'Submit Work',   icon: '📋', perm: 'work_submit.view' },
   { id: 'settings',     href: '/settings',     label: 'Settings',      icon: '⚙️', perm: 'settings.view' },
-  { id: 'users',        href: '/users',        label: 'Users',         icon: '🧑‍💼', perm: 'settings.edit' },
-  { id: 'roles',        href: '/roles',        label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles' },
+  { id: 'users',        href: '/users',        label: 'Users',         icon: '🧑‍💼', perm: 'users.view' },
+  { id: 'roles',        href: '/roles',        label: 'Roles & Perms', icon: '🔐', perm: 'settings.roles_edit' },
 ];
 
 // Routes jahan sidebar NAHI chahiye (login aur koi bhi public route)
@@ -371,11 +369,11 @@ function AuthenticatedShell({ pathname, router, children }) {
   const BOTTOM_NAV_CANDIDATES = [
     { id: 'dashboard', href: '/dashboard', label: 'Home',    icon: '🏠', perm: 'dashboard.view' },
     { id: 'orders',    href: '/orders',    label: 'Orders',  icon: '📋', perm: 'orders.view' },
-    { id: 'picking',   href: '/picking',   label: 'Pick',    icon: '🏷️', perm: 'packing.view' },
+    { id: 'picking',   href: '/picking',   label: 'Pick',    icon: '🏷️', perm: 'picking.view' },
     { id: 'packing',   href: '/packing',   label: 'Packing', icon: '🎁', perm: 'packing.view' },
-    { id: 'work-submit', href: '/work-submit', label: 'Work', icon: '📝', perm: 'packing.submit' },
+    { id: 'work-submit', href: '/work-submit', label: 'Work', icon: '📝', perm: 'work_submit.view' },
     { id: 'inventory', href: '/inventory', label: 'Stock',   icon: '📦', perm: 'inventory.view' },
-    { id: 'messages',  href: '/messages',  label: 'Chat',    icon: '💬', perm: 'customers.view' },
+    { id: 'messages',  href: '/messages',  label: 'Chat',    icon: '💬', perm: 'messages.view' },
     { id: 'hr',        href: '/hr',        label: 'HR',      icon: '👥', perm: 'hr.view' },
   ];
   // Pick top 4 that user has permission for
