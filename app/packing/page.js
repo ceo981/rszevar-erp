@@ -1,11 +1,16 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 
 export default function PackingPage() {
-  const { profile, activeUser } = useUser();
+  const { profile, activeUser, can } = useUser();
+  // ── Granular perm gates (May 2 2026) ──
+  const canView   = can('packing.view');
+  const canSubmit = can('packing.submit');
+
   // With shared login, activeUser.name is the specific packer selected
   // ("Hassan"). Without it, profile.full_name is the login's name
   // ("Packing Team A"). Either way we want the sharpest label in logs.
@@ -94,6 +99,22 @@ export default function PackingPage() {
     setSubmitting(false);
   };
 
+  // ── Access denied (no packing.view) ──
+  if (!canView) {
+    return (
+      <div style={{ fontFamily:'Inter,sans-serif', background:'#0a0a0a', minHeight:'100vh', padding:60, color:'#fff', maxWidth:480, margin:'0 auto', textAlign:'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
+          Packing screen ki ijazat tumhe nahi hai.
+        </div>
+        <Link href="/" style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+          ← Wapas
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily:'Inter,sans-serif', background:'#0a0a0a', minHeight:'100vh', padding:'24px 20px', color:'#fff', maxWidth:480, margin:'0 auto' }}>
       <div style={{ textAlign:'center', marginBottom:32 }}>
@@ -180,9 +201,9 @@ export default function PackingPage() {
 
           {msg && <div style={{ background:'#1a0000', border:'1px solid #ef4444', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#ef4444', marginBottom:14 }}>{msg}</div>}
 
-          <button onClick={submit} disabled={submitting||!packedBy}
-            style={{ width:'100%', background:packedBy?'#22c55e':'#1a1a1a', color:packedBy?'#000':'#444', border:'none', borderRadius:14, padding:'18px', fontSize:18, fontWeight:800, cursor:packedBy&&!submitting?'pointer':'not-allowed', fontFamily:'inherit' }}>
-            {submitting?'⟳ Saving...':packedBy?'✅ Done — Submit':'Packed By select karo'}
+          <button onClick={submit} disabled={submitting||!packedBy||!canSubmit}
+            style={{ width:'100%', background:(packedBy&&canSubmit)?'#22c55e':'#1a1a1a', color:(packedBy&&canSubmit)?'#000':'#444', border:'none', borderRadius:14, padding:'18px', fontSize:18, fontWeight:800, cursor:(packedBy&&canSubmit&&!submitting)?'pointer':'not-allowed', fontFamily:'inherit' }}>
+            {submitting?'⟳ Saving...':!canSubmit?'🔒 Submit ki ijazat nahi':packedBy?'✅ Done — Submit':'Packed By select karo'}
           </button>
         </>
       )}
