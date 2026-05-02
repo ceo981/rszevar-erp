@@ -415,18 +415,29 @@ export async function GET(request) {
       const orderIds = ordersWithAssignment.map(o => o.id);
       const { data: assignments } = await supabase
         .from('order_assignments')
-        .select('order_id, employee:assigned_to(name)')
+        .select('order_id, assigned_to, notes, employee:assigned_to(name)')
         .in('order_id', orderIds)
         .order('created_at', { ascending: false }); // latest first
       if (assignments && assignments.length > 0) {
-        const aMap = {};
+        const aMap = {};         // order_id → display name
+        const teamMap = {};      // order_id → boolean (packing_team flag)
         // latest assignment jeet-ta hai (created_at DESC se already sorted)
         assignments.forEach(a => {
-          if (a.order_id && a.employee?.name && !aMap[a.order_id]) {
+          if (!a.order_id || aMap[a.order_id]) return; // first hit wins
+          // Case 1: Packing Team (shared) — notes='packing_team', assigned_to=NULL
+          if (a.notes === 'packing_team' || (!a.assigned_to && a.notes?.toLowerCase().includes('packing team'))) {
+            aMap[a.order_id] = 'Packing Team';
+            teamMap[a.order_id] = true;
+          } else if (a.employee?.name) {
+            // Case 2: Individual packer
             aMap[a.order_id] = a.employee.name;
           }
         });
-        ordersWithAssignment = ordersWithAssignment.map(o => ({ ...o, assigned_to_name: aMap[o.id] || null }));
+        ordersWithAssignment = ordersWithAssignment.map(o => ({
+          ...o,
+          assigned_to_name: aMap[o.id] || null,
+          assigned_via_team: teamMap[o.id] || false,
+        }));
       }
       // ── Fallback: Shopify packing:NAME tags se assigned naam lo ──
       ordersWithAssignment = ordersWithAssignment.map(o => {
