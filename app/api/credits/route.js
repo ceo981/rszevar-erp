@@ -52,9 +52,10 @@ export async function GET(request) {
     const search = (searchParams.get('search') || '').trim().toLowerCase();
     const sort = searchParams.get('sort') || 'outstanding';
 
-    // ── Fetch unpaid + partial orders (chunked, fresh builder each iter) ──
-    // Same pattern as products route — Supabase 1000-row server cap requires
-    // chunked fetch with fresh builder to avoid silent truncation.
+    // ── Fetch credit orders (chunked, fresh builder each iter) ──
+    // CRITICAL FILTER: is_credit_order = true
+    // Only orders explicitly marked as udhaar/credit show in this module.
+    // Regular unpaid orders (pending courier settlement, etc.) excluded.
     const allOrders = [];
     const PAGE = 1000;
     let off = 0;
@@ -62,6 +63,7 @@ export async function GET(request) {
       const { data: chunk, error } = await supabase
         .from('orders')
         .select('id, order_number, customer_phone, customer_name, total_amount, paid_amount, payment_status, status, created_at')
+        .eq('is_credit_order', true)
         .in('payment_status', ['unpaid', 'partial'])
         .in('status', ACTIVE_ORDER_STATUSES)
         .order('created_at', { ascending: true })
