@@ -70,7 +70,11 @@ const PAYMENT_BADGE = {
 export default function CustomerKhaataPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, performer, isSuperAdmin } = useUser();
+  const { profile, performer, isSuperAdmin, can } = useUser();
+
+  // ── Granular permission gates (May 2 2026) ──
+  const canRecordPayment = can('credits.payment_record');
+  const canVoidPayment   = can('credits.payment_void');
 
   const phone = decodeURIComponent(params.phone || '');
 
@@ -208,7 +212,7 @@ export default function CustomerKhaataPage() {
             </span>}
           </p>
         </div>
-        {openOrders.length > 0 && (
+        {canRecordPayment && openOrders.length > 0 && (
           <button onClick={() => setShowPaymentModal(true)}
             style={{
               background: gold, color: '#000',
@@ -414,10 +418,10 @@ export default function CustomerKhaataPage() {
                         }}
                         title="View receipt">📷</a>
                     )}
-                    {isSuperAdmin && !p.voided_at && (
+                    {canVoidPayment && !p.voided_at && (
                       <button onClick={() => handleVoid(p.id)}
                         disabled={voidingId === p.id}
-                        title="Void this payment (super_admin only)"
+                        title="Void this payment"
                         style={{
                           background: 'transparent', border: '1px solid rgba(239,68,68,0.3)',
                           color: danger, borderRadius: 6,
