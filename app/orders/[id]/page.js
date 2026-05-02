@@ -27,6 +27,8 @@ import OrderDrawer, {
   StatusBadge, PaymentBadge, fmt, timeAgo, ordinal,
   gold, card, border, STATUS_CONFIG, NO_CANCEL_FROM_UI,
 } from '../_components/OrderDrawer';
+import EditCustomerModal from '../_components/EditCustomerModal';
+import EditShippingModal from '../_components/EditShippingModal';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
@@ -186,6 +188,13 @@ export default function SingleOrderPage() {
   // Apr 27 2026 — Track which tab to open drawer on. 'customer' jab kebab
   // menu se khule, 'actions' jab dispatch button etc. se khule.
   const [drawerInitialTab, setDrawerInitialTab] = useState('actions');
+
+  // May 2026 — Shopify-style modal popups for customer/shipping edit (replaces
+  // the older flow that opened the drawer's Customer tab). The drawer was the
+  // only edit path when /api/orders/edit was broken — now restored, both flows
+  // (modal AND drawer-tab) save through the same endpoint.
+  const [showEditCustomer, setShowEditCustomer] = useState(false);
+  const [showEditShipping, setShowEditShipping] = useState(false);
 
   // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
   const [openMenu, setOpenMenu] = useState(null);
@@ -1910,7 +1919,7 @@ export default function SingleOrderPage() {
                         boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                       }}>
                         <button
-                          onClick={() => { setOpenMenu(null); setDrawerInitialTab('customer'); setShowDrawer(true); }}
+                          onClick={() => { setOpenMenu(null); setShowEditCustomer(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -1918,7 +1927,7 @@ export default function SingleOrderPage() {
                           ✏️ Edit contact information
                         </button>
                         <button
-                          onClick={() => { setOpenMenu(null); setDrawerInitialTab('customer'); setShowDrawer(true); }}
+                          onClick={() => { setOpenMenu(null); setShowEditShipping(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
                           onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -2156,6 +2165,28 @@ export default function SingleOrderPage() {
           performer={performer}
           variant="drawer"
           defaultTab={drawerInitialTab}
+        />
+      )}
+
+      {/* May 2026 — Shopify-style modal popups. Replace the older flow that
+          opened OrderDrawer's Customer tab. Both contact + shipping use the
+          same /api/orders/edit endpoint (restored from broken state). */}
+      {showEditCustomer && order && (
+        <EditCustomerModal
+          order={order}
+          performer={performer}
+          userEmail={userEmail}
+          onClose={() => setShowEditCustomer(false)}
+          onSaved={() => { setShowEditCustomer(false); refreshAll(); }}
+        />
+      )}
+      {showEditShipping && order && (
+        <EditShippingModal
+          order={order}
+          performer={performer}
+          userEmail={userEmail}
+          onClose={() => setShowEditShipping(false)}
+          onSaved={() => { setShowEditShipping(false); refreshAll(); }}
         />
       )}
 
