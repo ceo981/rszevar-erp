@@ -55,8 +55,10 @@ export async function GET(request, { params }) {
 
     const supabase = createServerClient();
 
-    // ── 1. Fetch ALL orders for this customer (chunked) ──
-    // Include paid orders too — needed for total_billed + total_received calc.
+    // ── 1. Fetch credit orders for this customer (chunked) ──
+    // FILTER: is_credit_order = true — only show udhaar orders in khaata.
+    // Includes paid+cancelled credit orders too (needed for total_billed +
+    // total_received calc in summary).
     const allOrders = [];
     const PAGE = 1000;
     let off = 0;
@@ -65,6 +67,7 @@ export async function GET(request, { params }) {
         .from('orders')
         .select('id, order_number, customer_name, customer_phone, total_amount, paid_amount, payment_status, status, tags, created_at, confirmed_at')
         .eq('customer_phone', phone)
+        .eq('is_credit_order', true)
         .order('created_at', { ascending: false })
         .range(off, off + PAGE - 1);
 
