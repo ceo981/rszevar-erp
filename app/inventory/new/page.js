@@ -325,6 +325,9 @@ async function compressImage(file) {
 }
 
 function ImageUploader({ images, onChange }) {
+  // May 2026 — Drag-drop reorder state (mirrors the existing-product editor)
+  const [draggedIdx, setDraggedIdx] = useState(null);
+
   const handleFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';   // reset so re-picking same file works
@@ -369,12 +372,54 @@ function ImageUploader({ images, onChange }) {
     [next[idx], next[tgt]] = [next[tgt], next[idx]];
     onChange(next);
   };
+  // May 2026 — Set as main (move to position 0, becomes Shopify's primary image)
+  const setAsFirst = (idx) => {
+    if (idx === 0) return;
+    const next = [...images];
+    const [moved] = next.splice(idx, 1);
+    next.unshift(moved);
+    onChange(next);
+  };
+
+  // ── Drag-drop handlers ──
+  const handleDragStart = (idx) => (e) => {
+    setDraggedIdx(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+  const handleDrop = (targetIdx) => (e) => {
+    e.preventDefault();
+    const sourceIdx = draggedIdx ?? parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (sourceIdx === null || isNaN(sourceIdx) || sourceIdx === targetIdx) {
+      setDraggedIdx(null);
+      return;
+    }
+    const next = [...images];
+    const [moved] = next.splice(sourceIdx, 1);
+    next.splice(targetIdx, 0, moved);
+    onChange(next);
+    setDraggedIdx(null);
+  };
+  const handleDragEnd = () => setDraggedIdx(null);
 
   const totalKb = images.reduce((s, i) => s + (i.sizeKb || 0), 0);
   const overLimit = totalKb * 1024 > TOTAL_SIZE_LIMIT;
 
   return (
     <div>
+      {images.length > 1 && (
+        <div style={{
+          fontSize: 10, color: '#60a5fa', marginBottom: 10,
+          padding: '6px 10px', background: 'rgba(96,165,250,0.05)',
+          border: '1px solid rgba(96,165,250,0.2)', borderRadius: 6,
+        }}>
+          💡 Drag karke order change karo · ya ↑/↓ buttons use karo · "★ Set first" se main image banao
+        </div>
+      )}
       {images.length === 0 ? (
         <div style={{
           border: `1px dashed ${border}`, borderRadius: 8,
@@ -385,44 +430,73 @@ function ImageUploader({ images, onChange }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
-          {images.map((img, idx) => (
-            <div key={idx} style={{
-              background: bgPage, border: `1px solid ${border}`,
-              borderRadius: 8, padding: 8,
-            }}>
-              <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
-                <img src={img.previewUrl} alt={img.alt || ''}
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-                <div style={{
-                  position: 'absolute', top: 6, left: 6,
-                  background: 'rgba(0,0,0,0.7)', color: gold,
-                  fontSize: 10, fontWeight: 600,
-                  padding: '2px 6px', borderRadius: 3,
-                }}>#{idx + 1}</div>
-              </div>
-              <input
-                type="text"
-                value={img.alt || ''}
-                onChange={e => setAlt(idx, e.target.value)}
-                placeholder="Alt text (SEO)"
+          {images.map((img, idx) => {
+            const isDragged = draggedIdx === idx;
+            const isFirst   = idx === 0;
+            return (
+              <div
+                key={img._id || idx}
+                draggable
+                onDragStart={handleDragStart(idx)}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop(idx)}
+                onDragEnd={handleDragEnd}
                 style={{
-                  width: '100%', padding: '6px 8px',
-                  background: card, border: `1px solid ${border}`, borderRadius: 4,
-                  color: text1, fontSize: 11, fontFamily: 'inherit', outline: 'none',
-                  marginBottom: 6,
-                }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: text3 }}>
-                <span>{img.width}×{img.height} · {img.sizeKb}KB</span>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button onClick={() => moveImg(idx, -1)} disabled={idx === 0} style={miniBtnStyle(idx === 0)}>↑</button>
-                  <button onClick={() => moveImg(idx, +1)} disabled={idx === images.length - 1} style={miniBtnStyle(idx === images.length - 1)}>↓</button>
-                  <button onClick={() => removeImg(idx)} style={{ ...miniBtnStyle(false), color: '#f87171' }}>×</button>
+                  background: bgPage,
+                  border: `1px solid ${isDragged ? gold : border}`,
+                  borderRadius: 8, padding: 8,
+                  cursor: 'move',
+                  opacity: isDragged ? 0.4 : 1,
+                  transition: 'opacity 0.15s, border-color 0.15s',
+                }}>
+                <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                  <img src={img.previewUrl} alt={img.alt || ''}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                  <div style={{
+                    position: 'absolute', top: 6, left: 6,
+                    background: 'rgba(0,0,0,0.7)', color: gold,
+                    fontSize: 10, fontWeight: 600,
+                    padding: '2px 6px', borderRadius: 3,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <span style={{ fontSize: 12 }}>⋮⋮</span>
+                    <span>#{idx + 1}</span>
+                    {isFirst && <span style={{ marginLeft: 2, color: '#4ade80' }}>★ Main</span>}
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={img.alt || ''}
+                  onChange={e => setAlt(idx, e.target.value)}
+                  placeholder="Alt text (SEO)"
+                  style={{
+                    width: '100%', padding: '6px 8px',
+                    background: card, border: `1px solid ${border}`, borderRadius: 4,
+                    color: text1, fontSize: 11, fontFamily: 'inherit', outline: 'none',
+                    marginBottom: 6, boxSizing: 'border-box',
+                  }}
+                />
+                {!isFirst && images.length > 1 && (
+                  <button onClick={() => setAsFirst(idx)}
+                    style={{
+                      width: '100%', marginBottom: 6,
+                      background: '#1a1a1a', border: `1px solid ${border}`,
+                      color: '#4ade80', borderRadius: 4, padding: '4px 8px',
+                      fontSize: 10, fontFamily: 'inherit', cursor: 'pointer',
+                    }}>★ Set as main</button>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, color: text3 }}>
+                  <span>{img.width}×{img.height} · {img.sizeKb}KB</span>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => moveImg(idx, -1)} disabled={idx === 0} style={miniBtnStyle(idx === 0)}>↑</button>
+                    <button onClick={() => moveImg(idx, +1)} disabled={idx === images.length - 1} style={miniBtnStyle(idx === images.length - 1)}>↓</button>
+                    <button onClick={() => removeImg(idx)} style={{ ...miniBtnStyle(false), color: '#f87171' }}>×</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -440,9 +514,9 @@ function ImageUploader({ images, onChange }) {
             disabled={images.length >= MAX_IMAGES}
             style={{ display: 'none' }} />
         </label>
-        <span style={{ fontSize: 11, color: overLimit ? '#f87171' : text3 }}>
+        <span style={{ fontSize: 11, color: overLimit ? '#fbbf24' : text3 }}>
           {images.length}/{MAX_IMAGES} · {totalKb}KB total
-          {overLimit && ' ⚠ exceeds 4MB — remove some'}
+          {overLimit && ' · large payload — uploads will run sequentially'}
         </span>
       </div>
     </div>
@@ -1317,6 +1391,16 @@ export default function NewProductPage() {
       && draft.options.every(o => o.name && o.values.length > 0)
       && draft.variants_generated.length > 0;
 
+    // ─── May 2026 — Per-image upload pattern ───────────────────────────────
+    // Pehle saari images base64 ke saath ek POST body mein bhej rahe thay,
+    // 6+ heavy images Vercel ki 4.5MB limit cross kar sakti thi → "Request
+    // Entity Too Large" error (same root cause as Issue 6 reported on edit
+    // page). Ab create flow split karte hain:
+    //   1. POST /api/products without images (just metadata + variants)
+    //   2. Sequential POST /api/products/[id]/upload-image (one at a time)
+    //   3. POST /api/products/[id]/assign-variant-images (if assignments)
+    // ───────────────────────────────────────────────────────────────────────
+
     const payload = {
       title: draft.title.trim(),
       description_html: draft.description_html || undefined,
@@ -1330,13 +1414,7 @@ export default function NewProductPage() {
       collections: draft.collections.length > 0
         ? draft.collections.map(c => ({ id: c.id, handle: c.handle, title: c.title }))
         : undefined,
-      images: draft.images.length > 0
-        ? draft.images.map(img => ({
-            filename: img.filename,
-            attachment: img.base64,
-            alt: img.alt || '',
-          }))
-        : undefined,
+      // ⚠️ Images intentionally NOT in initial POST — uploaded separately below
       // M2.D — inventory tracking
       track_inventory: draft.track_inventory,
       initial_stock: draft.initial_stock !== '' ? Number(draft.initial_stock) : undefined,
@@ -1380,20 +1458,9 @@ export default function NewProductPage() {
         weight_unit: draft.weight_unit || 'g',
       }));
 
-      // M2.F + M2.H — Variant image assignments. Keys can be:
-      //   - Group key:  "Black"           → applies to all sub-variants of that color
-      //   - Composite:  "Black|2.4|"      → overrides for that specific sub-variant
-      // Server resolves composite key first; falls back to group key.
-      // Convert _id refs (frontend) → array index (server-friendly).
-      const assignments = {};
-      for (const [key, imgId] of Object.entries(draft.variant_image_assignments || {})) {
-        if (!imgId) continue;
-        const idx = draft.images.findIndex(i => i._id === imgId);
-        if (idx >= 0) assignments[key] = idx;
-      }
-      if (Object.keys(assignments).length > 0) {
-        payload.variant_image_assignments = assignments;
-      }
+      // Note: variant_image_assignments handled AFTER image uploads below.
+      // Frontend builds resolvedAssignments using the actual Shopify image
+      // IDs returned from /upload-image, then calls /assign-variant-images.
     } else {
       // Default-variant flow — single price/compare/sku
       payload.price = draft.price !== '' ? draft.price : undefined;
@@ -1406,22 +1473,128 @@ export default function NewProductPage() {
     payload.weight_unit = draft.weight_unit || 'g';
 
     try {
+      // ── Step 1: Create product (no images) ──
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      setSaveResult(data);
+      // Defensive parse — Vercel can return plain text on infra errors
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 120)}`); }
 
-      if (data.success && data.shopify_product_id) {
-        // Brief delay so user sees the success message, then redirect
-        setTimeout(() => {
-          router.push(`/inventory/${data.shopify_product_id}`);
-        }, 1200);
-      } else {
+      if (!data.success || !data.shopify_product_id) {
+        setSaveResult(data);
         setCreating(false);
+        return;
       }
+
+      const newProductId = data.shopify_product_id;
+
+      // ── Step 2: Upload images sequentially (avoids body-size limit) ──
+      // Map _id (frontend ref) → Shopify image id (real after upload), so
+      // variant assignments can be resolved in Step 3.
+      const idMap = {};
+      const uploadResults = [];
+      if (Array.isArray(draft.images) && draft.images.length > 0) {
+        setSaveResult({
+          success: true,
+          partial: false,
+          in_progress: true,
+          message: `Product created. Uploading 0 / ${draft.images.length} images…`,
+          shopify_product_id: newProductId,
+        });
+
+        for (let i = 0; i < draft.images.length; i++) {
+          const img = draft.images[i];
+          try {
+            const ur = await fetch(`/api/products/${newProductId}/upload-image`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                filename: img.filename,
+                attachment: img.base64,
+                alt: img.alt || '',
+              }),
+            });
+            const utext = await ur.text();
+            let ud;
+            try { ud = JSON.parse(utext); }
+            catch { throw new Error(`Upload ${i + 1} returned non-JSON: ${utext.slice(0, 80)}`); }
+
+            if (!ud.success) throw new Error(ud.error || `Upload ${i + 1} failed`);
+            uploadResults.push({ filename: img.filename, success: true, id: ud.image_id });
+            if (img._id) idMap[img._id] = String(ud.image_id);
+          } catch (e) {
+            uploadResults.push({ filename: img.filename, success: false, error: e.message });
+            // Don't abort entire create — product already exists. Surface
+            // partial result so user knows which images failed.
+            console.error(`[create] image ${i + 1} upload failed:`, e.message);
+          }
+
+          setSaveResult({
+            success: true,
+            partial: false,
+            in_progress: true,
+            message: `Uploaded ${i + 1} / ${draft.images.length} images…`,
+            shopify_product_id: newProductId,
+          });
+        }
+      }
+
+      // ── Step 3: Apply variant_image_assignments if any ──
+      // draft.variant_image_assignments stores values as image _id (frontend
+      // ref). We translate to actual Shopify image ID using idMap.
+      let assignResult = null;
+      if (
+        usingVariantOptions
+        && draft.variant_image_assignments
+        && Object.keys(draft.variant_image_assignments).length > 0
+        && Object.keys(idMap).length > 0
+      ) {
+        const resolvedAssignments = {};
+        for (const [key, frontendId] of Object.entries(draft.variant_image_assignments)) {
+          if (!frontendId) continue;
+          const shopifyImgId = idMap[frontendId];
+          if (shopifyImgId) resolvedAssignments[key] = shopifyImgId;
+        }
+
+        if (Object.keys(resolvedAssignments).length > 0) {
+          try {
+            const ar = await fetch(`/api/products/${newProductId}/assign-variant-images`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ assignments: resolvedAssignments }),
+            });
+            const atext = await ar.text();
+            try { assignResult = JSON.parse(atext); }
+            catch { assignResult = { success: false, error: `non-JSON: ${atext.slice(0, 80)}` }; }
+          } catch (e) {
+            assignResult = { success: false, error: e.message };
+          }
+        }
+      }
+
+      // ── Final result aggregation ──
+      const allUploadsOk = uploadResults.every(r => r.success);
+      const finalResult = {
+        ...data,
+        in_progress: false,
+        images_uploaded: uploadResults.filter(r => r.success).length,
+        images_total: draft.images.length,
+        upload_results: uploadResults,
+        variant_assignments: assignResult,
+        partial: !allUploadsOk || (assignResult && assignResult.success === false),
+      };
+      setSaveResult(finalResult);
+
+      // Redirect to the editor regardless — product exists. User can re-try
+      // failed uploads from the editor's Media card.
+      setTimeout(() => {
+        router.push(`/inventory/${newProductId}`);
+      }, 1200);
     } catch (e) {
       setSaveResult({ success: false, error: e.message });
       setCreating(false);
