@@ -115,6 +115,10 @@ export async function GET(request) {
     //   paid             → payment_status='paid' (settled by courier)
     //   pending_payment  → status='delivered' AND payment_status != 'paid' (delivered but money pending)
     const payment_state = searchParams.get('payment_state');
+    // May 2 2026 — Protocol Audit filter (CEO-only tab)
+    //   protocol_unfollowed → orders flagged by v_protocol_unfollowed_orders view
+    //   (skipped assignment / skipped packing scan / skipped confirmation)
+    const audit = searchParams.get('audit');
     const dateFrom = searchParams.get('from');
     const dateTo = searchParams.get('to');
     const sort = searchParams.get('sort') || 'created_at';
@@ -122,6 +126,43 @@ export async function GET(request) {
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
+
+    // ── Protocol Audit prefetch (May 2 2026) ─────────────────────────────
+    // Agar `audit=protocol_unfollowed` filter aaya, pehle view se matching IDs
+    // + reason flags fetch karte. Phir main orders query ko `.in('id', ids)`
+    // se constrain karte. Reasons map separately attach hota response mein.
+    let protocolFilteredIds = null;
+    let protocolReasons = {};
+    if (audit === 'protocol_unfollowed') {
+      const { data: violations, error: vErr } = await supabase
+        .from('v_protocol_unfollowed_orders')
+        .select('id, skipped_assignment, skipped_packing_log, skipped_confirmation')
+        .order('created_at', { ascending: false })
+        .limit(500); // sane upper bound — usually count is much lower
+      if (vErr) {
+        return NextResponse.json({ success: false, error: 'Protocol audit fetch fail: ' + vErr.message }, { status: 500 });
+      }
+      protocolFilteredIds = (violations || []).map(v => v.id);
+      protocolReasons = Object.fromEntries(
+        (violations || []).map(v => [v.id, {
+          skipped_assignment: v.skipped_assignment,
+          skipped_packing_log: v.skipped_packing_log,
+          skipped_confirmation: v.skipped_confirmation,
+        }])
+      );
+      // Empty result → return zero immediately, save downstream queries
+      if (protocolFilteredIds.length === 0) {
+        return NextResponse.json({
+          orders: [],
+          total: 0,
+          page,
+          limit,
+          globalCounts: {},
+          protocol_audit: true,
+          protocol_reasons: {},
+        });
+      }
+    }
 
     // ── SKU / product-name search ────────────────────────────────────────
     // Apr 30 2026 — Search ab order_items ke andar bhi dekhta hai. User SKU
@@ -191,6 +232,10 @@ export async function GET(request) {
       }
       if (dateFrom) q = q.gte('created_at', dateFrom);
       if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59');
+      // May 2 2026 — Protocol Audit filter: constrain to violation IDs
+      if (protocolFilteredIds) {
+        q = q.in('id', protocolFilteredIds);
+      }
       if (search) {
         // Apr 30 2026 — Search now includes order_items (SKU + product title)
         // AND Shopify confirmation_number (the short code customers see on the
@@ -303,6 +348,7 @@ export async function GET(request) {
       { count: gWaCancelled },
       { count: gUnfulfilled },
       { count: gPendingPayment },
+      { count: gProtocolUnfollowed },
     ] = await Promise.all([
       baseCount().eq('is_wholesale', true),
       baseCount().eq('is_international', true),
@@ -333,6 +379,9 @@ export async function GET(request) {
       baseCount()
         .eq('status', 'delivered')
         .neq('payment_status', 'paid'),
+      // May 2 2026 — Protocol Audit count (CEO-only tab)
+      // Note: queries the view directly. View already excludes verified + walkin/wholesale.
+      supabase.from('v_protocol_unfollowed_orders').select('id', { count: 'exact', head: true }),
     ]);
 
     const globalCounts = {
@@ -357,6 +406,7 @@ export async function GET(request) {
       wa_cancelled: gWaCancelled || 0,
       unfulfilled: gUnfulfilled || 0,
       pending_payment: gPendingPayment || 0,
+      protocol_unfollowed: gProtocolUnfollowed || 0,
     };
 
     // ── Batch-fetch assignments for these orders ──
@@ -401,6 +451,8 @@ export async function GET(request) {
       total_pages: Math.ceil((count || 0) / limit),
       stats: orderStats,
       global_counts: globalCounts,
+      // May 2 2026 — Protocol audit reason map (only present when audit filter active)
+      protocol_reasons: audit === 'protocol_unfollowed' ? protocolReasons : undefined,
     });
 
   } catch (error) {
