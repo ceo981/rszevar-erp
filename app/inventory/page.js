@@ -39,7 +39,14 @@ function DetailRow({ label, value, bold, color, link }) {
 }
 
 export default function InventoryPage() {
-  const { canViewFinancial } = useUser();
+  const { canViewFinancial, can } = useUser();
+
+  // ── Granular permission gates (May 2 2026) ──
+  const canCreate    = can('inventory.create');
+  const canSync      = can('inventory.sync');
+  const canBulkEdit  = can('inventory.bulk_edit');
+  const canAiEnhance = can('inventory.ai_enhance');
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialSearch = searchParams.get('search') || '';
@@ -473,6 +480,7 @@ export default function InventoryPage() {
           <p style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>{total} products · Synced from Shopify</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {canCreate && (
           <Link
             href="/inventory/new"
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'var(--gold)', color: '#080808', border: 'none', borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer', textDecoration: 'none' }}
@@ -480,26 +488,37 @@ export default function InventoryPage() {
           >
             <span style={{ fontSize: 14, fontWeight: 800 }}>+</span> Add Product
           </Link>
+          )}
+          {canSync && (
           <button onClick={handleComputeABC} disabled={computing} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: computing ? 'var(--border)' : 'transparent', color: computing ? 'var(--text3)' : 'var(--gold)', border: `1px solid ${computing ? 'var(--border)' : 'var(--gold)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: computing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: computing ? 'spin 1s linear infinite' : 'none' }}>📊</span>
             {computing ? 'Computing...' : 'Compute ABC'}
           </button>
+          )}
+          {canSync && (
           <button onClick={handleSyncSeoMeta} disabled={syncingSeoMeta} title="Fetch meta_title + meta_description from Shopify (one-time per data drift)" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: syncingSeoMeta ? 'var(--border)' : 'transparent', color: syncingSeoMeta ? 'var(--text3)' : '#a78bfa', border: `1px solid ${syncingSeoMeta ? 'var(--border)' : '#a78bfa'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: syncingSeoMeta ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: syncingSeoMeta ? 'spin 1s linear infinite' : 'none' }}>📥</span>
             {syncingSeoMeta ? 'Syncing meta...' : 'Sync SEO Meta'}
           </button>
+          )}
+          {canSync && (
           <button onClick={handleRecomputeSeo} disabled={recomputingSeo} title="Recompute SEO scores for all products using transparent JS engine" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: recomputingSeo ? 'var(--border)' : 'transparent', color: recomputingSeo ? 'var(--text3)' : '#4ade80', border: `1px solid ${recomputingSeo ? 'var(--border)' : '#4ade80'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: recomputingSeo ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: recomputingSeo ? 'spin 1s linear infinite' : 'none' }}>🎯</span>
             {recomputingSeo ? 'Scoring...' : 'Recompute SEO'}
           </button>
+          )}
+          {canSync && (
           <button onClick={handleSyncCollections} disabled={syncingCollections} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: syncingCollections ? 'var(--border)' : 'transparent', color: syncingCollections ? 'var(--text3)' : 'var(--cyan)', border: `1px solid ${syncingCollections ? 'var(--border)' : 'var(--cyan)'}`, borderRadius: 'var(--radius)', fontSize: 12, fontWeight: 600, fontFamily: 'inherit', cursor: syncingCollections ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: syncingCollections ? 'spin 1s linear infinite' : 'none' }}>🏷️</span>
             {syncingCollections ? 'Syncing...' : 'Sync Collections'}
           </button>
+          )}
+          {canSync && (
           <button onClick={handleSync} disabled={syncing} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: syncing ? 'var(--border)' : 'var(--gold)', color: syncing ? 'var(--text3)' : '#080808', border: 'none', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: syncing ? 'wait' : 'pointer' }}>
             <span style={{ display: 'inline-block', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>🔄</span>
             {syncing ? 'Syncing...' : 'Sync from Shopify'}
           </button>
+          )}
         </div>
       </div>
 
@@ -1048,7 +1067,7 @@ export default function InventoryPage() {
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg2)', zIndex: 1 }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--gold)', fontFamily: "'Cormorant Garamond', serif" }}>Product Details</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {selectedProduct.shopify_product_id && (
+              {selectedProduct.shopify_product_id && canAiEnhance && (
                 <button onClick={() => setAiEnhanceOpen(true)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
