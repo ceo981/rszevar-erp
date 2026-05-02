@@ -48,13 +48,13 @@ export async function GET(request) {
     empMap[id].total_orders += 1;
   }
 
-  // 3. Get employee names
+  // 3. Get employee names + status (May 2 2026: status field added for filter)
   const empIds = Object.keys(empMap).map(Number);
   let employees = [];
   if (empIds.length > 0) {
     const { data: emps } = await supabase
       .from('employees')
-      .select('id, name, role')
+      .select('id, name, role, status')
       .in('id', empIds);
     employees = emps || [];
   }
@@ -63,7 +63,17 @@ export async function GET(request) {
   for (const e of employees) empNameMap[e.id] = e;
 
   // 4. Build leaderboard — SORT BY AMOUNT (primary), items (tiebreaker)
+  // ── May 2 2026: Filter out ex-employees (status='inactive') ──
+  // Terminated/deactivated staff leaderboard mein nahi dikhne chahiye —
+  // bonus already settled hota termination ke time, aur visual clutter cleanup.
+  // Note: unke past packing_log records DB mein safe hain — sirf display filter.
   const leaderboard = Object.values(empMap)
+    .filter(entry => {
+      const emp = empNameMap[entry.employee_id];
+      // Exclude employees who are currently inactive (terminated/deactivated)
+      // Also exclude orphan packing_log entries (employee deleted from DB — shouldn't happen with soft-delete)
+      return emp && emp.status !== 'inactive';
+    })
     .map(entry => ({
       ...entry,
       total_amount: Math.round(entry.total_amount * 100) / 100, // 2 decimals
