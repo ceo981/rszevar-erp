@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import SettlementsTab from './SettlementsTab';
+import { useUser } from '@/context/UserContext';
 
 const S = {
   input: { width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
@@ -170,6 +171,10 @@ function DashboardTab() {
 // VENDORS TAB
 // ══════════════════════════════════════════════════════
 function VendorsTab() {
+  const { can } = useUser();
+  const canVendorEdit    = can('accounts.vendors_edit');
+  const canVendorPayment = can('accounts.vendors_payment');
+
   const [ledger, setLedger] = useState([]);
   const [totalOut, setTotalOut] = useState(0);
   const [selected, setSelected] = useState(null);
@@ -312,7 +317,7 @@ function VendorsTab() {
     <div style={{ display: 'flex', gap: 20 }}>
       <div style={{ width: 280, flexShrink: 0 }}>
         {totalOut > 0 && <div style={{ background: '#2a1a1a', border: '1px solid #ef444433', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}><div style={{ fontSize: 11, color: '#ef4444', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>Total Outstanding</div><div style={{ fontSize: 20, fontWeight: 700, color: '#ef4444' }}>{fmt(totalOut)}</div></div>}
-        <button onClick={() => setShowAdd(true)} style={{ ...S.btn, width: '100%', marginBottom: 10 }}>+ New Vendor</button>
+        {canVendorEdit && <button onClick={() => setShowAdd(true)} style={{ ...S.btn, width: '100%', marginBottom: 10 }}>+ New Vendor</button>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {ledger.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: '#333', fontSize: 13 }}>Koi vendor nahi</div>}
           {ledger.map(v => (
@@ -334,7 +339,7 @@ function VendorsTab() {
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: '#eee', display: 'flex', alignItems: 'center', gap: 8 }}>
                     {selV?.name}
-                    {selV && (
+                    {selV && canVendorEdit && (
                       <button
                         onClick={() => openEditVendor(selV)}
                         title="Edit vendor details"
@@ -350,8 +355,8 @@ function VendorsTab() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button onClick={() => setShowTxn('purchase')} style={{ ...S.btn, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e', fontSize: 12 }}>+ Maal Aya</button>
-                  <button onClick={() => setShowTxn('payment')} style={{ ...S.btn, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444', fontSize: 12 }}>+ Payment Di</button>
+                  {canVendorEdit && <button onClick={() => setShowTxn('purchase')} style={{ ...S.btn, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e', fontSize: 12 }}>+ Maal Aya</button>}
+                  {canVendorPayment && <button onClick={() => setShowTxn('payment')} style={{ ...S.btn, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444', fontSize: 12 }}>+ Payment Di</button>}
                   <button onClick={printStatement} style={{ ...S.btn, fontSize: 12 }}>🖨️ Statement</button>
                 </div>
               </div>
@@ -380,8 +385,8 @@ function VendorsTab() {
                         <td style={S.td}>{t.due_date ? <span style={{ color: new Date(t.due_date) < new Date() ? '#ef4444' : '#f59e0b' }}>📅 {fmtDate(t.due_date)}</span> : '—'}</td>
                         <td style={S.td}>
                           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                            <button onClick={() => openEdit(t)} title="Edit entry" style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>✏️ Edit</button>
-                            <button onClick={() => delTxn(t.id)} title="Delete entry" style={{ background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>🗑 Delete</button>
+                            {canVendorEdit && <button onClick={() => openEdit(t)} title="Edit entry" style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>✏️ Edit</button>}
+                            {canVendorEdit && <button onClick={() => delTxn(t.id)} title="Delete entry" style={{ background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>🗑 Delete</button>}
                           </div>
                         </td>
                       </tr>
@@ -429,6 +434,9 @@ function VendorsTab() {
 // PERSONAL EXPENSES TAB
 // ══════════════════════════════════════════════════════
 function PersonalTab() {
+  const { can } = useUser();
+  const canPersonalEdit = can('accounts.personal_edit');
+
   const [expenses,setExpenses]=useState([]);
   const [total,setTotal]=useState(0);
   const [byCategory,setByCategory]=useState({});
@@ -469,7 +477,7 @@ function PersonalTab() {
       <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
         <input type="month" value={month} onChange={e=>setMonth(e.target.value)} style={{...S.input,width:'auto'}}/>
         <div style={{...S.card,padding:'10px 20px',flex:1}}><span style={{fontSize:12,color:'#555'}}>This Month: </span><span style={{fontSize:18,fontWeight:700,color:'#ef4444',marginLeft:8}}>{fmt(total)}</span></div>
-        <button onClick={()=>setShowModal(true)} style={{...S.btn,background:'#2a1a1a',borderColor:'#ef444444',color:'#ef4444'}}>+ Add Expense</button>
+        {canPersonalEdit && <button onClick={()=>setShowModal(true)} style={{...S.btn,background:'#2a1a1a',borderColor:'#ef444444',color:'#ef4444'}}>+ Add Expense</button>}
       </div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         {Object.entries(byCategory).map(([cat,amt])=>(
@@ -489,7 +497,7 @@ function PersonalTab() {
                 <td style={S.td}><span style={{background:'#1e1e1e',border:'1px solid #2a2a2a',borderRadius:4,padding:'2px 8px',fontSize:11,color:'#666'}}>{e.category}</span></td>
                 <td style={{...S.td,color:'#ef4444',fontWeight:700}}>{fmt(e.amount)}</td>
                 <td style={{...S.td,color:'#555'}}>{e.note||'—'}</td>
-                <td style={S.td}><button onClick={()=>del(e.id)} style={{background:'none',border:'none',color:'#333',cursor:'pointer',fontSize:16}}>🗑</button></td>
+                <td style={S.td}>{canPersonalEdit && <button onClick={()=>del(e.id)} style={{background:'none',border:'none',color:'#333',cursor:'pointer',fontSize:16}}>🗑</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -517,6 +525,9 @@ function PersonalTab() {
 // ZAKAT TAB
 // ══════════════════════════════════════════════════════
 function ZakatTab() {
+  const { can } = useUser();
+  const canZakatEdit = can('accounts.zakat_edit');
+
   const [year,setYear]=useState('2027-2028');
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -581,8 +592,8 @@ function ZakatTab() {
     <div style={{display:'flex',flexDirection:'column',gap:20}}>
       <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
         <select value={year} onChange={e=>setYear(e.target.value)} style={{...S.input,width:'auto',fontWeight:600,fontSize:14}}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
-        <button onClick={()=>setShowCalc(true)} style={S.btn}>🧮 Zakat Calculate karo</button>
-        {record&&remaining>0&&<button onClick={()=>setShowDist(true)} style={{...S.btn,background:'#1a2a1a',borderColor:'#22c55e44',color:'#22c55e'}}>+ Distribution Add karo</button>}
+        {canZakatEdit && <button onClick={()=>setShowCalc(true)} style={S.btn}>🧮 Zakat Calculate karo</button>}
+        {canZakatEdit && record&&remaining>0&&<button onClick={()=>setShowDist(true)} style={{...S.btn,background:'#1a2a1a',borderColor:'#22c55e44',color:'#22c55e'}}>+ Distribution Add karo</button>}
       </div>
 
       {msg&&<div style={{padding:'10px 16px',borderRadius:8,background:msg.startsWith('✅')?'#1a2a1a':'#2a1a1a',color:msg.startsWith('✅')?'#22c55e':'#ef4444',fontSize:13}}>{msg}</div>}
@@ -631,7 +642,7 @@ function ZakatTab() {
                       <td style={{...S.td,color:'#ccc',fontWeight:500}}>{d.recipient}</td>
                       <td style={{...S.td,color:'#c9a96e',fontWeight:700}}>{fmt(d.amount)}</td>
                       <td style={{...S.td,color:'#555'}}>{d.note||'—'}</td>
-                      <td style={S.td}><button onClick={()=>delDist(d.id)} style={{background:'none',border:'none',color:'#333',cursor:'pointer',fontSize:16}}>🗑</button></td>
+                      <td style={S.td}>{canZakatEdit && <button onClick={()=>delDist(d.id)} style={{background:'none',border:'none',color:'#333',cursor:'pointer',fontSize:16}}>🗑</button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -694,14 +705,33 @@ function ZakatTab() {
 // MAIN
 // ══════════════════════════════════════════════════════
 export default function AccountsPage() {
-  const [tab,setTab]=useState('dashboard');
-  const TABS=[
-    {id:'dashboard',label:'📊 Dashboard'},
-    {id:'settlements',label:'✅ Settlements'},
-    {id:'vendors',label:'🏭 Vendors'},
-    {id:'personal',label:'💳 Personal'},
-    {id:'zakat',label:'🌙 Zakat'},
+  const { can } = useUser();
+
+  // ── Granular permission gates (May 2 2026) ──
+  // Each tab requires its own view permission. Tabs without perm gayab.
+  const ALL_TABS = [
+    { id:'dashboard',   label:'📊 Dashboard',    perm:'accounts.view_revenue' },
+    { id:'settlements', label:'✅ Settlements',  perm:'accounts.settlements_view' },
+    { id:'vendors',     label:'🏭 Vendors',      perm:'accounts.vendors_view' },
+    { id:'personal',    label:'💳 Personal',     perm:'accounts.personal_view' },
+    { id:'zakat',       label:'🌙 Zakat',         perm:'accounts.zakat_view' },
   ];
+  const TABS = ALL_TABS.filter(t => can(t.perm));
+
+  // Default tab — pick first available; fallback if none.
+  const defaultTab = TABS[0]?.id || 'dashboard';
+  const [tab,setTab]=useState(defaultTab);
+
+  // Edge case: zero perms → soft empty state
+  if (TABS.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', color: '#888', fontFamily: "'Söhne', 'Helvetica Neue', sans-serif" }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#666' }}>Accounts ke kisi bhi tab ki ijazat tumhe nahi hai. CEO se grant karwane ko bolo.</div>
+      </div>
+    );
+  }
   return (
     <div style={{padding:'24px 32px',maxWidth:1300,fontFamily:"'Söhne', 'Helvetica Neue', sans-serif"}}>
       <div style={{marginBottom:24}}>
