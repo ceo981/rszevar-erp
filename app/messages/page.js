@@ -664,7 +664,8 @@ function HeaderMenu({ onMarkUnread, onClose }) {
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 export default function MessagesPage() {
-  const { profile, userEmail } = useUser();
+  const { profile, userEmail, can } = useUser();
+  const canReply = can('messages.reply');
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState('');
@@ -1156,8 +1157,14 @@ export default function MessagesPage() {
                 <div ref={chatEndRef} />
               </div>
 
-              {/* Reply bar */}
+              {/* Reply bar — gated by messages.reply */}
               <div style={{ padding: 12, borderTop: `1px solid ${border}`, background: '#0f0f0f' }}>
+                {!canReply && (
+                  <div style={{ fontSize: 12, color: '#888', textAlign: 'center', padding: '14px 8px', background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 8 }}>
+                    🔒 Reply karne ki ijazat tumhe nahi hai. CEO se <code style={{ background: '#0a0a0a', padding: '1px 5px', borderRadius: 3, fontSize: 11 }}>messages.reply</code> permission grant karwane ko bolo.
+                  </div>
+                )}
+                {canReply && (<>
                 {sendError && (
                   <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 8, padding: '6px 10px', background: '#ef444411', border: '1px solid #ef444433', borderRadius: 5 }}>
                     ⚠ {sendError}
@@ -1287,6 +1294,7 @@ export default function MessagesPage() {
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={onFileSelected('Document')} style={{ display: 'none' }}
                 />
+                </>)}
               </div>
             </>
           )}
