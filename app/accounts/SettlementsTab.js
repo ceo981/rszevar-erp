@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const border = '#222';
@@ -221,10 +222,13 @@ function HistorySection({ refresh }) {
 }
 
 export default function SettlementsTab() {
+  const { can } = useUser();
+  const canUpload = can('accounts.settlements_upload');
+
   const [historyRefresh, setHistoryRefresh] = useState(0);
   return (
     <div>
-      <UploadSection onDone={() => setHistoryRefresh(k => k + 1)} />
+      {canUpload && <UploadSection onDone={() => setHistoryRefresh(k => k + 1)} />}
       <HistorySection refresh={historyRefresh} />
     </div>
   );
