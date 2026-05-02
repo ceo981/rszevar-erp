@@ -623,6 +623,21 @@ function buildDiff(original, draft) {
     .map(i => i.id);
   if (removed.length > 0) diff.images_to_remove = removed;
 
+  // May 2026 — Image reorder. If draft images_data IDs in draft order differ
+  // from the original ordered IDs (after accounting for removals), send a
+  // reorder array. Order in draft.images_data IS the desired order.
+  const origOrdered = (original.images_data || [])
+    .map(i => String(i.id))
+    .filter(id => draftImgIds.has(id)); // exclude removed ones
+  const draftOrdered = (draft.images_data || [])
+    .map(i => String(i.id));
+  const sameOrder =
+    origOrdered.length === draftOrdered.length &&
+    origOrdered.every((id, i) => id === draftOrdered[i]);
+  if (!sameOrder && draftOrdered.length > 0) {
+    diff.image_reorder = draftOrdered;
+  }
+
   return diff;
 }
 
@@ -1297,6 +1312,80 @@ export default function ProductEditPage() {
       body.performed_by_email = userEmail || null;
       body.reason             = reason.trim() || null;
 
+      // ── May 2026 — Per-image upload to bypass Vercel 4.5 MB body limit ──
+      // Pehle saari nayi images base64 mein PATCH body ke andar bheji jati
+      // thi. 3-4 large images add karne pe body 4.5MB cross hota tha aur
+      // Vercel proxy "Request Entity Too Large" plain text return karta tha,
+      // jo "Unexpected token 'R'..." JSON parse error banti thi.
+      //
+      // Ab: pehle har image ko alag /upload-image POST se Shopify pe push
+      // karte hain (each request ~600-900KB max), phir PATCH body se
+      // images_to_add hata dete hain. Reorder bhi adjust hota hai — agar
+      // user ne new images ko specific position pe rakha tha, woh order
+      // upload ke baad image_reorder mein update ho jata.
+      let uploadedImageIds = []; // newly created Shopify image IDs (in upload order)
+      if (Array.isArray(body.images_to_add) && body.images_to_add.length > 0) {
+        const imgsToUpload = body.images_to_add;
+        setSaveResult({
+          success: true,
+          partial: false,
+          in_progress: true,
+          message: `Uploading 0 / ${imgsToUpload.length} images…`,
+        });
+
+        const uploadResults = [];
+        for (let i = 0; i < imgsToUpload.length; i++) {
+          const img = imgsToUpload[i];
+          try {
+            const r = await fetch(`/api/products/${id}/upload-image`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                filename: img.filename,
+                attachment: img.attachment,
+                alt: img.alt || '',
+              }),
+            });
+            const text = await r.text();
+            let d;
+            try { d = JSON.parse(text); }
+            catch { throw new Error(`Server returned non-JSON during upload ${i + 1}: ${text.slice(0, 100)}`); }
+
+            if (!d.success) throw new Error(d.error || `Upload ${i + 1} failed`);
+            uploadResults.push({ filename: img.filename, success: true, id: d.image_id });
+            uploadedImageIds.push(String(d.image_id));
+          } catch (e) {
+            uploadResults.push({ filename: img.filename, success: false, error: e.message });
+            // Stop on first failure — partial uploads are confusing for the user
+            throw new Error(`Image upload ${i + 1}/${imgsToUpload.length} failed: ${e.message}`);
+          }
+
+          // Live progress
+          setSaveResult({
+            success: true,
+            partial: false,
+            in_progress: true,
+            message: `Uploaded ${i + 1} / ${imgsToUpload.length} images…`,
+          });
+        }
+
+        // Drop images_to_add from PATCH body — Shopify already has them
+        delete body.images_to_add;
+
+        // If user also reordered, append the new image IDs at the END of
+        // the reorder list (they always go last since they were just added).
+        // Without this, the reorder PATCH step would only reorder old images
+        // and the new ones would land in default Shopify order.
+        if (Array.isArray(body.image_reorder) && uploadedImageIds.length > 0) {
+          const existingInReorder = new Set(body.image_reorder.map(String));
+          for (const newId of uploadedImageIds) {
+            if (!existingInReorder.has(newId)) {
+              body.image_reorder.push(newId);
+            }
+          }
+        }
+      }
+
       // M2.B — if collections changed, resolve join/leave numeric IDs from
       // master list and strip ids from collections array (server stores
       // {handle, title} only)
@@ -1339,12 +1428,37 @@ export default function ProductEditPage() {
         body.ai_enhancement_id = aiEnhancementId;
       }
 
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
+      // Edge case: only images_to_add changed (no other diff). After uploads
+      // body has nothing meaningful left — skip PATCH to avoid empty round-trip.
+      const hasMeaningfulChange =
+        Object.keys(body).some(k =>
+          !['performed_by', 'performed_by_email', 'reason'].includes(k) &&
+          body[k] !== null &&
+          body[k] !== undefined &&
+          !(Array.isArray(body[k]) && body[k].length === 0)
+        );
+
+      let data;
+      if (hasMeaningfulChange) {
+        const res = await fetch(`/api/products/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        try { data = JSON.parse(text); }
+        catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 120)}`); }
+      } else {
+        // Only images were uploaded — synthesize a success response
+        data = {
+          success: true,
+          message: uploadedImageIds.length > 0
+            ? `${uploadedImageIds.length} image(s) uploaded successfully`
+            : 'Saved',
+          results: { images_added: uploadedImageIds.map(id => ({ id, success: true })) },
+        };
+      }
+
       setSaveResult(data);
       if (data.success || data.partial) {
         // Clear AI state now that it's been written to Shopify + DB
@@ -1554,6 +1668,76 @@ export default function ProductEditPage() {
   };
   const setStagedImageAlt = (idx, alt) => {
     setDraft(d => ({ ...d, images_to_add: (d.images_to_add || []).map((img, i) => i === idx ? { ...img, alt } : img) }));
+  };
+
+  // May 2026 — Drag-drop reorder for existing Shopify images
+  // Native HTML5 drag-drop. Order in draft.images_data IS the desired order.
+  // buildDiff detects when this order differs from original and emits
+  // image_reorder array, which the PATCH route uses to PUT new positions.
+  const [draggedImgId, setDraggedImgId] = useState(null);
+  const handleImgDragStart = (imgId) => (e) => {
+    setDraggedImgId(String(imgId));
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(imgId));
+  };
+  const handleImgDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+  const handleImgDrop = (targetImgId) => (e) => {
+    e.preventDefault();
+    const sourceId = draggedImgId || e.dataTransfer.getData('text/plain');
+    if (!sourceId || String(sourceId) === String(targetImgId)) {
+      setDraggedImgId(null);
+      return;
+    }
+    setDraft(d => {
+      const arr = [...(d.images_data || [])];
+      const fromIdx = arr.findIndex(i => String(i.id) === String(sourceId));
+      const toIdx   = arr.findIndex(i => String(i.id) === String(targetImgId));
+      if (fromIdx === -1 || toIdx === -1) return d;
+      const [moved] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, moved);
+      // Update display positions to match new order (visual only — server is
+      // source of truth; PATCH will persist actual position values).
+      return {
+        ...d,
+        images_data: arr.map((img, i) => ({ ...img, position: i + 1 })),
+      };
+    });
+    setDraggedImgId(null);
+  };
+  const handleImgDragEnd = () => setDraggedImgId(null);
+
+  // Move image left / right via buttons (for users who can't drag-drop on touch
+  // devices, and as a backup for keyboard users).
+  const moveImageLeft = (imgId) => {
+    setDraft(d => {
+      const arr = [...(d.images_data || [])];
+      const idx = arr.findIndex(i => String(i.id) === String(imgId));
+      if (idx <= 0) return d;
+      [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+      return { ...d, images_data: arr.map((img, i) => ({ ...img, position: i + 1 })) };
+    });
+  };
+  const moveImageRight = (imgId) => {
+    setDraft(d => {
+      const arr = [...(d.images_data || [])];
+      const idx = arr.findIndex(i => String(i.id) === String(imgId));
+      if (idx === -1 || idx >= arr.length - 1) return d;
+      [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+      return { ...d, images_data: arr.map((img, i) => ({ ...img, position: i + 1 })) };
+    });
+  };
+  const setAsFirstImage = (imgId) => {
+    setDraft(d => {
+      const arr = [...(d.images_data || [])];
+      const idx = arr.findIndex(i => String(i.id) === String(imgId));
+      if (idx <= 0) return d;
+      const [moved] = arr.splice(idx, 1);
+      arr.unshift(moved);
+      return { ...d, images_data: arr.map((img, i) => ({ ...img, position: i + 1 })) };
+    });
   };
 
   // M2.D — delete existing image (stage by removing from images_data)
@@ -1902,80 +2086,170 @@ export default function ProductEditPage() {
                 No images yet. Click Upload to add.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {/* Existing Shopify images */}
-                {(draft.images_data || []).map(img => (
-                  <div key={img.id} style={{ background: bgPage, border: `1px solid ${border}`, borderRadius: 8, padding: 10 }}>
-                    <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
-                      <img src={img.src} alt={img.alt || ''}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-                      />
-                      <div style={{
-                        position: 'absolute', top: 6, left: 6,
-                        background: 'rgba(0,0,0,0.7)', color: gold,
-                        fontSize: 10, fontWeight: 600,
-                        padding: '2px 6px', borderRadius: 3,
-                      }}>#{img.position}</div>
-                      <button
-                        onClick={() => deleteExistingImage(img.id)}
-                        title="Delete image"
-                        style={{
-                          position: 'absolute', top: 6, right: 6,
-                          background: 'rgba(0,0,0,0.7)', color: '#f87171',
-                          border: '1px solid rgba(248,113,113,0.5)',
-                          borderRadius: 4, padding: '2px 8px',
-                          fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                          lineHeight: 1,
-                        }}
-                      >×</button>
-                    </div>
-                    <Label>Alt text</Label>
-                    <TextInput
-                      value={img.alt || ''}
-                      onChange={v => setImageAlt(img.id, v)}
-                      placeholder="Describe this image for accessibility + SEO"
-                    />
-                  </div>
-                ))}
-                {/* Staged uploads (not yet on Shopify) */}
-                {(draft.images_to_add || []).map((img, idx) => (
-                  <div key={`new-${idx}`} style={{
-                    background: bgPage,
-                    border: `1px solid rgba(74,222,128,0.4)`,
-                    borderRadius: 8, padding: 10,
+              <>
+                {(draft.images_data || []).length > 1 && (
+                  <div style={{
+                    fontSize: 11, color: text3, marginBottom: 10,
+                    padding: '6px 10px',
+                    background: 'rgba(96,165,250,0.06)',
+                    border: '1px solid rgba(96,165,250,0.2)',
+                    borderRadius: 6,
                   }}>
-                    <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
-                      <img src={img.previewUrl} alt={img.alt || ''}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
-                      />
-                      <div style={{
-                        position: 'absolute', top: 6, left: 6,
-                        background: 'rgba(74,222,128,0.85)', color: '#080808',
-                        fontSize: 10, fontWeight: 700,
-                        padding: '2px 6px', borderRadius: 3,
-                      }}>NEW · {img.sizeKb}KB</div>
-                      <button
-                        onClick={() => removeStagedImage(idx)}
-                        title="Remove (not yet uploaded)"
-                        style={{
-                          position: 'absolute', top: 6, right: 6,
-                          background: 'rgba(0,0,0,0.7)', color: '#f87171',
-                          border: '1px solid rgba(248,113,113,0.5)',
-                          borderRadius: 4, padding: '2px 8px',
-                          fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                          lineHeight: 1,
-                        }}
-                      >×</button>
-                    </div>
-                    <Label>Alt text</Label>
-                    <TextInput
-                      value={img.alt || ''}
-                      onChange={v => setStagedImageAlt(idx, v)}
-                      placeholder="Describe this image"
-                    />
+                    💡 Drag karke order change karo · ya ←/→ buttons use karo · "Set first" se main image banao · Save karne pe Shopify pe sync hoga
                   </div>
-                ))}
-              </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                  {/* Existing Shopify images — drag-drop reorderable */}
+                  {(draft.images_data || []).map((img, imgIdx) => {
+                    const isDragged = String(draggedImgId) === String(img.id);
+                    const isFirst = imgIdx === 0;
+                    const isLast  = imgIdx === (draft.images_data || []).length - 1;
+                    return (
+                      <div
+                        key={img.id}
+                        draggable
+                        onDragStart={handleImgDragStart(img.id)}
+                        onDragOver={handleImgDragOver}
+                        onDrop={handleImgDrop(img.id)}
+                        onDragEnd={handleImgDragEnd}
+                        style={{
+                          background: bgPage,
+                          border: `1px solid ${isDragged ? gold : border}`,
+                          borderRadius: 8,
+                          padding: 10,
+                          cursor: 'move',
+                          opacity: isDragged ? 0.4 : 1,
+                          transition: 'opacity 0.15s, border-color 0.15s',
+                        }}>
+                        <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                          <img src={img.src} alt={img.alt || ''}
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+                          />
+                          <div style={{
+                            position: 'absolute', top: 6, left: 6,
+                            background: 'rgba(0,0,0,0.7)', color: gold,
+                            fontSize: 10, fontWeight: 600,
+                            padding: '2px 6px', borderRadius: 3,
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                            <span style={{ fontSize: 12 }}>⋮⋮</span>
+                            <span>#{imgIdx + 1}</span>
+                            {isFirst && <span style={{ marginLeft: 2, color: '#4ade80' }}>★ Main</span>}
+                          </div>
+                          <button
+                            onClick={() => deleteExistingImage(img.id)}
+                            title="Delete image"
+                            style={{
+                              position: 'absolute', top: 6, right: 6,
+                              background: 'rgba(0,0,0,0.7)', color: '#f87171',
+                              border: '1px solid rgba(248,113,113,0.5)',
+                              borderRadius: 4, padding: '2px 8px',
+                              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                              lineHeight: 1,
+                            }}
+                          >×</button>
+                        </div>
+
+                        {/* Reorder controls — buttons for non-drag users */}
+                        {(draft.images_data || []).length > 1 && (
+                          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                            <button
+                              onClick={() => moveImageLeft(img.id)}
+                              disabled={isFirst}
+                              title="Move left"
+                              style={{
+                                flex: '0 0 auto',
+                                background: '#1a1a1a',
+                                border: `1px solid ${border}`,
+                                color: isFirst ? text3 : text1,
+                                borderRadius: 4,
+                                padding: '4px 8px',
+                                fontSize: 12, fontFamily: 'inherit',
+                                cursor: isFirst ? 'not-allowed' : 'pointer',
+                                opacity: isFirst ? 0.4 : 1,
+                              }}>←</button>
+                            <button
+                              onClick={() => moveImageRight(img.id)}
+                              disabled={isLast}
+                              title="Move right"
+                              style={{
+                                flex: '0 0 auto',
+                                background: '#1a1a1a',
+                                border: `1px solid ${border}`,
+                                color: isLast ? text3 : text1,
+                                borderRadius: 4,
+                                padding: '4px 8px',
+                                fontSize: 12, fontFamily: 'inherit',
+                                cursor: isLast ? 'not-allowed' : 'pointer',
+                                opacity: isLast ? 0.4 : 1,
+                              }}>→</button>
+                            {!isFirst && (
+                              <button
+                                onClick={() => setAsFirstImage(img.id)}
+                                title="Set as main (first) image"
+                                style={{
+                                  flex: 1,
+                                  background: '#1a1a1a',
+                                  border: `1px solid ${border}`,
+                                  color: '#4ade80',
+                                  borderRadius: 4,
+                                  padding: '4px 8px',
+                                  fontSize: 11, fontFamily: 'inherit',
+                                  cursor: 'pointer',
+                                }}>★ Set as main</button>
+                            )}
+                          </div>
+                        )}
+
+                        <Label>Alt text</Label>
+                        <TextInput
+                          value={img.alt || ''}
+                          onChange={v => setImageAlt(img.id, v)}
+                          placeholder="Describe this image for accessibility + SEO"
+                        />
+                      </div>
+                    );
+                  })}
+                  {/* Staged uploads (not yet on Shopify) — at the end, no reorder yet */}
+                  {(draft.images_to_add || []).map((img, idx) => (
+                    <div key={`new-${idx}`} style={{
+                      background: bgPage,
+                      border: `1px solid rgba(74,222,128,0.4)`,
+                      borderRadius: 8, padding: 10,
+                    }}>
+                      <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                        <img src={img.previewUrl} alt={img.alt || ''}
+                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+                        />
+                        <div style={{
+                          position: 'absolute', top: 6, left: 6,
+                          background: 'rgba(74,222,128,0.85)', color: '#080808',
+                          fontSize: 10, fontWeight: 700,
+                          padding: '2px 6px', borderRadius: 3,
+                        }}>NEW · {img.sizeKb}KB</div>
+                        <button
+                          onClick={() => removeStagedImage(idx)}
+                          title="Remove (not yet uploaded)"
+                          style={{
+                            position: 'absolute', top: 6, right: 6,
+                            background: 'rgba(0,0,0,0.7)', color: '#f87171',
+                            border: '1px solid rgba(248,113,113,0.5)',
+                            borderRadius: 4, padding: '2px 8px',
+                            fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                            lineHeight: 1,
+                          }}
+                        >×</button>
+                      </div>
+                      <Label>Alt text</Label>
+                      <TextInput
+                        value={img.alt || ''}
+                        onChange={v => setStagedImageAlt(idx, v)}
+                        placeholder="Describe this image"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </Card>
 
