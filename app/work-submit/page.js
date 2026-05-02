@@ -400,7 +400,11 @@ function CEOReport() {
 // ── Main Export ────────────────────────────────────────────────────────────
 
 export default function WorkSubmitPage() {
-  const { isSuperAdmin } = useUser();
+  const { can } = useUser();
+  // ── Granular perm gate (May 2 2026) ──
+  // Pehle isSuperAdmin tha. Ab work_submit.view_others (super_admin only by default).
+  const canViewOthers = can('work_submit.view_others');
+
   const [view, setView] = useState('submit');
 
   return (
@@ -410,7 +414,7 @@ export default function WorkSubmitPage() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: gold, margin: 0 }}>📋 Daily Work Submit</h1>
           <p style={{ color: '#475569', margin: '4px 0 0', fontSize: 13 }}>{new Date().toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
         </div>
-        {isSuperAdmin && (
+        {canViewOthers && (
           <div style={{ display: 'flex', gap: 8 }}>
             {['submit', 'report'].map(v => (
               <button key={v} onClick={() => setView(v)} style={{
