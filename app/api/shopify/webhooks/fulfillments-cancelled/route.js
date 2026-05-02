@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyShopifyWebhook } from '@/lib/shopify-webhook';
 import { computeStatusRevertSideEffects, applyStatusRevertSideEffects } from '@/lib/order-status';
+
+// Webhooks must run on Node runtime (crypto module) and never be cached
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -71,8 +76,34 @@ async function clearFulfillment(shopifyOrderId) {
 
 export async function POST(request) {
   try {
+    // ── SECURITY FIX (May 2026) — HMAC verification ─────────────────────────
+    // Pehle: koi bhi internet se POST {"order_id": <num>} bhej ke kisi bhi
+    // order ka fulfillment revert kar sakta tha — middleware /api/shopify/*
+    // ko exempt karti hai (legitimate webhook bypass), lekin yeh route apne
+    // andar HMAC verify nahi kar rahi thi. Ab Shopify ka signed payload zaroori
+    // hai. Mirror of /api/shopify/fulfillments-cancelled (root-level) jo already
+    // secure thi — ab dono routes consistent hain.
     const rawBody = await request.text();
-    const data = JSON.parse(rawBody);
+    const hmac = request.headers.get('x-shopify-hmac-sha256');
+
+    if (!verifyShopifyWebhook(rawBody, hmac)) {
+      console.warn('[fulfillments-cancelled webhook] HMAC verification failed');
+      return NextResponse.json(
+        { success: false, error: 'Invalid HMAC signature' },
+        { status: 401 },
+      );
+    }
+
+    // ── Parse only AFTER HMAC verified ──
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch (e) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 },
+      );
+    }
 
     // Handle both fulfillments/cancelled and fulfillment_orders/cancelled
     const shopifyOrderId = data.order_id || data.fulfillment?.order_id;
