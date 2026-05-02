@@ -241,7 +241,11 @@ async function checkPostEx() {
   };
 }
 
-// ─── Kangaroo — placeholder, waiting for API doc ──────────────────────────
+// ─── Kangaroo — live integration check (May 2026) ─────────────────────────
+// Pehle is function ka note tha "Awaiting API documentation" — ab integration
+// live ho chuki hai (Apr 2026), to actual auth call karke verify karte hain
+// ke credentials kaam kar rahi hain. Token cache TTL ki wajah se yeh sirf
+// pehli call pe Kangaroo ko hit karta hai (~23hr cache).
 async function checkKangaroo() {
   const supabase = createServerClient();
   let count = 0;
@@ -253,12 +257,46 @@ async function checkKangaroo() {
     count = c || 0;
   } catch {}
 
+  const username = process.env.KANGAROO_USERNAME;
+  const password = process.env.KANGAROO_PASSWORD;
+  const credsConfigured = !!(username && password);
+
+  let connectionStatus = 'not_tested';
+  let connectionError = null;
+  let userId = null;
+  let testLatencyMs = null;
+
+  if (credsConfigured) {
+    try {
+      // Lazy-import to avoid top-level dependency in case lib changes
+      const { getKangarooToken } = await import('@/lib/kangaroo');
+      const t0 = Date.now();
+      const result = await getKangarooToken();
+      testLatencyMs = Date.now() - t0;
+      if (result?.token) {
+        connectionStatus = 'ok';
+        userId = result.userId || null;
+      } else {
+        connectionStatus = 'failed';
+        connectionError = 'No token returned';
+      }
+    } catch (e) {
+      connectionStatus = 'failed';
+      connectionError = e.message;
+    }
+  }
+
   return {
-    configured: present('KANGAROO_API_PASSWORD'),
-    client_id: process.env.KANGAROO_CLIENT_ID || null,
-    api_password: process.env.KANGAROO_API_PASSWORD ? '****' : null,
-    endpoint: 'https://kangaroo.pk/orderapi.php',
-    note: 'Awaiting API documentation from Kangaroo team. Tracking/payment endpoints not implemented yet. Orders are tagged manually.',
+    configured: credsConfigured,
+    username: username ? mask(username) : null,
+    password: password ? '****' : null,
+    endpoint: 'https://api.kangaroo.pk',
+    connection: connectionStatus,           // 'ok' | 'failed' | 'not_tested'
+    connection_error: connectionError,
+    user_id: userId,
+    test_latency_ms: testLatencyMs,
+    integration: 'live',
+    note: 'Karachi-only courier. Auto-status-sync runs at 4/9/13/17 UTC. Token cached ~23hrs.',
     order_count: count,
   };
 }
@@ -276,7 +314,8 @@ async function checkSystem() {
       LEOPARDS_API_KEY: present('LEOPARDS_API_KEY'),
       LEOPARDS_API_PASSWORD: present('LEOPARDS_API_PASSWORD'),
       POSTEX_API_TOKEN: present('POSTEX_API_TOKEN'),
-      KANGAROO_API_PASSWORD: present('KANGAROO_API_PASSWORD'),
+      KANGAROO_USERNAME: present('KANGAROO_USERNAME'),
+      KANGAROO_PASSWORD: present('KANGAROO_PASSWORD'),
     },
     recent_syncs: [],
     recent_errors: [],
