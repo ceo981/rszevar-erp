@@ -18,6 +18,8 @@
 // ============================================================================
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -49,6 +51,12 @@ function StatusPill({ status }) {
 }
 
 export default function PickingPage() {
+  const { can } = useUser();
+
+  // ── Route-level permission guard (May 2 2026) ──
+  // Sidebar filter already in AppShell, but direct URL access bhi block.
+  const canView = can('picking.view');
+
   const [orderNum, setOrderNum]   = useState('ZEVAR-');
   const [order, setOrder]         = useState(null);
   const [items, setItems]         = useState([]);
@@ -63,6 +71,24 @@ export default function PickingPage() {
   useEffect(() => {
     if (inputRef.current) inputRef.current.focus();
   }, []);
+
+  // ── Access denied (no picking.view) ──
+  if (!canView) {
+    return (
+      <div style={{ padding: 60, textAlign: 'center', maxWidth: 500, margin: '40px auto', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
+          Picking page ki ijazat tumhe nahi hai. CEO se{' '}
+          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>picking.view</code>{' '}
+          permission grant karwane ko bolo.
+        </div>
+        <Link href="/" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+          ← Dashboard pe wapas
+        </Link>
+      </div>
+    );
+  }
 
   const search = async () => {
     const num = orderNum.trim().toUpperCase();
