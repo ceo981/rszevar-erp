@@ -291,6 +291,13 @@ export async function PATCH(request, { params }) {
       // M2.D — image add/remove
       images_to_add,                // [{filename, attachment, alt}]
       images_to_remove,             // [shopify_image_id, ...]
+      // May 2026 — image reorder. Array of image_ids in desired order.
+      // When present, runs PUT /products/{id}/images/{image_id} for each
+      // changed position. Done AFTER add/remove so new uploads land in the
+      // correct slot too. See /api/products/[id]/reorder-images for the
+      // standalone endpoint (used when only reorder changes; this in-PATCH
+      // path is for combined saves).
+      image_reorder,                // [shopify_image_id, ...]
       // M2.D — Google Shopping metafields
       google_age_group,
       google_gender,
@@ -761,6 +768,31 @@ export async function PATCH(request, { params }) {
       results.images_removed = removeResults;
     }
 
+    // ── Step 3.2c: Image reorder (May 2026) ──
+    // Sets image positions to match the requested order. PUT per image —
+    // 1-indexed positions starting at 1 = first image. Runs AFTER add/remove
+    // so new images already have IDs allocated.
+    if (Array.isArray(image_reorder) && image_reorder.length > 0) {
+      const reorderResults = [];
+      for (let i = 0; i < image_reorder.length; i++) {
+        const imgId = String(image_reorder[i]);
+        const newPos = i + 1;
+        try {
+          await shopifyRequest(`products/${productId}/images/${imgId}.json`, {
+            method: 'PUT',
+            body: { image: { id: imgId, position: newPos } },
+          });
+          reorderResults.push({ image_id: imgId, position: newPos, success: true });
+        } catch (e) {
+          reorderResults.push({ image_id: imgId, position: newPos, success: false, error: e.message });
+        }
+        if (i < image_reorder.length - 1) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      results.images_reordered = reorderResults;
+    }
+
     // ── Step 3.3: Google Shopping metafields (M2.D) ──
     const googleFields = [
       { key: 'age_group', value: google_age_group },
@@ -918,13 +950,14 @@ export async function PATCH(request, { params }) {
     }
 
     // ── Step 4.5: Full refetch when variant/image structure changed (M2.D) ──
-    // Variant edits change variant rows; image add/remove changes images_data.
-    // Shopify will fire products/update webhook for these, but to make the UI
-    // immediately consistent we do a quick refetch + upsert here.
+    // Variant edits change variant rows; image add/remove/reorder changes
+    // images_data. Shopify will fire products/update webhook for these, but
+    // to make the UI immediately consistent we do a quick refetch + upsert here.
     const needsFullRefetch =
       (Array.isArray(variants_update) && variants_update.length > 0) ||
       (Array.isArray(images_to_add) && images_to_add.length > 0) ||
-      (Array.isArray(images_to_remove) && images_to_remove.length > 0);
+      (Array.isArray(images_to_remove) && images_to_remove.length > 0) ||
+      (Array.isArray(image_reorder) && image_reorder.length > 0);
 
     if (needsFullRefetch) {
       try {
