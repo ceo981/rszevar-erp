@@ -619,6 +619,28 @@ export default function OrderEditPage() {
       'Shipping update ho rahi hai...');
   };
 
+  // ── Add NEW shipping line (May 2 2026) ──
+  // Use case: order pe shipping line bilkul nahi (free-ship promo / manual entry).
+  // Manager amount enter kar ke "Add Shipping" press karta — Shopify pe new
+  // shipping_line create hota, commit ke baad balance bhi update hota.
+  const [newShipPrice, setNewShipPrice] = useState('');
+  const [newShipTitle, setNewShipTitle] = useState('Shipping');
+  const addShipping = () => {
+    const price = parseFloat(newShipPrice);
+    if (isNaN(price) || price < 0) {
+      alert('Valid shipping amount daalo (0 ya zyada)');
+      return;
+    }
+    if (!newShipTitle.trim()) {
+      alert('Shipping ka name daalo (e.g. "Standard Shipping")');
+      return;
+    }
+    stage('add_ship', { title: newShipTitle.trim(), price },
+      'Shipping add ho rahi hai...');
+    // Clear inputs after staging — next render will show in update mode
+    setNewShipPrice('');
+  };
+
   // ── Commit ──
   const commit = async () => {
     if (!hasChanges) {
@@ -883,10 +905,10 @@ export default function OrderEditPage() {
             )}
           </Card>
 
-          {/* Shipping */}
-          {calcOrder.shipping_lines && calcOrder.shipping_lines.length > 0 && (
-            <Card title="Shipping">
-              {calcOrder.shipping_lines.map(sl => (
+          {/* Shipping — update existing OR add new (May 2 2026) */}
+          <Card title="Shipping">
+            {calcOrder.shipping_lines && calcOrder.shipping_lines.length > 0 ? (
+              calcOrder.shipping_lines.map(sl => (
                 <div key={sl.id} style={{
                   display: 'flex', gap: 12, alignItems: 'center',
                   padding: '8px 0',
@@ -909,9 +931,41 @@ export default function OrderEditPage() {
                       opacity: (busy || parseFloat(shipDraft[sl.id]) === sl.price) ? 0.4 : 1,
                     }}>Update</button>
                 </div>
-              ))}
-            </Card>
-          )}
+              ))
+            ) : (
+              // No shipping line on this order — give option to add
+              <div>
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                  Is order pe shipping fee abhi nahi lagi.
+                  Customer ne shayad free-ship checkout kiya tha — agar manual shipping fee
+                  add karni hai to neeche amount daalo.
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input type="text"
+                    value={newShipTitle}
+                    onChange={e => setNewShipTitle(e.target.value)}
+                    placeholder="Shipping name (e.g. Standard Shipping)"
+                    style={{ ...inpStyle, flex: 1, minWidth: 180 }}
+                    disabled={busy} />
+                  <input type="number" min="0" step="0.01"
+                    value={newShipPrice}
+                    onChange={e => setNewShipPrice(e.target.value)}
+                    placeholder="0"
+                    style={{ ...inpStyle, width: 110, textAlign: 'right' }}
+                    disabled={busy} />
+                  <button onClick={addShipping}
+                    disabled={busy || !newShipPrice}
+                    style={{
+                      background: gold, color: '#000', border: 'none',
+                      borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700,
+                      cursor: (busy || !newShipPrice) ? 'not-allowed' : 'pointer',
+                      opacity: (busy || !newShipPrice) ? 0.4 : 1,
+                      fontFamily: 'inherit',
+                    }}>+ Add Shipping</button>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
 
         {/* ── Right column: totals + commit form ── */}
