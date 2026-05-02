@@ -1053,7 +1053,12 @@ export default function ProductEditPage() {
   const params = useParams();
   const router = useRouter();
   const id = params?.id;
-  const { canViewFinancial, performer, userEmail } = useUser();
+  const { canViewFinancial, performer, userEmail, can } = useUser();
+
+  // ── Granular permission gates (May 2 2026) ──
+  const canEdit       = can('inventory.edit');
+  const canEditCost   = can('inventory.edit_cost');
+  const canAiEnhance  = can('inventory.ai_enhance');
 
   const [product, setProduct]   = useState(null);   // loaded from server (immutable snapshot)
   const [draft, setDraft]       = useState(null);   // editable copy
@@ -1757,6 +1762,23 @@ export default function ProductEditPage() {
   };
 
   // ── Render guards ─────────────────────────────────────────────────────────
+
+  // Access denied (no inventory.edit permission)
+  if (!canEdit) {
+    return (
+      <div style={{ padding: 60, maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
+          Product edit karne ki ijazat tumhe nahi hai. CEO se{' '}
+          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>inventory.edit</code>{' '}
+          permission grant karwane ko bolo.
+        </div>
+        <Btn onClick={() => router.push('/inventory')}>← Back to Inventory</Btn>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: text3 }}>
