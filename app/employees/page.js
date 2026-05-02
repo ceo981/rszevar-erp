@@ -311,6 +311,155 @@ function SalaryPanel({ emp, onClose }) {
   );
 }
 
+// ── Termination Modal (May 2 2026) ────────────────────────────
+// Permanent exit flow — captures last working day, reason, final settlement.
+// Stricter than soft-delete: requires reason + amount, status='inactive' set.
+function TerminationModal({ emp, onClose, onSaved }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [terminationDate, setTerminationDate] = useState(today);
+  const [reason, setReason]       = useState('resigned');
+  const [amount, setAmount]       = useState('');
+  const [notes, setNotes]         = useState('');
+  const [paidNow, setPaidNow]     = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [err, setErr]             = useState('');
+
+  // Auto-suggest dues = current monthly salary (pro-rata if mid-month).
+  // Manager can override — exact calculation HR/Salary tab pe karte.
+  useEffect(() => {
+    if (!emp) return;
+    const monthlySalary = parseFloat(emp.base_salary || emp.salary || 0);
+    if (monthlySalary > 0) {
+      const d = new Date(terminationDate);
+      const dayOfMonth = d.getDate();
+      const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      const proRata = Math.round((monthlySalary * dayOfMonth) / daysInMonth);
+      setAmount(String(proRata));
+    }
+  }, [emp, terminationDate]);
+
+  const submit = async () => {
+    if (!terminationDate) { setErr('Last working day required'); return; }
+    if (!reason)          { setErr('Reason select karo'); return; }
+    setSaving(true); setErr('');
+    try {
+      const r = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'terminate',
+          id: emp.id,
+          termination_date: terminationDate,
+          termination_reason: reason,
+          final_settlement_amount: amount,
+          termination_notes: notes,
+          mark_settled_now: paidNow,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) { setErr(d.error || 'Save failed'); setSaving(false); return; }
+      onSaved();
+      onClose();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+
+  if (!emp) return null;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: card, border: '1px solid #663300', borderRadius: 12, padding: 24, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>👋 Employee Exit</div>
+            <div style={{ fontSize: 13, color: '#888' }}>{emp.name} · {emp.role}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 8, padding: 12, fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.6 }}>
+          ⚠️ <strong>Permanent exit record.</strong> Status inactive ho jayega, assign list se gayab. Past records (packing log, attendance, salary) safe rahenge — ek "Ex-Employees" section mein dikhega.
+        </div>
+
+        {/* Last working day */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Last Working Day *</label>
+          <input type="date" value={terminationDate} max={today}
+            onChange={e => setTerminationDate(e.target.value)}
+            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+        </div>
+
+        {/* Reason */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Reason *</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { value: 'resigned',   label: '📝 Resigned',    color: '#3b82f6' },
+              { value: 'terminated', label: '🚫 Terminated',  color: '#ef4444' },
+              { value: 'mutual',     label: '🤝 Mutual',      color: '#22c55e' },
+              { value: 'abandoned',  label: '👻 Abandoned',   color: '#f97316' },
+              { value: 'retired',    label: '🌅 Retired',     color: '#a78bfa' },
+              { value: 'other',      label: '❓ Other',        color: '#888' },
+            ].map(r => (
+              <button key={r.value} onClick={() => setReason(r.value)}
+                style={{
+                  background: reason === r.value ? r.color + '22' : 'transparent',
+                  border: `1px solid ${reason === r.value ? r.color + '88' : border}`,
+                  color: reason === r.value ? r.color : '#888',
+                  borderRadius: 6, padding: '6px 12px', fontSize: 12,
+                  fontWeight: reason === r.value ? 600 : 400,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>{r.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Final settlement */}
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Final Settlement Amount (Rs)</label>
+          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+            placeholder="e.g. 15000"
+            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
+            💡 Auto-calculated as pro-rata salary based on last working day. Manually override karo agar advances/dues adjust karne hain.
+          </div>
+        </div>
+
+        {/* Mark settled now */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', userSelect: 'none' }}>
+          <input type="checkbox" checked={paidNow} onChange={e => setPaidNow(e.target.checked)} style={{ cursor: 'pointer' }} />
+          <span style={{ fontSize: 13, color: '#ccc' }}>Final settlement abhi cash mein de raha hoon</span>
+        </label>
+
+        {/* Notes */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Notes (optional)</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Mutual agreement, notice period, performance issues..."
+            rows={3}
+            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }} />
+        </div>
+
+        {err && (
+          <div style={{ padding: '8px 12px', background: '#2a0000', border: '1px solid #660000', borderRadius: 6, color: '#ef4444', fontSize: 12, marginBottom: 12 }}>
+            ❌ {err}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ flex: 1, background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '10px', fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            style={{ flex: 2, background: '#f97316', color: '#000', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.5 : 1 }}>
+            {saving ? 'Saving...' : '👋 Confirm Exit'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Employees Page ───────────────────────────────────────
 export default function EmployeesPage() {
   const { can } = useUser();
@@ -318,12 +467,26 @@ export default function EmployeesPage() {
   const canEdit       = can('employees.edit');
   const canDelete     = can('employees.delete');
   const canViewSalary = can('employees.view_salary');
+  const canTerminate  = can('employees.terminate');
 
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editEmp, setEditEmp] = useState(null);
   const [salaryEmp, setSalaryEmp] = useState(null);
+  // ── Termination modal state (May 2 2026) ──
+  const [terminateEmp, setTerminateEmp] = useState(null);
+  const markSettled = async (id, name) => {
+    if (!confirm(`${name} ka final settlement paid mark karna hai?\n(Confirm: paisa de diya gaya hai)`)) return;
+    const r = await fetch('/api/employees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark_settled', id }),
+    });
+    const d = await r.json();
+    if (!d.success) { alert(`❌ ${d.error}`); return; }
+    load();
+  };
   const [search, setSearch] = useState('');
   const [seeded, setSeeded] = useState(false);
   const [msg, setMsg] = useState('');
@@ -408,6 +571,13 @@ export default function EmployeesPage() {
     <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
       {showModal && <EmployeeModal emp={editEmp} onClose={() => { setShowModal(false); setEditEmp(null); }} onSave={load} />}
       {salaryEmp && <SalaryPanel emp={salaryEmp} onClose={() => setSalaryEmp(null)} />}
+      {terminateEmp && (
+        <TerminationModal
+          emp={terminateEmp}
+          onClose={() => setTerminateEmp(null)}
+          onSaved={load}
+        />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
@@ -434,14 +604,25 @@ export default function EmployeesPage() {
       {/* Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Total Staff', value: employees.length, color: '#fff' },
+          // Total now means active+on-leave (excludes ex-employees) — meaningful current strength
+          { label: 'Total Staff', value: employees.filter(e => e.status !== 'inactive').length, color: '#fff' },
           { label: 'Active', value: active, color: '#22c55e' },
           { label: 'On Leave', value: employees.filter(e => e.status === 'on_leave').length, color: '#f97316' },
           { label: 'Monthly Payroll', value: canViewSalary ? fmt(totalSalary) : '••••', color: gold },
+          // ── Ex-Employees: terminated count + pending settlement alert ──
+          ...(employees.filter(e => e.termination_date).length > 0 ? [{
+            label: 'Ex-Employees',
+            value: employees.filter(e => e.termination_date).length,
+            color: '#f97316',
+            sub: employees.filter(e => e.termination_date && !e.final_settlement_paid_at).length > 0
+              ? `${employees.filter(e => e.termination_date && !e.final_settlement_paid_at).length} settlement pending`
+              : 'all settled',
+          }] : []),
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
+            {s.sub && <div style={{ fontSize: 10, color: s.color === '#f97316' && employees.filter(e => e.termination_date && !e.final_settlement_paid_at).length > 0 ? '#ef4444' : '#666', marginTop: 3 }}>{s.sub}</div>}
           </div>
         ))}
       </div>
@@ -534,28 +715,75 @@ export default function EmployeesPage() {
 
               {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: '#1a1a1a', borderRadius: 6 }}>{emp.notes}</div>}
 
-              <div style={{ display: 'flex', gap: 6 }}>
+              {/* Termination info — shown for ex-employees (May 2 2026) */}
+              {emp.termination_date && (
+                <div style={{
+                  marginBottom: 12, padding: '10px 12px',
+                  background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.25)',
+                  borderRadius: 8, fontSize: 11,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f97316', fontWeight: 700, marginBottom: 4 }}>
+                    👋 Left on {new Date(emp.termination_date).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </div>
+                  {emp.termination_reason && (
+                    <div style={{ color: '#888', marginBottom: 3 }}>
+                      Reason: <span style={{ color: '#ccc', textTransform: 'capitalize' }}>{emp.termination_reason}</span>
+                    </div>
+                  )}
+                  {emp.final_settlement_amount != null && (
+                    <div style={{ color: '#888' }}>
+                      Final settlement: <span style={{ color: gold, fontWeight: 600 }}>{fmt(emp.final_settlement_amount)}</span>
+                      {emp.final_settlement_paid_at ? (
+                        <span style={{ color: '#22c55e', marginLeft: 6, fontWeight: 600 }}>✅ Settled</span>
+                      ) : (
+                        <span style={{ color: '#ef4444', marginLeft: 6, fontWeight: 600 }}>⏳ Pending</span>
+                      )}
+                    </div>
+                  )}
+                  {emp.termination_notes && (
+                    <div style={{ color: '#666', marginTop: 4, fontStyle: 'italic' }}>"{emp.termination_notes}"</div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {canEdit && (
                 <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
-                  style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   ✏️ Edit
                 </button>
                 )}
                 {canViewSalary && (
                 <button onClick={() => setSalaryEmp(emp)}
-                  style={{ flex: 1, background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   💰 Salary
                 </button>
                 )}
-                {/* Soft delete (deactivate) OR reactivate based on current status */}
-                {canDelete && emp.name !== 'Abdul Rehman' && emp.status !== 'inactive' && (
+                {/* Termination button — sirf active employees ke liye */}
+                {canTerminate && emp.name !== 'Abdul Rehman' && emp.status !== 'inactive' && (
+                  <button onClick={() => setTerminateEmp(emp)}
+                    title="Permanent exit — resignation/termination record"
+                    style={{ background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.4)', color: '#f97316', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                    👋 Mark as Left
+                  </button>
+                )}
+                {/* Mark Settled — for terminated employees with pending settlement */}
+                {canTerminate && emp.termination_date && !emp.final_settlement_paid_at && (
+                  <button onClick={() => markSettled(emp.id, emp.name)}
+                    title="Final settlement paid — mark as cleared"
+                    style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.4)', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+                    💰 Mark Settled
+                  </button>
+                )}
+                {/* Quick Deactivate — for non-permanent inactive (e.g. on long leave) */}
+                {canDelete && emp.name !== 'Abdul Rehman' && emp.status !== 'inactive' && !emp.termination_date && (
                   <button onClick={() => deleteEmp(emp.id, emp.name)}
-                    title="Deactivate — historical data safe rahegi, sirf assign list se hatega"
+                    title="Temporary deactivate — long leave / hold ke liye. Permanent exit ke liye 'Mark as Left' use karo"
                     style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     🚫 Deactivate
                   </button>
                 )}
-                {canDelete && emp.status === 'inactive' && (
+                {canDelete && emp.status === 'inactive' && !emp.termination_date && (
                   <button onClick={() => reactivateEmp(emp.id, emp.name)}
                     title="Wapas active karo"
                     style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
