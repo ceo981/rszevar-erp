@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
 const card = '#141414';
@@ -28,6 +29,9 @@ const STATUS_COLORS = {
 
 // ── Customer Detail Drawer ────────────────────────────────────
 function CustomerDrawer({ customer, onClose, onRefresh }) {
+  const { can } = useUser();
+  const canBlacklist = can('customers.blacklist');
+
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [blacklistReason, setBlacklistReason] = useState('');
@@ -98,7 +102,8 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
         </div>
 
         <div style={{ padding: '20px 24px', flex: 1 }}>
-          {/* Blacklist actions */}
+          {/* Blacklist actions — gated by customers.blacklist */}
+          {canBlacklist && (
           <div style={{ marginBottom: 20 }}>
             {customer.is_blacklisted ? (
               <button onClick={unblacklist} style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -125,6 +130,7 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
             )}
             {msg && <div style={{ marginTop: 8, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
           </div>
+          )}
 
           {/* Order history */}
           {loading ? (
