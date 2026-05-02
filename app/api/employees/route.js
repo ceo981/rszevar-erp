@@ -76,9 +76,35 @@ export async function POST(request) {
   }
 
   if (action === 'delete') {
-    const { error } = await supabase.from('employees').delete().eq('id', fields.id);
+    // ── SOFT DELETE (May 2 2026) ──
+    // Pehle hard delete tha — wo dangerous tha kyunki packing_log,
+    // order_assignments, employee_attendance, salary_payments etc. mein FK
+    // references the. Either FK error aati ya CASCADE se historical data wipe.
+    //
+    // Ab status='inactive' set karte hain. Effects:
+    //   • Assign list (`/packing`) se gayab — query already `status='active'` filter karti
+    //   • Past packing_log / attendance / salary records preserved
+    //   • Leaderboard historical credits intact
+    //   • Re-activate karne ke liye Edit → status='active'
+    //
+    // True hard delete chahiye to Supabase SQL editor se manually karo
+    // (with cascade impact assessment).
+    const { error } = await supabase
+      .from('employees')
+      .update({ status: 'inactive' })
+      .eq('id', fields.id);
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, deactivated: true });
+  }
+
+  if (action === 'reactivate') {
+    // Inactive employee ko wapas active karne ke liye
+    const { error } = await supabase
+      .from('employees')
+      .update({ status: 'active' })
+      .eq('id', fields.id);
+    if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, reactivated: true });
   }
 
   if (action === 'add_salary') {
