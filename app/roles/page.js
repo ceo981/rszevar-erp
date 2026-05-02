@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { useUser } from '@/context/UserContext';
 
 const ROLE_LABELS = {
   super_admin: 'Super Admin',
@@ -17,6 +19,14 @@ const ROLE_LABELS = {
 const ALL_ROLES = Object.keys(ROLE_LABELS);
 
 export default function RolesPage() {
+  const { can } = useUser();
+
+  // ── Route-level permission guard (May 2 2026) ──
+  // /roles page itself controls who has what perms — agar user ke paas
+  // settings.roles_edit nahi to wo perm matrix dekh ya edit nahi kar sakta.
+  // Sirf super_admin (and explicitly-granted admins) ko milta hai.
+  const canEditRoles = can('settings.roles_edit');
+
   const [modules, setModules] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [matrix, setMatrix] = useState({}); // { role: Set<perm_key> }
@@ -28,9 +38,9 @@ export default function RolesPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    loadData();
+    if (canEditRoles) loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canEditRoles]);
 
   async function loadData() {
     setLoading(true);
@@ -131,6 +141,23 @@ export default function RolesPage() {
         }}
       >
         Loading permissions…
+      </div>
+    );
+  }
+
+  // ── Access denied: no settings.roles_edit perm ──
+  if (!canEditRoles) {
+    return (
+      <div style={{ padding: '80px 24px', maxWidth: 520, margin: '0 auto', textAlign: 'center' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+        <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, color: 'var(--gold)', marginBottom: 10 }}>Access Denied</h1>
+        <p style={{ color: 'var(--text2)', fontSize: 13, lineHeight: 1.7 }}>
+          Ye page sirf un users ke liye hai jinhe <code>settings.roles_edit</code> permission grant ho.
+          Roles aur permissions ka matrix sirf CEO ya delegated admin hi edit kar sakta hai.
+        </p>
+        <Link href="/orders" style={{ display: 'inline-block', marginTop: 18, color: 'var(--gold)', fontSize: 13, textDecoration: 'underline', fontFamily: 'inherit' }}>
+          ← Wapas Orders pe
+        </Link>
       </div>
     );
   }
