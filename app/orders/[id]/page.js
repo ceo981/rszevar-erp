@@ -152,14 +152,33 @@ function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
 export default function SingleOrderPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, userEmail, activeUser } = useUser();
+  const { profile, userEmail, activeUser, can } = useUser();
   const performer = activeUser?.name || profile?.full_name || profile?.email || 'Staff';
   const userRole = profile?.role || '';
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  const canConfirm = isCEO || isOpsManager;
-  const canPack    = isCEO || isDispatcher;
+
+  // ── Granular permission gates (May 2 2026) ──────────────────────────────
+  // Each action button checks its own permission. CEO toggles via /roles.
+  // Hardcoded role checks below are only kept for true admin overrides
+  // (force cancel checkbox, system-noise timeline filter).
+  const canConfirm           = can('orders.confirm');
+  const canDispatch          = can('orders.dispatch');
+  const canMarkPacked        = can('orders.dispatch'); // packed flip is part of dispatch flow
+  const canManualFulfill     = can('orders.manual_fulfill');
+  const canCancel            = can('orders.cancel');
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
+  const canEditOrderItems    = can('orders.edit_items');
+  const canEditCustomer      = can('orders.edit_customer');
+  const canEditShipping      = can('orders.edit_shipping');
+  const canMarkPaid          = can('orders.mark_paid');
+  const canComment           = can('orders.comment');
+  const canViewAmount        = can('orders.view_amount');
+  const canCourierBook       = can('courier.book');
+
+  // Backwards-compat alias (markup below uses canPack in legacy fulfillment branch).
+  const canPack              = canMarkPacked;
 
   const id = params?.id;
   const [order, setOrder] = useState(null);
@@ -879,15 +898,15 @@ export default function SingleOrderPage() {
   let primaryAction = null;
   if (order.status === 'pending' && canConfirm) {
     primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
-  } else if (order.status === 'confirmed' && !order.shopify_fulfillment_id) {
+  } else if (order.status === 'confirmed' && !order.shopify_fulfillment_id && canManualFulfill) {
     primaryAction = { label: '📋 Add Tracking / Fulfill', onClick: () => setShowFulfillModal(true) };
-  } else if (order.status === 'on_packing') {
+  } else if (order.status === 'on_packing' && canMarkPacked) {
     primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
-  } else if (order.status === 'packed') {
+  } else if (order.status === 'packed' && canDispatch) {
     primaryAction = { label: '🚚 Dispatch Order', onClick: () => doAction('/api/orders/status', { order_id: id, status: 'dispatched' }, '✓ Dispatched') };
-  } else if (order.status === 'attempted' || order.status === 'hold') {
+  } else if ((order.status === 'attempted' || order.status === 'hold') && canConfirm) {
     primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
-  } else if (order.status === 'confirmed' && order.shopify_fulfillment_id) {
+  } else if (order.status === 'confirmed' && order.shopify_fulfillment_id && canMarkPacked) {
     // Edge case: confirmed + already-fulfilled (e.g. Shopify webhook delayed advance)
     // Skip the fulfill step, jump straight to packing prompt.
     primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
@@ -982,9 +1001,11 @@ export default function SingleOrderPage() {
               )}
 
               {/* Edit — goes to Shopify-style line items edit page */}
+              {canEditOrderItems && (
               <HeaderBtn onClick={() => router.push(`/orders/${id}/edit`)} title="Edit order line items (add/remove/qty/discount/shipping)">
                 ✏️ Edit
               </HeaderBtn>
+              )}
 
               {/* Print dropdown */}
               <div style={{ position: 'relative' }}>
@@ -1023,10 +1044,14 @@ export default function SingleOrderPage() {
                     <MenuItem icon="📋" label="Duplicate order" onClick={() => comingSoon('Duplicate order', 5)} />
                     <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
                     <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
+                    {canCourierBook && (
+                    <>
                     <div style={{ height: 1, background: border, margin: '4px 0' }} />
                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
                     <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
                     <MenuItem icon="🦘" label="Book at Kangaroo" onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
+                    </>
+                    )}
                   </div>
                 )}
               </div>
@@ -1492,6 +1517,7 @@ export default function SingleOrderPage() {
                   {/* Apr 27 2026 — "✏️ Edit customer info" button moved to
                       Customer card sidebar (Shopify-style "..." menu).
                       See Customer card below. */}
+                  {canDispatch && (
                   <div style={{ position: 'relative' }}>
                     <button
                       onClick={() => setShowStatusMenu(v => !v)}
@@ -1514,7 +1540,8 @@ export default function SingleOrderPage() {
                       </div>
                     )}
                   </div>
-                  {!isDelivered && (
+                  )}
+                  {canCancel && !isDelivered && (
                     <button
                       onClick={() => setShowCancelBox(v => !v)}
                       style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -1523,11 +1550,11 @@ export default function SingleOrderPage() {
                   )}
 
                   {/* Apr 2026 — Cancel Fulfillment button.
-                      Visible jab order pe tracking/fulfillment hai aur user
-                      CEO/Dispatcher hai. Tracking + courier clear ho jate,
-                      dispatched → confirmed wapas. Shopify pe bhi cancel hoti
-                      (ya already cancelled toh skip). Re-book ke liye safe. */}
-                  {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
+                      Visible jab order pe tracking/fulfillment hai aur user ke
+                      paas orders.cancel_fulfillment perm hai. Tracking + courier
+                      clear ho jate, dispatched → confirmed wapas. Shopify pe
+                      bhi cancel hoti (ya already cancelled toh skip). */}
+                  {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
                     <button
                       onClick={cancelFulfillment}
                       disabled={actionBusy}
@@ -1642,8 +1669,8 @@ export default function SingleOrderPage() {
                 Payment method: <span style={{ color: '#888' }}>{order.payment_method || 'COD'}</span>
               </div>
 
-              {/* Collect payment button — only when unpaid and not cancelled */}
-              {!isPaid && !isRefunded && !isCancelled && balance > 0 && (
+              {/* Collect payment button — only when unpaid and not cancelled, gated by orders.mark_paid */}
+              {canMarkPaid && !isPaid && !isRefunded && !isCancelled && balance > 0 && (
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
                   <div style={{ position: 'relative' }}>
                     <button
@@ -1831,7 +1858,8 @@ export default function SingleOrderPage() {
 
             {/* Timeline — unchanged */}
             <Card title={`Timeline (${(isCEO ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
-              {/* Comment input */}
+              {/* Comment input — gated by orders.comment */}
+              {canComment && (
               <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: gold + '22', color: gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
@@ -1856,6 +1884,7 @@ export default function SingleOrderPage() {
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Log */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1981,7 +2010,7 @@ export default function SingleOrderPage() {
                 sit in the secondary actions row. Click "..." to get options
                 that all open the existing edit drawer. */}
             <Card title="Customer" overflowVisible right={
-              !isCancelled && (
+              !isCancelled && (canEditCustomer || canEditShipping) && (
                 <div style={{ position: 'relative' }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === 'customer-edit' ? null : 'customer-edit'); }}
@@ -2019,6 +2048,7 @@ export default function SingleOrderPage() {
                         zIndex: 50,
                         boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
                       }}>
+                        {canEditCustomer && (
                         <button
                           onClick={() => { setOpenMenu(null); setShowEditCustomer(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -2027,6 +2057,8 @@ export default function SingleOrderPage() {
                         >
                           ✏️ Edit contact information
                         </button>
+                        )}
+                        {canEditShipping && (
                         <button
                           onClick={() => { setOpenMenu(null); setShowEditShipping(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -2035,6 +2067,7 @@ export default function SingleOrderPage() {
                         >
                           📍 Edit shipping address
                         </button>
+                        )}
                       </div>
                     </>
                   )}
