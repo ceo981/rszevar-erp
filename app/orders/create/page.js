@@ -614,6 +614,14 @@ export default function CreateOrderPage() {
         body: JSON.stringify({
           line_items: items.map(it => ({
             shopify_variant_id: it.shopify_variant_id,
+            shopify_product_id: it.shopify_product_id,
+            // May 2 2026 — title + sku zaroori hain manual (non-Shopify) items ke liye.
+            // Backend `!shopify_variant_id && !title` hone par reject karta hai.
+            // Pehle yeh fields skip ho rahe thay → manual items "Item 1: variant_id
+            // ya title zaroori hai" error de rahe thay. Ab dono cases (Shopify
+            // products + manual items) ek hi mapping se kaam karte hain.
+            title: it.title,
+            sku: it.sku,
             quantity: it.quantity,
             unit_price: it.unit_price,
             use_custom_price: it.use_custom_price,
