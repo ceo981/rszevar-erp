@@ -19,6 +19,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useUser } from '@/context/UserContext';
 
 const gold   = '#c9a96e';
 const border = '#222';
@@ -427,6 +428,13 @@ function ManualItemModal({ onClose, onAdd }) {
 // ─── Main Page ────────────────────────────────────────────────────────────
 export default function CreateOrderPage() {
   const router = useRouter();
+  const { can } = useUser();
+
+  // ── Route-level permission guard (May 2 2026) ──
+  // Sidebar link orders/page.js mein already gated hai, but direct URL access
+  // ko bhi block karna chahiye (defense in depth). Actual guard return main
+  // render se pehle hai (saare hooks declare hone ke baad).
+  const canCreate = can('orders.create');
 
   // Items
   const [items, setItems] = useState([]);
@@ -664,6 +672,25 @@ export default function CreateOrderPage() {
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────
+
+  // ── Access denied (no orders.create permission) ──
+  if (!canCreate) {
+    return (
+      <div style={{ padding: 40, maxWidth: 600, margin: '40px auto', textAlign: 'center', color: '#fff', fontFamily: 'inherit' }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
+          Manual order create karne ki ijazat tumhe nahi hai. CEO se{' '}
+          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>orders.create</code>{' '}
+          permission grant karwane ko bolo.
+        </div>
+        <Link href="/orders" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+          ← Orders list pe wapas
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto', color: '#fff', fontFamily: 'inherit' }}>
 
