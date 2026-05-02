@@ -476,9 +476,20 @@ function BulkResultModal({ result, onClose }) {
 
 // ─── Main Orders Page ─────────────────────────────────────────
 export default function OrdersPage() {
-  const { profile } = useUser();
+  const { profile, userEmail, can } = useUser();
   const performer = profile?.full_name || profile?.email || 'Staff';
-  const { userEmail } = useUser();
+
+  // ── Granular permission gates (May 2 2026) ──────────────────────────────
+  // Each top-bar action / bulk button checks its own permission. Hiding the
+  // bulk system entirely for users without orders.bulk keeps UI clean.
+  const canCreate       = can('orders.create');
+  const canSync         = can('orders.shopify_sync');
+  const canBulk         = can('orders.bulk');
+  const canBulkConfirm  = canBulk && can('orders.confirm');
+  const canBulkAssign   = canBulk && can('orders.assign');
+  const canBulkStatus   = canBulk && can('orders.dispatch'); // status changes touch dispatch flow
+  const canBulkCancel   = canBulk && can('orders.cancel');
+  const canViewAmount   = can('orders.view_amount');
   // Apr 30 2026 — Read URL `?search=` so deep-links from order detail page
   // (Customer name → "X orders total" link) land here pre-filtered.
   const urlSearchParams = useSearchParams();
@@ -1036,11 +1047,14 @@ export default function OrdersPage() {
 
         <button onClick={load} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
 
+        {canCreate && (
         <Link href="/orders/create"
           style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: '1px solid #22c55e', color: '#000', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           + Create Order
         </Link>
+        )}
 
+        {canSync && (
         <button
           onClick={syncFromShopify}
           disabled={anySyncing}
@@ -1062,6 +1076,7 @@ export default function OrdersPage() {
         >
           {syncing ? (<><span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>Syncing…</>) : (<>⟱ Sync from Shopify</>)}
         </button>
+        )}
 
         {/* FIX: Clean button removed — /api/orders/cleanup endpoint doesn't exist */}
 
@@ -1070,8 +1085,8 @@ export default function OrdersPage() {
         `}</style>
       </div>
 
-      {/* ── Bulk Action Toolbar — shows when selection > 0 ── */}
-      {selectedIds.size > 0 && (
+      {/* ── Bulk Action Toolbar — shows when selection > 0 AND user has bulk perm ── */}
+      {canBulk && selectedIds.size > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           padding: '10px 14px', marginBottom: 10,
@@ -1082,6 +1097,7 @@ export default function OrdersPage() {
           </span>
           <div style={{ width: 1, height: 20, background: border }} />
 
+          {canBulkConfirm && (
           <button
             onClick={handleBulkConfirm}
             disabled={bulkRunning}
@@ -1089,7 +1105,9 @@ export default function OrdersPage() {
             style={{ background: '#3b82f622', border: '1px solid #3b82f6', color: '#3b82f6', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
             ✓ Confirm
           </button>
+          )}
 
+          {canBulkAssign && (
           <button
             onClick={() => setBulkModal('assign')}
             disabled={bulkRunning}
@@ -1097,7 +1115,9 @@ export default function OrdersPage() {
             style={{ background: '#f59e0b22', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
             👤 Assign Packer
           </button>
+          )}
 
+          {canBulkStatus && (
           <button
             onClick={() => setBulkModal('status')}
             disabled={bulkRunning}
@@ -1105,7 +1125,9 @@ export default function OrdersPage() {
             style={{ background: gold + '22', border: `1px solid ${gold}`, color: gold, borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
             ⚙ Change Status
           </button>
+          )}
 
+          {canBulkCancel && (
           <button
             onClick={() => setBulkModal('cancel')}
             disabled={bulkRunning}
@@ -1113,6 +1135,7 @@ export default function OrdersPage() {
             style={{ background: '#ef444422', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
             ✕ Cancel
           </button>
+          )}
 
           <div style={{ flex: 1 }} />
 
@@ -1138,6 +1161,7 @@ export default function OrdersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
+                {canBulk && (
                 <th style={{ padding: '12px 8px 12px 16px', width: 36, textAlign: 'left' }}>
                   <input
                     type="checkbox"
@@ -1148,6 +1172,7 @@ export default function OrdersPage() {
                     style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
                   />
                 </th>
+                )}
                 {['Order', 'Customer', 'City', 'COD', 'Office Status', 'Payment', 'Courier', 'Courier Status', 'Assigned', 'Date', 'Actions'].map(h => (
                   <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
@@ -1155,10 +1180,10 @@ export default function OrdersPage() {
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={12} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
               )}
               {orders.map((order, i) => {
                 let typeIcon = '';
@@ -1176,6 +1201,7 @@ export default function OrdersPage() {
                 return (
                   <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: rowBg }}
                     onClick={() => setSelected(order)} className="order-row">
+                    {canBulk && (
                     <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -1184,6 +1210,7 @@ export default function OrdersPage() {
                         style={{ cursor: 'pointer', width: 15, height: 15, accentColor: gold }}
                       />
                     </td>
+                    )}
                     <td style={{ padding: '12px 16px', color: gold, fontWeight: 600, cursor: 'pointer' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Link
@@ -1213,7 +1240,7 @@ export default function OrdersPage() {
                     </td>
                     <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
                     <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
-                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
+                    <td style={{ padding: '12px 16px', color: '#fff', fontWeight: 600 }}>{canViewAmount ? fmt(order.total_amount) : '••••'}</td>
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
                     <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
@@ -1276,6 +1303,7 @@ export default function OrdersPage() {
               >
                 <div className="mobile-card-row-header">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                    {canBulk && (
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -1283,6 +1311,7 @@ export default function OrdersPage() {
                       onChange={e => toggleOne(order.id, e)}
                       style={{ width: 18, height: 18, accentColor: gold, flexShrink: 0 }}
                     />
+                    )}
                     <span style={{ color: gold, fontWeight: 700, fontSize: 14 }}>
                       {order.order_number || '#' + order.id}
                     </span>
@@ -1294,7 +1323,7 @@ export default function OrdersPage() {
                     )}
                   </div>
                   <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>
-                    {fmt(order.total_amount)}
+                    {canViewAmount ? fmt(order.total_amount) : '••••'}
                   </span>
                 </div>
 
