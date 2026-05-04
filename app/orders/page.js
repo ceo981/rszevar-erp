@@ -760,6 +760,22 @@ export default function OrdersPage() {
     }
   };
 
+  // ── BULK Protocol Audit verify (May 4 2026) ──
+  // Same flow as verifyProtocol but for multiple orders at once. Uses bulk
+  // endpoint with new action='verify_protocol'. 189 violations ko ek-ek karke
+  // verify karna pagal-pan hai — yeh bulk option zaroori hai CEO ke liye.
+  const handleBulkVerifyProtocol = () => {
+    const count = selectedIds.size;
+    if (!window.confirm(
+      `${count} order${count > 1 ? 's' : ''} ko Protocol OK (verified) mark karna hai?\n\n` +
+      `Yeh orders Protocol Audit tab se gayab ho jayenge.\n` +
+      `Already-verified orders skip honge automatically.`
+    )) return;
+    const note = window.prompt('Bulk reason (optional, sab orders pe lagega):', '');
+    if (note === null) return; // user cancelled
+    runBulk({ action: 'verify_protocol', notes: note.trim() || undefined });
+  };
+
   const syncFromShopify = async () => {
     setSyncing(true);
     setSyncMsg({ type: 'info', text: '⟳ Fetching orders from Shopify (can take 30-60 seconds)...' });
@@ -1150,75 +1166,195 @@ export default function OrdersPage() {
         `}</style>
       </div>
 
-      {/* ── Bulk Action Toolbar — shows when selection > 0 AND user has bulk perm ── */}
-      {canBulk && selectedIds.size > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '10px 14px', marginBottom: 10,
-          background: gold + '11', border: `1px solid ${gold}55`, borderRadius: 8,
-        }}>
-          <span style={{ color: gold, fontSize: 13, fontWeight: 700 }}>
-            {selectedIds.size} selected
-          </span>
-          <div style={{ width: 1, height: 20, background: border }} />
+      {/* ── Bulk Action Toolbar — shows when selection > 0 AND user has bulk perm ──
+          May 4 2026 — Tab-aware context. Buttons shown depend on current filter:
+          - Protocol Audit: Verify Protocol (CEO bulk close violations)
+          - Pending/Attempted/Hold: Confirm primary, Cancel
+          - Confirmed/On Packing: Assign Packer primary, Status, Cancel
+          - Packed/Dispatched: Status, Cancel
+          - Delivered/RTO/Cancelled: minimal/none
+          - Review (wa_cancelled): Cancel + Status (for restore via status change)
+          - All Orders + Unfulfilled + others: full set (default)
+          Helper computeBulkContext defined inline so it picks up `filter` reactively. */}
+      {canBulk && selectedIds.size > 0 && (() => {
+        // Per-tab visibility map. Each flag defaults to true unless overridden.
+        const ftype = filter.type;
+        const fval  = filter.value;
+        const isProtocolAudit = ftype === 'audit' && fval === 'protocol_unfollowed';
+        const isReviewTab     = ftype === 'review' && fval === 'wa_cancelled';
+        const isPaymentState  = ftype === 'payment_state'; // paid / pending_payment
 
-          {canBulkConfirm && (
-          <button
-            onClick={handleBulkConfirm}
-            disabled={bulkRunning}
-            title="Confirm all selected pending/processing orders"
-            style={{ background: '#3b82f622', border: '1px solid #3b82f6', color: '#3b82f6', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
-            ✓ Confirm
-          </button>
-          )}
+        // Default — show everything (All Orders, Unfulfilled, Pending Payment, etc.)
+        let show = { confirm: true, assign: true, status: true, cancel: true, verify: false };
+        let primary = null; // which button to highlight as primary
 
-          {canBulkAssign && (
-          <button
-            onClick={() => setBulkModal('assign')}
-            disabled={bulkRunning}
-            title="Assign a packer to selected orders"
-            style={{ background: '#f59e0b22', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
-            👤 Assign Packer
-          </button>
-          )}
+        if (isProtocolAudit) {
+          // Only Verify makes sense — the violations are diagnostic, not workflow
+          show = { confirm: false, assign: false, status: false, cancel: false, verify: true };
+          primary = 'verify';
+        } else if (isReviewTab) {
+          // Customer cancelled via WhatsApp — staff decides: hard-cancel or restore via status change
+          show = { confirm: false, assign: false, status: true, cancel: true, verify: false };
+          primary = 'status';
+        } else if (isPaymentState) {
+          // Payment-state tabs — only status changes typically apply
+          show = { confirm: false, assign: false, status: true, cancel: false, verify: false };
+          primary = 'status';
+        } else if (ftype === 'status') {
+          // Per-status: hide actions that don't make sense for that state
+          switch (fval) {
+            case 'pending':
+              show = { confirm: true, assign: false, status: true, cancel: true, verify: false };
+              primary = 'confirm';
+              break;
+            case 'confirmed':
+              show = { confirm: false, assign: true, status: true, cancel: true, verify: false };
+              primary = 'assign';
+              break;
+            case 'on_packing':
+              show = { confirm: false, assign: true, status: true, cancel: true, verify: false };
+              primary = 'assign';
+              break;
+            case 'packed':
+              show = { confirm: false, assign: true, status: true, cancel: true, verify: false };
+              primary = 'status';
+              break;
+            case 'dispatched':
+              show = { confirm: false, assign: false, status: true, cancel: false, verify: false };
+              primary = 'status';
+              break;
+            case 'delivered':
+              // Already done — no bulk operations typically. Show nothing.
+              show = { confirm: false, assign: false, status: false, cancel: false, verify: false };
+              break;
+            case 'attempted':
+            case 'hold':
+              show = { confirm: true, assign: false, status: true, cancel: true, verify: false };
+              primary = 'confirm';
+              break;
+            case 'rto':
+              show = { confirm: false, assign: false, status: true, cancel: false, verify: false };
+              primary = 'status';
+              break;
+            case 'cancelled':
+              show = { confirm: false, assign: false, status: false, cancel: false, verify: false };
+              break;
+            default:
+              // unknown status, fall back to all
+              break;
+          }
+        }
+        // else: All Orders / Unfulfilled / unknown — keep defaults (all 4 visible)
 
-          {canBulkStatus && (
-          <button
-            onClick={() => setBulkModal('status')}
-            disabled={bulkRunning}
-            title="Change status for selected orders"
-            style={{ background: gold + '22', border: `1px solid ${gold}`, color: gold, borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
-            ⚙ Change Status
-          </button>
-          )}
+        // Apply permission gates on top of the visibility map
+        const showConfirm = show.confirm && canBulkConfirm;
+        const showAssign  = show.assign  && canBulkAssign;
+        const showStatus  = show.status  && canBulkStatus;
+        const showCancel  = show.cancel  && canBulkCancel;
+        const showVerify  = show.verify  && canVerifyProtocol;
 
-          {canBulkCancel && (
-          <button
-            onClick={() => setBulkModal('cancel')}
-            disabled={bulkRunning}
-            title="Cancel selected orders"
-            style={{ background: '#ef444422', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: bulkRunning ? 0.5 : 1 }}>
-            ✕ Cancel
-          </button>
-          )}
+        const noActionsVisible = !showConfirm && !showAssign && !showStatus && !showCancel && !showVerify;
 
-          <div style={{ flex: 1 }} />
+        // Style helper — primary action gets a slightly thicker accent
+        const btnStyle = (color, isPrimary) => ({
+          background: color + (isPrimary ? '33' : '22'),
+          border: `${isPrimary ? '2px' : '1px'} solid ${color}`,
+          color,
+          borderRadius: 6,
+          padding: isPrimary ? '5px 14px' : '6px 14px',
+          fontSize: 12,
+          fontWeight: isPrimary ? 700 : 600,
+          cursor: bulkRunning ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit',
+          opacity: bulkRunning ? 0.5 : 1,
+          boxShadow: isPrimary ? `0 0 0 1px ${color}33` : 'none',
+        });
 
-          {bulkRunning && (
-            <span style={{ color: gold, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
-              Processing...
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            padding: '10px 14px', marginBottom: 10,
+            background: gold + '11', border: `1px solid ${gold}55`, borderRadius: 8,
+          }}>
+            <span style={{ color: gold, fontSize: 13, fontWeight: 700 }}>
+              {selectedIds.size} selected
             </span>
-          )}
+            <div style={{ width: 1, height: 20, background: border }} />
 
-          <button
-            onClick={clearSelection}
-            disabled={bulkRunning}
-            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            ✕ Clear
-          </button>
-        </div>
-      )}
+            {showVerify && (
+              <button
+                onClick={handleBulkVerifyProtocol}
+                disabled={bulkRunning}
+                title="Mark selected orders as Protocol OK (CEO verify)"
+                style={btnStyle('#22c55e', primary === 'verify')}>
+                ✓ Verify Protocol
+              </button>
+            )}
+
+            {showConfirm && (
+              <button
+                onClick={handleBulkConfirm}
+                disabled={bulkRunning}
+                title="Confirm all selected pending/processing orders"
+                style={btnStyle('#3b82f6', primary === 'confirm')}>
+                ✓ Confirm
+              </button>
+            )}
+
+            {showAssign && (
+              <button
+                onClick={() => setBulkModal('assign')}
+                disabled={bulkRunning}
+                title="Assign a packer to selected orders"
+                style={btnStyle('#f59e0b', primary === 'assign')}>
+                👤 Assign Packer
+              </button>
+            )}
+
+            {showStatus && (
+              <button
+                onClick={() => setBulkModal('status')}
+                disabled={bulkRunning}
+                title="Change status for selected orders"
+                style={btnStyle(gold, primary === 'status')}>
+                ⚙ Change Status
+              </button>
+            )}
+
+            {showCancel && (
+              <button
+                onClick={() => setBulkModal('cancel')}
+                disabled={bulkRunning}
+                title="Cancel selected orders"
+                style={btnStyle('#ef4444', primary === 'cancel')}>
+                ✕ Cancel
+              </button>
+            )}
+
+            {noActionsVisible && (
+              <span style={{ color: '#888', fontSize: 12, fontStyle: 'italic' }}>
+                Is tab pe koi bulk action available nahi
+              </span>
+            )}
+
+            <div style={{ flex: 1 }} />
+
+            {bulkRunning && (
+              <span style={{ color: gold, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⟳</span>
+                Processing...
+              </span>
+            )}
+
+            <button
+              onClick={clearSelection}
+              disabled={bulkRunning}
+              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              ✕ Clear
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Table — mobile pe hide ho ke cards dikhte hain (CSS .mobile-card-table) */}
       <div className="mobile-card-table" style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
