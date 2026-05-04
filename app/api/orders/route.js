@@ -188,6 +188,37 @@ export async function GET(request) {
       }
     }
 
+    // ── Prefetch IDs of WhatsApp-cancelled "review" orders ──────────────────
+    // May 4 2026 — UX fix: Pehle review orders (status='cancelled' + tag
+    // 'whatsapp_cancelled') Unfulfilled tab se gayab ho jate the kyunki filter
+    // mein .neq('status', 'cancelled') hardcoded tha. Lekin yeh review orders
+    // Shopify side pe abhi bhi active hain (cancelled_at null, fulfillment_status
+    // null) — team ko inhe Unfulfilled tab mein dekhna chahiye taake decide karein
+    // ke actually cancel karna hai ya restore.
+    //
+    // Solution: in IDs ko prefetch kar lo, phir Unfulfilled filter aur count
+    // dono mein status!='cancelled' OR id IN (reviewIds) kar dete hain — yani
+    // normal active orders + review orders dono dikhe. Badge code (orders/page.js
+    // line 1296) automatically un orders pe ⚠️ Review badge laga deta.
+    //
+    // Always-prefetch karte hain (chahe current filter unfulfilled na bhi ho)
+    // kyunki Unfulfilled count globally har request pe compute hota hai — count
+    // Promise.all mein chahiye. Pakistan-scale ERP — review orders kabhi-kabhi
+    // 50+ se zyada nahi hote, query indexed (status) aur safe to load in memory.
+    let reviewIncludeIds = [];
+    {
+      const { data: reviewRows, error: reviewErr } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('status', 'cancelled')
+        .contains('tags', '["whatsapp_cancelled"]');
+      if (reviewErr) {
+        console.warn('[orders] review prefetch failed:', reviewErr.message);
+      } else {
+        reviewIncludeIds = (reviewRows || []).map(r => r.id).filter(Boolean);
+      }
+    }
+
     // Helper to apply shared filters to any query (main + stats)
     const applyFilters = (q) => {
       if (status && status !== 'all') q = q.eq('status', status);
@@ -212,8 +243,11 @@ export async function GET(request) {
       // hai (no fulfillment) ya 'partial' (kuch items reh gaye). Yeh ERP status
       // ke alag hai — yahan Shopify ki nazar se filter ho raha.
       //
-      // 4 exclusions for clean operational view:
-      //   (a) ERP status cancelled — local cancel
+      // 4 exclusions + 1 inclusion for clean operational view:
+      //   (a) ERP status cancelled — local cancel — EXCEPT review orders
+      //       (status=cancelled + tag whatsapp_cancelled) jo include hote hain
+      //       taake team unhe dekh sake aur decide kare. Badge automatically
+      //       lagta hai un rows pe (orders/page.js line 1296).
       //   (b) Shopify cancelled_at set — Shopify side cancelled (catches
       //       orphan orders jahan webhook miss ho gaya aur ERP status update
       //       nahi hua)
@@ -224,10 +258,18 @@ export async function GET(request) {
       //       use kiya hai taake NULL aur false dono match hoon (column ka
       //       default na ho to bhi safe).
       if (fulfillment === 'unfulfilled') {
-        q = q.neq('status', 'cancelled')
-             .is('shopify_raw->>cancelled_at', null)
+        q = q.is('shopify_raw->>cancelled_at', null)
              .not('is_credit_order', 'is', true)
              .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
+
+        // Status condition: not cancelled, OR if cancelled then must be a
+        // whatsapp-review order (id in prefetched list). Empty list ke case
+        // mein simple .neq() hi enough hai — clean fallback.
+        if (reviewIncludeIds.length > 0) {
+          q = q.or(`status.neq.cancelled,id.in.(${reviewIncludeIds.join(',')})`);
+        } else {
+          q = q.neq('status', 'cancelled');
+        }
       }
       // Apr 27 2026 — Payment state filter
       if (payment_state === 'paid') {
@@ -376,13 +418,21 @@ export async function GET(request) {
       baseCount().eq('payment_status', 'unpaid'),
       baseCount().eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
       // FIX Apr 2026 — Shopify "unfulfilled" count (operational view).
-      // Match karta hai applyFilters mein wala logic — 4 exclusions
-      // (May 4 2026: added is_credit_order exclusion so credit orders ka count bhi accurate ho).
-      baseCount()
-        .neq('status', 'cancelled')
-        .is('shopify_raw->>cancelled_at', null)
-        .not('is_credit_order', 'is', true)
-        .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
+      // Match karta hai applyFilters mein wala logic — 4 exclusions + 1 inclusion
+      // (May 4 2026: added is_credit_order exclusion + WhatsApp review inclusion
+      // taake count list ke saath sync rahe).
+      (() => {
+        let q = baseCount()
+          .is('shopify_raw->>cancelled_at', null)
+          .not('is_credit_order', 'is', true)
+          .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
+        if (reviewIncludeIds.length > 0) {
+          q = q.or(`status.neq.cancelled,id.in.(${reviewIncludeIds.join(',')})`);
+        } else {
+          q = q.neq('status', 'cancelled');
+        }
+        return q;
+      })(),
       // Apr 27 2026 — Pending Payment count (delivered but payment NOT received yet)
       baseCount()
         .eq('status', 'delivered')
