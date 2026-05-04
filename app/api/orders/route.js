@@ -212,15 +212,21 @@ export async function GET(request) {
       // hai (no fulfillment) ya 'partial' (kuch items reh gaye). Yeh ERP status
       // ke alag hai — yahan Shopify ki nazar se filter ho raha.
       //
-      // 3 exclusions for clean operational view:
+      // 4 exclusions for clean operational view:
       //   (a) ERP status cancelled — local cancel
       //   (b) Shopify cancelled_at set — Shopify side cancelled (catches
       //       orphan orders jahan webhook miss ho gaya aur ERP status update
       //       nahi hua)
       //   (c) fulfillment_status null/partial — kya Shopify ne fulfill kiya
+      //   (d) **May 4 2026** is_credit_order = true wale orders exclude.
+      //       Credit/udhaar customer pe maal physically pohanch chuka hai —
+      //       packing operations ko un orders ki zaroorat nahi. `not is true`
+      //       use kiya hai taake NULL aur false dono match hoon (column ka
+      //       default na ho to bhi safe).
       if (fulfillment === 'unfulfilled') {
         q = q.neq('status', 'cancelled')
              .is('shopify_raw->>cancelled_at', null)
+             .not('is_credit_order', 'is', true)
              .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
       }
       // Apr 27 2026 — Payment state filter
@@ -370,10 +376,12 @@ export async function GET(request) {
       baseCount().eq('payment_status', 'unpaid'),
       baseCount().eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
       // FIX Apr 2026 — Shopify "unfulfilled" count (operational view).
-      // Match karta hai applyFilters mein wala logic — 3 exclusions.
+      // Match karta hai applyFilters mein wala logic — 4 exclusions
+      // (May 4 2026: added is_credit_order exclusion so credit orders ka count bhi accurate ho).
       baseCount()
         .neq('status', 'cancelled')
         .is('shopify_raw->>cancelled_at', null)
+        .not('is_credit_order', 'is', true)
         .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial'),
       // Apr 27 2026 — Pending Payment count (delivered but payment NOT received yet)
       baseCount()
