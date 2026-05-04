@@ -14,7 +14,12 @@ export async function GET(request) {
 
     if (vendor_id && action === 'transactions') {
       const { data: vendor } = await supabase.from('vendors').select('*').eq('id', vendor_id).single();
-      const { data: txns } = await supabase.from('vendor_payments').select('*').eq('vendor_id', vendor_id).order('payment_date', { ascending: true });
+      const { data: txns } = await supabase
+        .from('vendor_payments')
+        .select('*')
+        .eq('vendor_id', vendor_id)
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
       const purchases = (txns || []).filter(t => t.payment_type === 'purchase').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
       const paid = (txns || []).filter(t => t.payment_type === 'payment').reduce((s, t) => s + parseFloat(t.amount || 0), 0);
       return NextResponse.json({ success: true, vendor, transactions: txns || [], total_purchase: purchases, total_paid: paid, outstanding: purchases - paid });
@@ -87,7 +92,7 @@ export async function POST(request) {
     if (action === 'update_vendor') {
       const { vendor_id, name, phone, category, payment_terms, contact_person, email } = body;
       if (!vendor_id) return NextResponse.json({ success: false, error: 'vendor_id required' });
-      if (name !== undefined && !name) return NextResponse.json({ success: false, error: 'Name khaali nahi ho sakta' });
+      if (name !== undefined && !name) return NextResponse.json({ success: false, error: 'Name cannot be empty' });
       const updatePayload = {};
       if (name !== undefined) updatePayload.name = name;
       if (phone !== undefined) updatePayload.phone = phone || '';
