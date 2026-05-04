@@ -303,6 +303,60 @@ async function doAssign(supabase, orderId, assignedTo, empName, performer, perfo
   return { success: true, order_number: order.order_number };
 }
 
+// ─── Protocol verify (May 4 2026) ───────────────────────────────────────
+// CEO bulk-verify Protocol Audit violations. Mirrors logic of
+// /api/orders/protocol-verify single endpoint:
+//   - Sets protocol_verified_by/at/note on the order
+//   - Skips already-verified (idempotent)
+//   - Logs to activity_log
+async function doVerifyProtocol(supabase, orderId, notes, performer, performerEmail) {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, order_number, status, protocol_verified_at')
+    .eq('id', orderId)
+    .single();
+
+  if (!order) return { success: false, error: 'Order nahi mila' };
+  if (order.protocol_verified_at) {
+    // Already verified — treat as no-op success so bulk count is honest
+    return { success: true, order_number: order.order_number, skipped: true, reason: 'already_verified' };
+  }
+
+  const nowIso = new Date().toISOString();
+  const verifierName = performer || performerEmail || 'unknown';
+
+  const { error: updErr } = await supabase
+    .from('orders')
+    .update({
+      protocol_verified_by: verifierName,
+      protocol_verified_at: nowIso,
+      protocol_verified_note: notes?.trim() || null,
+    })
+    .eq('id', orderId);
+
+  if (updErr) return { success: false, error: updErr.message };
+
+  // Activity log — best-effort
+  try {
+    await supabase.from('activity_log').insert({
+      order_id: orderId,
+      action: 'protocol_verified',
+      performed_by: verifierName,
+      performed_by_email: performerEmail || null,
+      details: {
+        order_number: order.order_number,
+        order_status: order.status,
+        note: notes?.trim() || null,
+        bulk: true,
+      },
+    });
+  } catch (e) {
+    console.warn('[bulk verify_protocol] activity_log insert failed:', e.message);
+  }
+
+  return { success: true, order_number: order.order_number };
+}
+
 // ─── POST handler ───────────────────────────────────────────────────────
 
 export async function POST(request) {
@@ -402,10 +456,11 @@ export async function POST(request) {
     for (const orderId of order_ids) {
       try {
         let res;
-        if (action === 'confirm')      res = await doConfirm(supabase, orderId, notes, performer, performerEmail);
-        else if (action === 'cancel')  res = await doCancel(supabase, orderId, reason, performer, performerEmail, shouldSyncShopifyOnCancel);
-        else if (action === 'status')  res = await doStatus(supabase, orderId, status, notes, performer, performerEmail);
-        else if (action === 'assign')  res = await doAssign(supabase, orderId, assigned_to, empName, performer, performerEmail);
+        if (action === 'confirm')              res = await doConfirm(supabase, orderId, notes, performer, performerEmail);
+        else if (action === 'cancel')          res = await doCancel(supabase, orderId, reason, performer, performerEmail, shouldSyncShopifyOnCancel);
+        else if (action === 'status')          res = await doStatus(supabase, orderId, status, notes, performer, performerEmail);
+        else if (action === 'assign')          res = await doAssign(supabase, orderId, assigned_to, empName, performer, performerEmail);
+        else if (action === 'verify_protocol') res = await doVerifyProtocol(supabase, orderId, notes, performer, performerEmail);
         else res = { success: false, error: 'Unknown action' };
 
         results.push({ order_id: orderId, ...res });
