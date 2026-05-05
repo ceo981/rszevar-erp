@@ -2,21 +2,19 @@
 // RS ZEVAR ERP — Customer Credits — Per-Customer Khaata Page
 // /credits/[phone]
 // May 2 2026 · Step 5 of 6 · File 2 of 2
+// May 5 2026 · UPDATED — "+ Add order to khaata" feature
+//   - Import button (super_admin / credits.import_order)
+//   - Imported orders show "🔗 from +92 311…" badge
+//   - Remove button on imported orders (back to natural khaata)
 // ----------------------------------------------------------------------------
 // PURPOSE:
 //   Single customer ka complete khaata view:
-//   - Header with name + phone + "+ Record payment" button
+//   - Header with name + phone + actions (Record payment, Add order)
 //   - 3 summary cards (outstanding, total billed, total received)
 //   - Tabs: Orders + Payments
-//   - Orders list with status badges + balance per order
+//   - Orders list with status badges + balance + import badges
 //   - Payments list with screenshot + allocations + void (super_admin)
-//   - PaymentModal integration for "+ Record payment"
-//
-// SAFETY:
-//   - Defensive JSON parse on all fetches
-//   - Loading + error states
-//   - Refetch on payment success / void
-//   - Void confirmation prompt (super_admin only sees button)
+//   - PaymentModal + ImportOrderModal integration
 // ============================================================================
 
 'use client';
@@ -26,6 +24,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import PaymentModal from '../_components/PaymentModal';
+import ImportOrderModal from '../_components/ImportOrderModal';
 
 const gold    = '#c9a96e';
 const danger  = '#ef4444';
@@ -75,6 +74,8 @@ export default function CustomerKhaataPage() {
   // ── Granular permission gates (May 2 2026) ──
   const canRecordPayment = can('credits.payment_record');
   const canVoidPayment   = can('credits.payment_void');
+  // May 5 2026 — Import order permission (super_admin OR explicit perm)
+  const canImportOrder   = isSuperAdmin || can('credits.import_order');
 
   const phone = decodeURIComponent(params.phone || '');
 
@@ -84,6 +85,9 @@ export default function CustomerKhaataPage() {
   const [tab, setTab] = useState('orders');  // 'orders' | 'payments'
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [voidingId, setVoidingId] = useState(null);
+  // May 5 2026 — import-order state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [removingImportId, setRemovingImportId] = useState(null);
 
   // ── Fetch khaata data ──
   const fetchData = async () => {
@@ -118,18 +122,47 @@ export default function CustomerKhaataPage() {
     const flipped = result.orders_now_paid?.length || 0;
     const partial = result.orders_now_partial?.length || 0;
     let msg = `Payment recorded: ${fmtMoney(result.payment.amount)}`;
-    if (flipped > 0) msg += ` · ${flipped} order(s) marked PAID ✓`;
-    if (partial > 0) msg += ` · ${partial} partial`;
-    if (result.unallocated_amount > 0) msg += ` · ${fmtMoney(result.unallocated_amount)} unallocated`;
+    if (flipped > 0) msg += `\n✓ ${flipped} order${flipped > 1 ? 's' : ''} marked PAID`;
+    if (partial > 0) msg += `\n⚠ ${partial} order${partial > 1 ? 's' : ''} now PARTIAL`;
+    if (result.unallocated_amount > 0) msg += `\n💰 ${fmtMoney(result.unallocated_amount)} unallocated`;
     alert(msg);
   };
 
-  // ── Void payment ──
-  const handleVoid = async (paymentId) => {
-    const reason = window.prompt('Void reason (optional):', 'Recorded by mistake');
-    if (reason === null) return;  // cancelled
+  // ── May 5 2026: Import-order handlers ──
+  const handleImportSuccess = ({ order_number, moved_from, moved_to }) => {
+    setShowImportModal(false);
+    fetchData();
+    alert(`✓ Order ${order_number} added to this khaata${moved_from ? ` (moved from ${moved_from})` : ''}`);
+  };
 
-    if (!window.confirm('Yeh payment void ho jayegi aur orders ka status revert ho jayega. Confirm?')) return;
+  const handleRemoveImport = async (orderId, orderNumber) => {
+    const ok = confirm(
+      `Order ${orderNumber} ko is khaate se remove karna hai?\n\n` +
+      `Yeh order wapas apne natural khaate me chala jayega (us order ke customer_phone wala khaata).`
+    );
+    if (!ok) return;
+    try {
+      setRemovingImportId(orderId);
+      const res = await fetch(`/api/credits/import-order?order_id=${encodeURIComponent(orderId)}`, {
+        method: 'DELETE',
+      });
+      const text = await res.text();
+      let json;
+      try { json = JSON.parse(text); }
+      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 100)}`); }
+      if (!json.success) throw new Error(json.error || 'Remove failed');
+      fetchData();
+    } catch (e) {
+      alert(`Failed to remove: ${e.message}`);
+    } finally {
+      setRemovingImportId(null);
+    }
+  };
+
+  // ── Void payment handler ──
+  const handleVoid = async (paymentId) => {
+    const reason = prompt('Void karne ki wajah likhein (optional):');
+    if (reason === null) return;  // cancelled
 
     try {
       setVoidingId(paymentId);
@@ -137,8 +170,8 @@ export default function CustomerKhaataPage() {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          reason: reason || 'Voided by super_admin',
-          voided_by_name: performer || 'Super Admin',
+          voided_reason: reason || 'No reason provided',
+          performer: performer || null,
         }),
       });
       const text = await res.text();
@@ -146,7 +179,6 @@ export default function CustomerKhaataPage() {
       try { json = JSON.parse(text); }
       catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 100)}`); }
       if (!json.success) throw new Error(json.error || 'Void failed');
-
       const reverted = json.orders_reverted?.length || 0;
       alert(`Payment voided. ${reverted} order(s) status reverted.`);
       fetchData();
@@ -212,15 +244,28 @@ export default function CustomerKhaataPage() {
             </span>}
           </p>
         </div>
-        {canRecordPayment && openOrders.length > 0 && (
-          <button onClick={() => setShowPaymentModal(true)}
-            style={{
-              background: gold, color: '#000',
-              border: 'none', borderRadius: 8,
-              padding: '10px 18px', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}>+ Record payment</button>
-        )}
+        {/* May 5 2026 — Action buttons row */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {canImportOrder && (
+            <button onClick={() => setShowImportModal(true)}
+              title="Add an existing order from another phone to this khaata"
+              style={{
+                background: 'transparent', color: gold,
+                border: `1px solid ${gold}`, borderRadius: 8,
+                padding: '10px 16px', fontSize: 12, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>🔗 Add order to khaata</button>
+          )}
+          {canRecordPayment && openOrders.length > 0 && (
+            <button onClick={() => setShowPaymentModal(true)}
+              style={{
+                background: gold, color: '#000',
+                border: 'none', borderRadius: 8,
+                padding: '10px 18px', fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}>+ Record payment</button>
+          )}
+        </div>
       </div>
 
       {/* ── Summary cards ── */}
@@ -293,6 +338,7 @@ export default function CustomerKhaataPage() {
                     gap: 12, padding: '14px 18px',
                     borderBottom: idx === orders.length - 1 ? 'none' : '1px solid var(--border)',
                     alignItems: 'center',
+                    background: o.is_imported ? 'rgba(201,169,110,0.04)' : 'transparent',
                   }}>
                     <div>
                       <Link href={`/orders/${o.id}`}
@@ -302,6 +348,35 @@ export default function CustomerKhaataPage() {
                       <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
                         {formatDate(o.created_at)}
                       </div>
+                      {/* May 5 2026 — Import badge + remove button */}
+                      {o.is_imported && (
+                        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span title={`Imported from ${o.source_phone}${o.imported_by_name ? ` by ${o.imported_by_name}` : ''}`}
+                            style={{
+                              fontSize: 9, color: gold, fontWeight: 500,
+                              background: 'rgba(201,169,110,0.1)',
+                              border: '1px solid rgba(201,169,110,0.3)',
+                              borderRadius: 3, padding: '1px 6px',
+                              fontFamily: 'monospace',
+                            }}>
+                            🔗 {o.source_phone}
+                          </span>
+                          {canImportOrder && (
+                            <button
+                              onClick={() => handleRemoveImport(o.id, o.order_number)}
+                              disabled={removingImportId === o.id}
+                              title="Remove from this khaata (back to natural khaata)"
+                              style={{
+                                background: 'transparent', border: 'none',
+                                color: 'var(--text3)', fontSize: 9,
+                                fontWeight: 500, padding: 0, cursor: removingImportId === o.id ? 'not-allowed' : 'pointer',
+                                textDecoration: 'underline', fontFamily: 'inherit',
+                              }}>
+                              {removingImportId === o.id ? 'removing…' : 'remove'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text2)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {o.items_summary || '—'}
@@ -364,6 +439,19 @@ export default function CustomerKhaataPage() {
                         padding: '2px 8px', fontSize: 10, fontWeight: 500,
                       }}>{p.method}</span>}
                       {p.voided_at && <Badge label="VOIDED" color={danger} bg="rgba(239,68,68,0.12)" border="rgba(239,68,68,0.3)" />}
+                      {/* May 5 2026: payment was recorded under a different (alias) phone */}
+                      {p.recorded_under_phone && (
+                        <span title={`This payment was recorded under ${p.recorded_under_phone} (before order import)`}
+                          style={{
+                            fontSize: 9, color: gold, fontWeight: 500,
+                            background: 'rgba(201,169,110,0.1)',
+                            border: '1px solid rgba(201,169,110,0.3)',
+                            borderRadius: 3, padding: '1px 6px',
+                            fontFamily: 'monospace',
+                          }}>
+                          🔗 under {p.recorded_under_phone}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
                       {formatDateTime(p.paid_at)}
@@ -451,6 +539,16 @@ export default function CustomerKhaataPage() {
           performer={performer}
           onClose={() => setShowPaymentModal(false)}
           onSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {/* ── May 5 2026: Import Order Modal ── */}
+      {showImportModal && (
+        <ImportOrderModal
+          khaataPhone={customer.phone}
+          khaataName={customer.name}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={handleImportSuccess}
         />
       )}
     </div>
