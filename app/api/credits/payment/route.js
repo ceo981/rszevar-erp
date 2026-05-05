@@ -2,61 +2,41 @@
 // RS ZEVAR ERP — Customer Credits — Record Payment + Auto-Allocate
 // POST /api/credits/payment
 // May 2 2026 · Step 3 of 6 · File 3 of 5
+// May 5 2026 · UPDATED — payment FIFO works across manually-imported orders
 // ----------------------------------------------------------------------------
 // PURPOSE:
 //   Records a payment received from a credit customer and allocates it to
 //   their unpaid/partial orders. FIFO (oldest first) by default, manual
 //   override supported.
 //
+// KHAATA LOOKUP (May 5 2026):
+//   Open orders for a khaata = orders where EITHER:
+//     - customer_phone = khaata_phone AND credit_khaata_phone IS NULL (natural)
+//     - credit_khaata_phone = khaata_phone (manually imported)
+//   Two separate queries, merged + deduped, sorted by created_at ASC for FIFO.
+//
 // REQUEST BODY:
 //   {
-//     customer_phone: "03001234567"  (required)
+//     customer_phone: "03001234567"  (required — khaata phone)
 //     customer_name: "Saima Wholesale"  (snapshot)
 //     amount: 13700  (required, > 0)
 //     paid_at: "2026-05-01T14:43:00Z"  (optional, defaults to now)
 //     method: "JazzCash"  (optional)
 //     receipt_url: "https://..."  (optional, from upload-receipt endpoint)
-//     note: "JazzCash transfer — confirmed via call"  (optional)
+//     note: "..."  (optional)
 //
-//     // Allocation strategy:
 //     allocation_mode: "fifo" | "manual"  (default: "fifo")
 //     manual_allocations: [  (only used if mode === "manual")
 //       { order_id: "uuid", amount: 8700 },
-//       { order_id: "uuid", amount: 5000 }
 //     ]
 //
-//     created_by: "uuid"  (optional, from auth context)
-//     created_by_name: "Abdul Rehman"  (snapshot)
+//     created_by: "uuid"
+//     created_by_name: "Abdul Rehman"
 //   }
-//
-// LOGIC:
-//   1. Validate input
-//   2. INSERT customer_payments row
-//   3. If mode === "fifo":
-//      - Fetch unpaid+partial orders for this phone, ORDER BY created_at ASC
-//      - Iterate, allocating remaining amount until exhausted
-//   4. If mode === "manual":
-//      - Validate sum of manual_allocations.amount === total amount
-//      - Validate each order belongs to this customer
-//      - Validate each allocation doesn't exceed order's outstanding balance
-//   5. INSERT payment_allocations rows (DB trigger auto-updates orders.paid_amount + payment_status)
-//   6. Return: payment + allocations + updated_orders
 //
 // RESPONSE:
-//   {
-//     success: true,
-//     payment: { id, amount, allocated_total, unallocated, ... },
-//     allocations: [{ order_id, order_number, amount }],
-//     orders_now_paid: [{ id, order_number }],     // orders that just flipped to paid
-//     orders_now_partial: [{ id, order_number, balance }],
-//     unallocated_amount: 0  // excess amount that couldn't be allocated
-//   }
-//
-// EDGE CASES:
-//   - Payment amount > total outstanding → excess saved as `unallocated`,
-//     used later automatically when new orders come (or kept for refund)
-//   - No unpaid orders → payment recorded but unallocated = full amount
-//   - Manual allocation total !== amount → error (must match exactly)
+//   { success, payment, allocations, orders_now_paid, orders_now_partial,
+//     unallocated_amount }
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -96,17 +76,42 @@ export async function POST(request) {
     // Regular COD orders (pending courier settlement) MUST NOT be allocated
     // accidentally — those get marked paid via Leopards/PostEx settlement
     // sync, not via this manual payment flow.
-    const { data: openOrders, error: ordersErr } = await supabase
+    //
+    // May 5 2026 — Two queries to capture both natural and imported members:
+    //   A) customer_phone = phone AND credit_khaata_phone IS NULL
+    //   B) credit_khaata_phone = phone
+    // Then merge + dedupe + sort by created_at ASC for FIFO.
+
+    // Query A — natural khaata members
+    const { data: naturalOrders, error: errA } = await supabase
       .from('orders')
-      .select('id, order_number, total_amount, paid_amount, payment_status, status, created_at')
+      .select('id, order_number, total_amount, paid_amount, payment_status, status, created_at, customer_phone, credit_khaata_phone')
       .eq('customer_phone', phone)
+      .is('credit_khaata_phone', null)
       .eq('is_credit_order', true)
       .in('payment_status', ['unpaid', 'partial'])
-      .in('status', ACTIVE_STATUSES)
-      .order('created_at', { ascending: true });  // FIFO order
+      .in('status', ACTIVE_STATUSES);
+    if (errA) throw errA;
 
-    if (ordersErr) throw ordersErr;
-    const orders = openOrders || [];
+    // Query B — manually imported into this khaata
+    const { data: importedOrders, error: errB } = await supabase
+      .from('orders')
+      .select('id, order_number, total_amount, paid_amount, payment_status, status, created_at, customer_phone, credit_khaata_phone')
+      .eq('credit_khaata_phone', phone)
+      .eq('is_credit_order', true)
+      .in('payment_status', ['unpaid', 'partial'])
+      .in('status', ACTIVE_STATUSES);
+    if (errB) throw errB;
+
+    // Merge + dedupe + sort by created_at ASC (FIFO)
+    const seen = new Set();
+    const orders = [];
+    for (const o of [...(naturalOrders || []), ...(importedOrders || [])]) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      orders.push(o);
+    }
+    orders.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
     // ── 3. Compute allocations BEFORE inserting payment ──
     // (so we can validate manual mode and detect over-allocation upfront)
@@ -143,7 +148,7 @@ export async function POST(request) {
         const ord = orderById.get(ma.order_id);
         if (!ord) {
           return NextResponse.json(
-            { success: false, error: `Order ${ma.order_id} doesn't belong to ${phone} or isn't open` },
+            { success: false, error: `Order ${ma.order_id} doesn't belong to khaata ${phone} or isn't open` },
             { status: 400 },
           );
         }
