@@ -61,10 +61,15 @@ export default function LoadsheetPrintPage() {
   }, [id]);
 
   // Auto-trigger print dialog after data loads (small delay for rendering)
+  // Only when ?autoprint=1 query param is set — to avoid annoying auto-print
+  // when user opens loadsheet from history page just to view.
   useEffect(() => {
-    if (loadsheet && !loading) {
-      const t = setTimeout(() => window.print(), 600);
-      return () => clearTimeout(t);
+    if (loadsheet && !loading && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('autoprint') === '1') {
+        const t = setTimeout(() => window.print(), 600);
+        return () => clearTimeout(t);
+      }
     }
   }, [loadsheet, loading]);
 
@@ -185,11 +190,12 @@ export default function LoadsheetPrintPage() {
           line-height: 1;
         }
         .brand .tag {
-          font-size: 9px;
-          letter-spacing: 4px;
-          color: #666;
+          font-size: 10px;
+          letter-spacing: 6px;
+          color: #1a1a1a;
           margin-top: 4px;
           text-transform: uppercase;
+          font-weight: 500;
         }
         .brand .title {
           font-family: 'Cormorant Garamond', Georgia, serif;
@@ -388,6 +394,7 @@ export default function LoadsheetPrintPage() {
           font-size: 9px;
           color: #999;
           letter-spacing: 0.5px;
+          line-height: 1.6;
         }
       `}</style>
 
@@ -410,7 +417,7 @@ export default function LoadsheetPrintPage() {
         {/* Brand header */}
         <div className="brand">
           <h1 className="name">RS ZEVAR</h1>
-          <div className="tag">Luxury Jewelry · Pakistan</div>
+          <div className="tag">Designer Jewelry</div>
           <div className="title">Dispatch Report</div>
         </div>
 
@@ -518,7 +525,8 @@ export default function LoadsheetPrintPage() {
 
         {/* Document footer */}
         <div className="doc-footer">
-          RS ZEVAR · rszevar.com · Karachi, Pakistan · Dispatch Report
+          RS ZEVAR · rszevar.com<br/>
+          Suite # 604, Falak Corporate City Tower, Opposite Chamber of Commerce, Karachi
         </div>
 
       </div>
