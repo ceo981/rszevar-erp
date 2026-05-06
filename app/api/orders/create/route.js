@@ -157,6 +157,26 @@ function buildShopifyPayload(body) {
     use_customer_default_address: false,
   };
 
+  // May 6 2026 fix — EMAIL FIELD
+  // Pehle UI form se email aata tha lekin yahan kabhi use nahi hota tha,
+  // is liye Shopify pe order ke saath email attach nahi hota tha
+  // ("No email provided" dikhta tha). Ab top-level `email` field set karte
+  // hain — Shopify isko order par attach kar deta hai aur agar customer
+  // pehle se exist karta hai is email se to auto-link bhi hota hai.
+  //
+  // Validation: simple regex se invalid emails skip kar dete hain — Shopify
+  // ne reject kiya to poora order fail ho jayega, is liye safety net.
+  if (customer.email && typeof customer.email === 'string') {
+    const trimmed = customer.email.trim();
+    // RFC 5322-ish — kaafi hai practical use ke liye, full spec nahi
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+    if (emailValid) {
+      draftOrder.email = trimmed;
+    } else if (trimmed.length > 0) {
+      console.warn('[create] dropping invalid email:', trimmed);
+    }
+  }
+
   // Shipping line — agar manual price diya hai
   if (shipping_line && shipping_line.price > 0) {
     draftOrder.shipping_line = {
