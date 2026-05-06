@@ -110,6 +110,23 @@ function playBeep(type = 'success') {
 // ── Helpers ──────────────────────────────────────────────────────────────
 const fmt = (n) => 'Rs ' + Math.round(Number(n || 0)).toLocaleString('en-PK');
 
+function formatTimeAgo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffDay < 7) return `${diffDay}d ago`;
+
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 function CourierBadge({ courier }) {
   if (!courier) return <span style={{ color: text2 }}>—</span>;
   const colors = {
@@ -147,6 +164,11 @@ export default function DispatchScanPage() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [notes, setNotes] = useState('');
 
+  // May 6 2026 — Cross-device sync state
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [recentLoadsheets, setRecentLoadsheets] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+
   const inputRef = useRef(null);
   const scannerRef = useRef(null);
   const lastScanTimeRef = useRef(0);  // debounce duplicate camera scans
@@ -162,6 +184,67 @@ export default function DispatchScanPage() {
     const t = setTimeout(() => setFeedback(null), 3500);
     return () => clearTimeout(t);
   }, [feedback]);
+
+  // ── Cross-device sync (May 6 2026) ─────────────────────────────────────
+  // Pending loadsheet orders fetch karte hain — yani jo dispatched hain
+  // magar abhi tak kisi loadsheet mein add nahi hue. Multiple devices se
+  // scan ho rahe parcels sab dispatchers ko dikhte hain.
+  const fetchPending = useCallback(async (silent = false) => {
+    try {
+      const r = await fetch('/api/orders/pending-loadsheet');
+      const d = await r.json();
+      if (d.success) {
+        setScannedOrders(d.orders || []);
+      } else if (!silent) {
+        console.error('Pending fetch failed:', d.error);
+      }
+    } catch (e) {
+      if (!silent) console.error('Pending fetch error:', e.message);
+    }
+  }, []);
+
+  // Recent loadsheets for bottom history widget
+  const fetchRecent = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const r = await fetch('/api/loadsheets?limit=10');
+      const d = await r.json();
+      if (d.success) setRecentLoadsheets(d.loadsheets || []);
+    } catch (e) {
+      console.error('Recent loadsheets fetch failed:', e.message);
+    }
+    setRecentLoading(false);
+  }, []);
+
+  // Initial load on mount
+  useEffect(() => {
+    (async () => {
+      await fetchPending();
+      setInitialLoading(false);
+    })();
+    fetchRecent();
+  }, [fetchPending, fetchRecent]);
+
+  // Poll every 30s when tab is visible — picks up scans from other devices
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !busy && !generating) {
+        fetchPending(true);
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchPending, busy, generating]);
+
+  // Refetch on tab focus (user comes back to tab)
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState === 'visible' && !busy && !generating) {
+        fetchPending(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onFocus);
+    return () => document.removeEventListener('visibilitychange', onFocus);
+  }, [fetchPending, busy, generating]);
 
   // ── Camera scanner lifecycle (html5-qrcode) ────────────────────────────
   useEffect(() => {
@@ -322,16 +405,6 @@ export default function DispatchScanPage() {
     }
   };
 
-  // ── Remove from session (mistake handling) ─────────────────────────────
-  const removeFromSession = (orderId) => {
-    if (!confirm(
-      'Ye order is loadsheet session se hata dein?\n\n' +
-      'NOTE: Order ka status `dispatched` rahega — sirf is loadsheet mein add nahi hoga. ' +
-      'Status revert karne ke liye order page se "Change Status" use karein.'
-    )) return;
-    setScannedOrders(prev => prev.filter(o => o.id !== orderId));
-  };
-
   // ── Generate loadsheet → DB save → redirect to print ───────────────────
   const generateLoadsheet = async () => {
     if (scannedOrders.length === 0) return;
@@ -357,9 +430,16 @@ export default function DispatchScanPage() {
       const d = await r.json();
 
       if (d.success) {
-        // Redirect to print page
-        router.push(`/orders/loadsheets/${d.loadsheet_id}/print`);
+        // Redirect to print page with autoprint flag — print dialog opens
+        // automatically. (Without flag, viewing from history just shows.)
+        router.push(`/orders/loadsheets/${d.loadsheet_id}/print?autoprint=1`);
       } else {
+        // 409 = race condition (orders already in another loadsheet)
+        // Refresh pending list to reflect actual server state
+        if (r.status === 409) {
+          await fetchPending(true);
+          await fetchRecent();
+        }
         setFeedback({ type: 'error', text: d.error || 'Generate failed' });
         playBeep('error');
         setGenerating(false);
@@ -503,8 +583,10 @@ export default function DispatchScanPage() {
               padding: '60px 20px', textAlign: 'center',
               color: text2, fontSize: 14,
             }}>
-              Koi parcel scan nahi hua abhi tak.<br/>
-              <span style={{ fontSize: 12 }}>Upar input mein scanner se ya camera button se shuru karein.</span>
+              {initialLoading
+                ? 'Pending parcels load ho rahi hain...'
+                : <>Koi parcel scan nahi hua abhi tak.<br/>
+                  <span style={{ fontSize: 12 }}>Upar input mein scanner se ya camera button se shuru karein.</span></>}
             </div>
           ) : (
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
@@ -513,7 +595,7 @@ export default function DispatchScanPage() {
                   padding: '12px 18px',
                   borderBottom: i < scannedOrders.length - 1 ? `1px solid ${border}` : 'none',
                   display: 'grid',
-                  gridTemplateColumns: '40px 1fr 130px 100px 90px 32px',
+                  gridTemplateColumns: '40px 1fr 130px 100px 90px',
                   alignItems: 'center', gap: 12, fontSize: 13,
                 }}>
                   <div style={{ color: text2, fontFamily: 'monospace' }}>
@@ -539,14 +621,6 @@ export default function DispatchScanPage() {
                   <div style={{ textAlign: 'right', color: gold, fontWeight: 600 }}>
                     {o.cod_amount > 0 ? fmt(o.cod_amount) : <span style={{ color: text2 }}>—</span>}
                   </div>
-                  <button
-                    onClick={() => removeFromSession(o.id)}
-                    title="Session se hatao"
-                    style={{
-                      background: 'transparent', border: 'none', color: text2,
-                      cursor: 'pointer', fontSize: 16, padding: 4,
-                    }}
-                  >×</button>
                 </div>
               ))}
             </div>
@@ -634,6 +708,81 @@ export default function DispatchScanPage() {
           </div>
         )}
 
+      </div>
+
+      {/* ── Recent Loadsheets (history widget — May 6 2026) ─────────── */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 24px 60px' }}>
+        <div style={{
+          background: card, border: `1px solid ${border}`, borderRadius: 8,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '14px 18px', borderBottom: `1px solid ${border}`,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: text1 }}>
+              📋 Recent Loadsheets
+            </div>
+            <Link href="/orders/loadsheets" style={{
+              fontSize: 12, color: gold, textDecoration: 'none',
+            }}>
+              View all →
+            </Link>
+          </div>
+
+          {recentLoading ? (
+            <div style={{ padding: 30, textAlign: 'center', color: text2, fontSize: 13 }}>
+              Loading...
+            </div>
+          ) : recentLoadsheets.length === 0 ? (
+            <div style={{ padding: 30, textAlign: 'center', color: text2, fontSize: 13 }}>
+              Abhi tak koi loadsheet generate nahi hui
+            </div>
+          ) : (
+            recentLoadsheets.map((ls, i) => (
+              <Link
+                key={ls.id}
+                href={`/orders/loadsheets/${ls.id}/print`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 90px 100px 70px 60px',
+                  gap: 12, alignItems: 'center',
+                  padding: '12px 18px',
+                  borderBottom: i < recentLoadsheets.length - 1 ? `1px solid ${border}` : 'none',
+                  fontSize: 12, color: text1, textDecoration: 'none',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div>
+                  <div style={{
+                    fontFamily: 'monospace', fontSize: 11.5, color: gold, fontWeight: 600,
+                  }}>
+                    {ls.loadsheet_number}
+                  </div>
+                  {ls.generated_by && (
+                    <div style={{ fontSize: 10.5, color: text2, marginTop: 2 }}>
+                      by {ls.generated_by}
+                    </div>
+                  )}
+                </div>
+                <div style={{ color: text2 }}>
+                  {formatTimeAgo(ls.generated_at)}
+                </div>
+                <div style={{ textAlign: 'right', color: text1 }}>
+                  {ls.total_parcels} parcels
+                </div>
+                <div style={{ textAlign: 'right', color: gold, fontWeight: 600 }}>
+                  {fmt(ls.total_cod)}
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 11, color: gold }}>
+                  🖨️
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
       </div>
 
       {/* ── Camera Modal ──────────────────────────────────────────────── */}
