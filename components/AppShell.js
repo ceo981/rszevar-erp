@@ -26,8 +26,9 @@ import AIAdvisorFloat from './AIAdvisorFloat';
 const MODULES = [
   { id: 'dashboard',    href: '/dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
-  { id: 'dispatch-scan', href: '/orders/dispatch-scan', label: 'Dispatch Scan', icon: '📡', perm: 'orders.view' },
-  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'credits.view' },
+  // ── Children of 'orders' parent (May 6 2026 — sidebar nesting) ───────────
+  { id: 'dispatch-scan', href: '/orders/dispatch-scan', label: 'Dispatch Scan', icon: '📡', perm: 'orders.view', parent: 'orders' },
+  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'credits.view', parent: 'orders' },
   { id: 'historical-orders', href: '/historical-orders', label: 'Archive', icon: '📁', perm: 'historical_orders.view' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
   { id: 'accounts',     href: '/accounts',     label: 'Accounts',      icon: '💰', perm: 'accounts.view' },
@@ -105,6 +106,12 @@ function AuthenticatedShell({ pathname, router, children }) {
   const [profile, setProfile] = useState(null);
   const [permissions, setPermissions] = useState(new Set());
   const [authLoading, setAuthLoading] = useState(true);
+
+  // ── Sidebar nesting state (May 6 2026) ──
+  // Tracks which parent modules are currently expanded (children visible).
+  // Uses Set<string> — each value is a parent module's `id`.
+  // Auto-expand effect below opens parent when on a child route.
+  const [expandedParents, setExpandedParents] = useState(() => new Set());
 
   // ── Browser notifications state ──
   const [notifPermission, setNotifPermission] = useState('default');
@@ -232,6 +239,45 @@ function AuthenticatedShell({ pathname, router, children }) {
   const canViewFinancial = isSuperAdmin;
   const can = useCallback((key) => isSuperAdmin || permissions.has(key), [isSuperAdmin, permissions]);
   const visibleModules = MODULES.filter((m) => !m.perm || can(m.perm));
+
+  // ── Sidebar nesting helpers (May 6 2026) ──
+  // Split visible modules into top-level entries vs children-by-parent.
+  // Children render indented BELOW their parent when parent is expanded.
+  const rootModules = visibleModules.filter(m => !m.parent);
+  const childrenByParent = {};
+  for (const m of visibleModules) {
+    if (m.parent) {
+      if (!childrenByParent[m.parent]) childrenByParent[m.parent] = [];
+      childrenByParent[m.parent].push(m);
+    }
+  }
+
+  // Auto-expand parent jab current pathname kisi child ke route pe ho.
+  // Example: /credits visit karte hi 'orders' parent expand ho jaye taake
+  // user ko apna current location dikhe nested context mein.
+  useEffect(() => {
+    for (const [parentId, kids] of Object.entries(childrenByParent)) {
+      const onChild = kids.some(k => pathname === k.href || pathname.startsWith(k.href + '/'));
+      if (onChild) {
+        setExpandedParents(prev => {
+          if (prev.has(parentId)) return prev;
+          const next = new Set(prev);
+          next.add(parentId);
+          return next;
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const toggleParent = (parentId) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(parentId)) next.delete(parentId);
+      else next.add(parentId);
+      return next;
+    });
+  };
 
   // ── Unread WhatsApp badge polling (every 15s) ──
   // Also fires browser notifications + ding when unread_total increases,
@@ -476,50 +522,112 @@ function AuthenticatedShell({ pathname, router, children }) {
             <div style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 1, background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
           </div>
 
-          {/* Nav Items — Next.js <Link> with active state from pathname */}
+          {/* Nav Items — Next.js <Link> with active state from pathname.
+              May 6 2026: now supports nested children. Parent with children
+              shows a chevron (▾/▸); clicking chevron toggles, clicking the
+              row itself navigates as before. Children render indented under
+              expanded parent. When sidebar is collapsed (icons-only mode),
+              children hide entirely — user must expand sidebar to see them. */}
           <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto' }}>
-            {visibleModules.map(mod => {
+            {rootModules.map(mod => {
               const isActive = activeId === mod.id;
+              const kids = childrenByParent[mod.id] || [];
+              const hasKids = kids.length > 0;
+              const isExpanded = expandedParents.has(mod.id);
+              const showChildren = hasKids && (sidebarOpen || isMobile) && isExpanded;
+
               return (
-                <Link key={mod.id} href={mod.href}
-                  onClick={() => { if (isMobile) setSidebarOpen(false); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                    padding: (sidebarOpen || isMobile) ? '10px 12px' : '10px 0',
-                    justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
-                    background: isActive
-                      ? 'linear-gradient(90deg, rgba(201,169,110,0.14), rgba(74,130,216,0.08))'
-                      : 'transparent',
-                    border: 'none',
-                    borderLeft: isActive ? '2px solid var(--gold)' : '2px solid transparent',
-                    borderRadius: isActive ? '0 var(--radius) var(--radius) 0' : 'var(--radius)',
-                    color: isActive ? 'var(--gold)' : 'var(--text2)',
-                    fontSize: 13, fontFamily: 'inherit', textDecoration: 'none',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    marginBottom: 2, position: 'relative',
-                    boxSizing: 'border-box',
-                  }}>
-                  <span style={{ fontSize: 15, width: 22, textAlign: 'center', flexShrink: 0 }}>{mod.icon}</span>
-                  {(sidebarOpen || isMobile) && <span style={{ fontWeight: isActive ? 600 : 400 }}>{mod.label}</span>}
-                  {(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 700,
-                      background: '#22c55e', color: '#000',
-                      padding: '2px 7px', borderRadius: 10,
-                      minWidth: 18, textAlign: 'center',
-                      marginLeft: 'auto',
-                    }}>{unreadTotal > 99 ? '99+' : unreadTotal}</span>
-                  )}
-                  {!(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
-                    <span style={{
-                      position: 'absolute',
-                      top: 6, right: 6,
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: '#22c55e',
-                      boxShadow: '0 0 0 2px var(--bg)',
-                    }} />
-                  )}
-                </Link>
+                <div key={mod.id} style={{ marginBottom: 2 }}>
+                  {/* Parent row */}
+                  <div style={{ position: 'relative' }}>
+                    <Link href={mod.href}
+                      onClick={() => { if (isMobile) setSidebarOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                        padding: (sidebarOpen || isMobile) ? '10px 12px' : '10px 0',
+                        paddingRight: (sidebarOpen || isMobile) && hasKids ? 36 : undefined,
+                        justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
+                        background: isActive
+                          ? 'linear-gradient(90deg, rgba(201,169,110,0.14), rgba(74,130,216,0.08))'
+                          : 'transparent',
+                        border: 'none',
+                        borderLeft: isActive ? '2px solid var(--gold)' : '2px solid transparent',
+                        borderRadius: isActive ? '0 var(--radius) var(--radius) 0' : 'var(--radius)',
+                        color: isActive ? 'var(--gold)' : 'var(--text2)',
+                        fontSize: 13, fontFamily: 'inherit', textDecoration: 'none',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        boxSizing: 'border-box',
+                      }}>
+                      <span style={{ fontSize: 15, width: 22, textAlign: 'center', flexShrink: 0 }}>{mod.icon}</span>
+                      {(sidebarOpen || isMobile) && <span style={{ fontWeight: isActive ? 600 : 400 }}>{mod.label}</span>}
+                      {(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700,
+                          background: '#22c55e', color: '#000',
+                          padding: '2px 7px', borderRadius: 10,
+                          minWidth: 18, textAlign: 'center',
+                          marginLeft: 'auto',
+                        }}>{unreadTotal > 99 ? '99+' : unreadTotal}</span>
+                      )}
+                      {!(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
+                        <span style={{
+                          position: 'absolute',
+                          top: 6, right: 6,
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: '#22c55e',
+                          boxShadow: '0 0 0 2px var(--bg)',
+                        }} />
+                      )}
+                    </Link>
+
+                    {/* Chevron toggle — only when sidebar open + has children */}
+                    {hasKids && (sidebarOpen || isMobile) && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleParent(mod.id); }}
+                        title={isExpanded ? 'Collapse' : 'Expand'}
+                        style={{
+                          position: 'absolute',
+                          right: 6, top: '50%', transform: 'translateY(-50%)',
+                          width: 26, height: 26,
+                          background: 'transparent', border: 'none',
+                          color: isActive ? 'var(--gold)' : 'var(--text2)',
+                          fontSize: 11, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: 4,
+                        }}
+                      >
+                        {isExpanded ? '▾' : '▸'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Children (indented) — only when expanded + sidebar open */}
+                  {showChildren && kids.map(kid => {
+                    const kidActive = activeId === kid.id;
+                    return (
+                      <Link key={kid.id} href={kid.href}
+                        onClick={() => { if (isMobile) setSidebarOpen(false); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                          padding: '8px 12px 8px 32px',
+                          background: kidActive
+                            ? 'linear-gradient(90deg, rgba(201,169,110,0.14), rgba(74,130,216,0.08))'
+                            : 'transparent',
+                          border: 'none',
+                          borderLeft: kidActive ? '2px solid var(--gold)' : '2px solid transparent',
+                          borderRadius: kidActive ? '0 var(--radius) var(--radius) 0' : 'var(--radius)',
+                          color: kidActive ? 'var(--gold)' : 'var(--text2)',
+                          fontSize: 12, fontFamily: 'inherit', textDecoration: 'none',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          marginTop: 1, boxSizing: 'border-box',
+                          opacity: kidActive ? 1 : 0.85,
+                        }}>
+                        <span style={{ fontSize: 13, width: 18, textAlign: 'center', flexShrink: 0 }}>{kid.icon}</span>
+                        <span style={{ fontWeight: kidActive ? 600 : 400 }}>{kid.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               );
             })}
           </nav>
