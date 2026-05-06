@@ -70,7 +70,7 @@ async function getPolicy(supabase) {
 async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const empRes = await supabase
     .from('employees')
-    .select('id, name, role, status, base_salary, advance_limit, time_bonus_amount')
+    .select('id, name, role, status, base_salary, advance_limit, time_bonus_amount, yearly_leaves_allowed, leaves_opening_used')
     .eq('id', employee_id)
     .single();
   if (empRes.error || !empRes.data) {
@@ -84,25 +84,43 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const totalDays = daysInMonth(month);
 
   // ── Attendance breakdown ────────────────────────────────────────────────
+  // May 6 2026 fix — `leave_type` field bhi fetch karte hain.
+  // Attendance route har absent ko leave_type assign karti hai:
+  //   - 'annual_leave' → employee ki yearly allowance ke andar hai → FREE
+  //                      (salary se deduction NAHI hogi)
+  //   - 'unpaid'       → yearly allowance khatam → salary deduction
+  //   - null           → legacy data (pehle ka), default unpaid treat karte
   const { data: attendance } = await supabase
     .from('employee_attendance')
-    .select('date, status')
+    .select('date, status, leave_type')
     .eq('employee_id', employee_id)
     .gte('date', start)
     .lte('date', end);
 
-  const counts = { present: 0, late: 0, absent: 0, leave: 0, half_day: 0 };
+  const counts = {
+    present: 0, late: 0, half_day: 0,
+    paid_absent: 0,      // status='absent' && leave_type IS NOT 'annual_leave' → salary cut
+    free_leave: 0,       // status='absent' && leave_type='annual_leave' → free (yearly balance se)
+  };
   for (const row of attendance || []) {
     const s = String(row.status || '').toLowerCase();
-    if (s in counts) counts[s] += 1;
+    const lt = String(row.leave_type || '').toLowerCase();
+    if (s === 'absent') {
+      if (lt === 'annual_leave') counts.free_leave += 1;
+      else                       counts.paid_absent += 1;
+    } else if (s in counts) {
+      counts[s] += 1;
+    }
   }
   // Total marked attendance days (used to check if month is fully entered)
-  const markedDays = (attendance || []).length;
-  const presentDays = counts.present + counts.late;   // Late counts as present for pay
-  const absentDays  = counts.absent;
+  const markedDays  = (attendance || []).length;
+  const presentDays = counts.present + counts.late;          // Late counts as present for pay
+  const absentDays  = counts.paid_absent;                    // Drives deduction (paid absents only)
+  const freeLeaveDays = counts.free_leave;                   // Used yearly leave balance, NO cut
+  const totalAbsentDays = counts.paid_absent + counts.free_leave; // For UI display
   const lateDays    = counts.late;
   const halfDays    = counts.half_day;
-  const leaveDays   = counts.leave;                    // Treated as paid leave
+  const leaveDays   = freeLeaveDays;                         // Saved as 'leave_days' in DB
 
   // ── Policy + per-day rate ───────────────────────────────────────────────
   const policy = await getPolicy(supabase);
@@ -113,10 +131,46 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const lateDeduction = excessLates * policy.late_deduction_amount;
 
   // ── Absent deduction ────────────────────────────────────────────────────
-  // Full absent: per-day rate × days
+  // Sirf PAID absents par cut hota hai (jo yearly allowance se bahar gaye).
+  // Free annual leaves cut nahi hoti — wo employee ki entitled time off hai.
   // Half day: per-day rate × 0.5 × half day count (after the allowed buffer)
   const excessHalfDays = Math.max(0, halfDays - policy.max_half_days_allowed);
   const absentDeduction = (absentDays * perDayRate) + (excessHalfDays * perDayRate * 0.5);
+
+  // ── Yearly leave balance (May 6 2026) ───────────────────────────────────
+  // Office year: Oct 1 – Sep 30 (matches attendance route)
+  // Compute as of END of THIS month (so April slip shows April-end state).
+  const allowed       = parseInt(emp.yearly_leaves_allowed) || 14;
+  const opening       = parseInt(emp.leaves_opening_used)   || 0;
+  const [yy, mm]      = month.split('-').map(Number);
+  const officeYearStart = mm >= 10 ? `${yy}-10-01` : `${yy - 1}-10-01`;
+  const officeYearEndOfMonth = end;  // already last day of this month
+
+  let erpFreeLeavesThisYear = 0;
+  try {
+    const { count } = await supabase
+      .from('employee_attendance')
+      .select('*', { count: 'exact', head: true })
+      .eq('employee_id', employee_id)
+      .eq('leave_type', 'annual_leave')
+      .gte('date', officeYearStart)
+      .lte('date', officeYearEndOfMonth);
+    erpFreeLeavesThisYear = count || 0;
+  } catch (e) {
+    console.error('[salary] yearly leaves count failed:', e.message);
+  }
+
+  const yearlyTotalUsed  = erpFreeLeavesThisYear + opening;
+  const yearlyRemaining  = Math.max(0, allowed - yearlyTotalUsed);
+  const yearlyLeaves = {
+    allowed,
+    opening_used: opening,
+    erp_used_this_year: erpFreeLeavesThisYear,
+    total_used: yearlyTotalUsed,
+    remaining: yearlyRemaining,
+    office_year_start: officeYearStart,
+    office_year_end: mm >= 10 ? `${yy + 1}-09-30` : `${yy}-09-30`,
+  };
 
   // Unpaid leave deduction — separate column for clarity in slip. For now
   // we treat 'leave' status as paid (yearly_leaves_allowed handles the
@@ -220,10 +274,13 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
       working_days:   totalDays,
       marked_days:    markedDays,
       present_days:   presentDays,
-      absent_days:    absentDays,
+      absent_days:    absentDays,           // PAID absents (drives deduction)
+      total_absent_days: totalAbsentDays,   // For UI display (paid + free)
+      free_leave_days: freeLeaveDays,       // Free annual leaves used this month
       late_days:      lateDays,
       half_days:      halfDays,
-      leave_days:     leaveDays,
+      leave_days:     leaveDays,            // Same as free_leave_days (saved to DB)
+      yearly_leaves:  yearlyLeaves,         // {allowed, opening, used, remaining, ...}
       base_salary:    baseSalary,
       overtime_hours: overtimeHours,
       overtime_pay:   overtimePay,
@@ -286,7 +343,56 @@ export async function GET(request) {
       { status: 500 },
     );
   }
-  return NextResponse.json({ success: true, month, records: data || [] });
+
+  // ── Enrich each record with yearly_leaves info (May 6 2026) ─────────
+  // Saved records mein ye field nahi hota — render time pe compute karte
+  // hain taa ke slip pe accurate "Yearly Remaining" dikhe end-of-month
+  // ke hisab se. Per-employee 1 query, total ~10-15 queries — fine.
+  const records = data || [];
+  const [yy, mm] = month.split('-').map(Number);
+  const officeYearStart  = mm >= 10 ? `${yy}-10-01`     : `${yy - 1}-10-01`;
+  const officeYearEnd    = mm >= 10 ? `${yy + 1}-09-30` : `${yy}-09-30`;
+  const monthEnd         = `${month}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+
+  if (records.length > 0) {
+    const empIds = records.map(r => r.employee_id);
+    // Fetch employee leave config in one query
+    const { data: empRows } = await supabase
+      .from('employees')
+      .select('id, yearly_leaves_allowed, leaves_opening_used')
+      .in('id', empIds);
+    const empMap = new Map((empRows || []).map(e => [e.id, e]));
+
+    // Per employee: count free leaves taken in office year up to end of slip month
+    await Promise.all(records.map(async (rec) => {
+      try {
+        const { count } = await supabase
+          .from('employee_attendance')
+          .select('*', { count: 'exact', head: true })
+          .eq('employee_id', rec.employee_id)
+          .eq('leave_type', 'annual_leave')
+          .gte('date', officeYearStart)
+          .lte('date', monthEnd);
+        const emp = empMap.get(rec.employee_id) || {};
+        const allowed = parseInt(emp.yearly_leaves_allowed) || 14;
+        const opening = parseInt(emp.leaves_opening_used)   || 0;
+        const totalUsed = (count || 0) + opening;
+        rec.yearly_leaves = {
+          allowed,
+          opening_used: opening,
+          erp_used_this_year: count || 0,
+          total_used: totalUsed,
+          remaining: Math.max(0, allowed - totalUsed),
+          office_year_start: officeYearStart,
+          office_year_end: officeYearEnd,
+        };
+      } catch (e) {
+        rec.yearly_leaves = null;
+      }
+    }));
+  }
+
+  return NextResponse.json({ success: true, month, records });
 }
 
 // ─── POST — actions ────────────────────────────────────────────────────────
