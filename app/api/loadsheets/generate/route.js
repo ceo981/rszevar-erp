@@ -85,6 +85,34 @@ export async function POST(request) {
       );
     }
 
+    // ── Race condition check (May 6 2026) ─────────────────────────────────
+    // Concurrent generates handle karne ke liye: pehle check karo agar koi
+    // requested order pehle se kisi loadsheet mein add ho chuka hai. Agar
+    // haan to abort aur user ko bata do — refresh karke retry karein.
+    //
+    // Use case: 2 dispatchers different devices pe scan kar rahe hain. Ek ne
+    // pehle Generate kar diya, doosre ka stale state hai. Hum doosre ko
+    // duplicate banane se rokte hain.
+    const { data: alreadyLinked, error: linkErr } = await supabase
+      .from('loadsheet_orders')
+      .select('order_id, loadsheet_id, order_number')
+      .in('order_id', order_ids);
+
+    if (linkErr) {
+      console.error('[loadsheet:generate] race-check query failed:', linkErr.message);
+      // Continue best-effort — better to risk duplicate than block legitimate flow
+    } else if (alreadyLinked && alreadyLinked.length > 0) {
+      const conflictNumbers = alreadyLinked.map(r => r.order_number).filter(Boolean);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${alreadyLinked.length} order(s) pehle se kisi loadsheet mein hain — page refresh karke try karein${conflictNumbers.length > 0 ? ': ' + conflictNumbers.join(', ') : ''}`,
+          already_linked: alreadyLinked.length,
+        },
+        { status: 409 },
+      );
+    }
+
     // Preserve scan order — sort orders array by order_ids input order
     const orderById = new Map(orders.map(o => [o.id, o]));
     const orderedOrders = order_ids.map(id => orderById.get(id)).filter(Boolean);
