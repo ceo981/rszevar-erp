@@ -26,6 +26,7 @@ import AIAdvisorFloat from './AIAdvisorFloat';
 const MODULES = [
   { id: 'dashboard',    href: '/dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
+  { id: 'dispatch-scan', href: '/orders/dispatch-scan', label: 'Dispatch Scan', icon: '📡', perm: 'orders.view' },
   { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'credits.view' },
   { id: 'historical-orders', href: '/historical-orders', label: 'Archive', icon: '📁', perm: 'historical_orders.view' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
