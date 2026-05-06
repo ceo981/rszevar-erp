@@ -1,5 +1,5 @@
 // ============================================================================
-// RS ZEVAR ERP — Single Product Refresh from Shopify (Phase D + M2.B hotfix v2)
+// RS ZEVAR ERP — Single Product Refresh from Shopify (Phase D + M2.B + May 6 fix)
 // Route: POST /api/products/[id]/refresh
 // ----------------------------------------------------------------------------
 // Pulls ONE product fresh from Shopify and re-syncs to DB. Used as a safety
@@ -15,6 +15,13 @@
 //
 // Both REST + GraphQL data is stamped on every variant row before a single
 // upsert, so the DB picks up everything atomically.
+//
+// May 6 2026 fix — DELETED VARIANT CLEANUP:
+// Pehle sirf upsert hota tha. Agar Shopify pe variant delete kiya, to ERP
+// DB mein orphan row reh jati thi (refresh button bhi help nahi karta tha).
+// Ab upsert ke baad: jo variant_id Shopify ne wapas nahi diye, unhe DB se
+// delete kar dete hain. Sirf is product ke variants pe kaam karta hai —
+// dusre products ko touch nahi karta.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -159,6 +166,41 @@ export async function POST(request, { params }) {
       throw upsertErr;
     }
 
+    // 3.5 ── DELETED VARIANT CLEANUP (May 6 2026) ─────────────────────────
+    // Shopify ne abhi jo variants diye, sirf wahi DB mein rehne chahiyen.
+    // Baqi sab is product ke under orphan hain (Shopify pe delete ho chuke
+    // hain) — unhe DB se nikal do.
+    //
+    // Order matters: pehle upsert (zaroori data fresh ho jaye), phir delete
+    // (agar yahan fail bhi ho to user ka editable data safe hai).
+    let orphansDeleted = 0;
+    try {
+      const freshVariantIds = variants.map(v => String(v.shopify_variant_id));
+      const productIdStr = String(id);
+
+      const { data: deletedRows, error: delErr } = await supabase
+        .from('products')
+        .delete()
+        .eq('shopify_product_id', productIdStr)
+        .not('shopify_variant_id', 'in', `(${freshVariantIds.map(v => `"${v}"`).join(',')})`)
+        .select('shopify_variant_id, sku');
+
+      if (delErr) {
+        // Don't fail the whole refresh — log it. User can retry.
+        console.error('[refresh] orphan cleanup failed:', delErr.message);
+      } else {
+        orphansDeleted = deletedRows?.length || 0;
+        if (orphansDeleted > 0) {
+          console.log(
+            `[refresh] cleaned ${orphansDeleted} orphan variant(s) for product ${productIdStr}:`,
+            deletedRows.map(r => `${r.sku || '?'} (${r.shopify_variant_id})`).join(', ')
+          );
+        }
+      }
+    } catch (e) {
+      console.error('[refresh] orphan cleanup exception:', e.message);
+    }
+
     // 4. Recompute SEO score for fresh data
     let seoUpdate = null;
     try {
@@ -176,8 +218,9 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: `Refreshed from Shopify — ${variants.length} variant(s), ${seoSynced ? 'SEO ✓' : 'SEO ✗'}, ${collectionsCount} collection(s)${extrasError ? ' (extras error: see logs)' : ''}`,
+      message: `Refreshed from Shopify — ${variants.length} variant(s)${orphansDeleted > 0 ? `, ${orphansDeleted} orphan(s) removed` : ''}, ${seoSynced ? 'SEO ✓' : 'SEO ✗'}, ${collectionsCount} collection(s)${extrasError ? ' (extras error: see logs)' : ''}`,
       variants_synced: variants.length,
+      orphans_deleted: orphansDeleted,
       seo_synced: seoSynced,
       collections_synced: collectionsCount,
       extras_error: extrasError,
