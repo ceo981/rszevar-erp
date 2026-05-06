@@ -700,9 +700,22 @@ function SalaryTab({ employees }) {
         <b>Attendance</b>
         <div class="row"><span>Working Days:</span><span>${rec.working_days}</span></div>
         <div class="row"><span>Present Days:</span><span>${rec.present_days}</span></div>
-        <div class="row"><span>Absent Days:</span><span>${rec.absent_days}</span></div>
+        <div class="row"><span>Absent Days (Paid Cut):</span><span>${rec.absent_days}</span></div>
+        <div class="row"><span>Annual Leaves Used:</span><span>${rec.leave_days || 0}</span></div>
         <div class="row"><span>Late Days:</span><span>${rec.late_days}</span></div>
       </div>
+      ${rec.yearly_leaves ? `
+      <div class="section" style="background:#fffbe6;border-left:3px solid #c9a96e;">
+        <b>Yearly Leave Balance</b>
+        <div class="row"><span>Total Allowed:</span><span>${rec.yearly_leaves.allowed} days/year</span></div>
+        <div class="row"><span>Used (before ERP):</span><span>${rec.yearly_leaves.opening_used}</span></div>
+        <div class="row"><span>Used in ERP this year:</span><span>${rec.yearly_leaves.erp_used_this_year}</span></div>
+        <div class="row" style="font-weight:600;color:#10b981;"><span>Remaining:</span><span>${rec.yearly_leaves.remaining} days</span></div>
+        <div style="font-size:10px;color:#888;margin-top:4px;">
+          (Office year: ${rec.yearly_leaves.office_year_start} to ${rec.yearly_leaves.office_year_end})
+        </div>
+      </div>
+      ` : ''}
       <div class="section">
         <b>Earnings</b>
         <div class="row"><span>Base Salary:</span><span>Rs. ${fmt(rec.base_salary)}</span></div>
@@ -765,7 +778,8 @@ function SalaryTab({ employees }) {
             {[
               ['Base Salary', `Rs. ${fmt(preview.calculation.base_salary)}`],
               ['Present Days', preview.calculation.present_days],
-              ['Absent Days', preview.calculation.absent_days],
+              ['Absent Days (Paid Cut)', preview.calculation.absent_days],
+              ['Annual Leaves Used', preview.calculation.free_leave_days || 0],
               ['Late Days', preview.calculation.late_days],
               ['Overtime Pay', `Rs. ${fmt(preview.calculation.overtime_pay)}`],
               ['Bonus (total)', `Rs. ${fmt(preview.calculation.bonus)}`],
@@ -779,6 +793,40 @@ function SalaryTab({ employees }) {
               </div>
             ))}
           </div>
+
+          {/* Yearly leave balance card (May 6 2026) */}
+          {preview.calculation.yearly_leaves && (
+            <div style={{ marginTop: 14, padding: 12, background: '#0f172a', border: '1px solid #c9a96e44', borderRadius: 8 }}>
+              <div style={{ color: '#c9a96e', fontSize: 12, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                🌴 Yearly Leave Balance (Office Year)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, fontSize: 12 }}>
+                <div>
+                  <div style={{ color: '#94a3b8' }}>Allowed</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.allowed} days</div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8' }}>Used (before ERP)</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.opening_used}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8' }}>Used in ERP</div>
+                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.erp_used_this_year}</div>
+                </div>
+                <div>
+                  <div style={{ color: '#94a3b8' }}>Remaining</div>
+                  <div style={{ color: preview.calculation.yearly_leaves.remaining > 0 ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 16 }}>
+                    {preview.calculation.yearly_leaves.remaining} days
+                  </div>
+                </div>
+              </div>
+              {preview.calculation.yearly_leaves.remaining === 0 && preview.calculation.absent_days > 0 && (
+                <div style={{ marginTop: 8, padding: 8, background: '#7f1d1d33', borderRadius: 4, fontSize: 11, color: '#fca5a5' }}>
+                  ⚠️ Yearly leaves khatam — absent days ab paid hain (salary cut applied)
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Bonus breakdown — dikhaye ki bonus kahan se banaa */}
           {preview.calculation.bonus_breakdown && (
