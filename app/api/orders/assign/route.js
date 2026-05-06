@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { canTransition } from '@/lib/order-status';
-import { updateShopifyOrderTags, isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
+import { updateShopifyOrderTags, isActiveLineItem, getEffectiveQuantity, createShopifyFulfillment } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -245,7 +245,7 @@ export async function POST(request) {
     if (action === 'set_packer') {
       const { data: ord } = await supabase
         .from('orders')
-        .select('id, order_number, status')
+        .select('id, order_number, status, shopify_order_id, shopify_fulfillment_id')
         .eq('id', order_id)
         .single();
 
@@ -331,12 +331,68 @@ export async function POST(request) {
         }
       }
 
+      // ── May 6 2026 — SILENT SHOPIFY FULFILL on assign ─────────
+      // Walk-in / wholesale / pickup orders kabhi courier app se book nahi
+      // hote, isliye Shopify pe "Unfulfilled" stuck reh jate the — chahe ERP
+      // mein delivered tak pohch jaye. Result: Shopify dashboard ka data ERP
+      // se mismatch hota tha, aur baad mein "Mark fulfilled" wala option ERP
+      // mein delivered ke baad hidden ho jata tha.
+      //
+      // Fix: jab packer assign hota hai, agar Shopify pe fulfillment nahi
+      // hai (yani courier book nahi hua), to silent fulfillment push karte
+      // hain — bina tracking, bina customer notification. Customer ko sirf
+      // walk-in pickup hi mil raha hai, koi shipping email nahi chahiye.
+      //
+      // Courier orders pe ye no-op hai kyunki shopify_fulfillment_id pehle
+      // se set hota hai (orders/fulfilled webhook se). ERP-only orders
+      // (shopify_order_id null) pe bhi no-op.
+      //
+      // Best-effort: agar Shopify push fail hua to assign block nahi hota,
+      // sirf warning log hoti hai. User baad mein /api/orders/manual-fulfill
+      // se retry kar sakta hai.
+      let shopifyFulfilled = false;
+      let shopifyFulfillError = null;
+      if (ord.shopify_order_id && !ord.shopify_fulfillment_id) {
+        try {
+          const fulfillment = await createShopifyFulfillment(
+            ord.shopify_order_id,
+            null,           // no tracking number — silent office fulfill
+            'Pickup',       // generic courier label for non-shipped orders
+            null,           // no tracking URL
+            { notify_customer: false },  // walk-in customer ko email nahi
+          );
+          if (fulfillment?.id) {
+            await supabase
+              .from('orders')
+              .update({
+                shopify_fulfillment_id: String(fulfillment.id),
+                shopify_fulfilled_at:    nowIso,
+                updated_at:              nowIso,
+              })
+              .eq('id', order_id);
+            shopifyFulfilled = true;
+          }
+        } catch (e) {
+          shopifyFulfillError = e.message;
+          console.error('[assign:set_packer] silent Shopify fulfill failed:', e.message);
+          // Continue — assign action ko block nahi karna
+        }
+      }
+
+      // Build activity log notes — include Shopify fulfill outcome if applicable
+      let assignNotes = `Packed by: ${empName}`;
+      const noteParts = [];
+      if (statusPromoted) noteParts.push('status → on_packing');
+      noteParts.push(`${packingLogWritten.rowsInserted} log row(s)`);
+      noteParts.push(`Rs ${packingLogWritten.totalAmount.toLocaleString()}`);
+      if (shopifyFulfilled) noteParts.push('Shopify auto-fulfilled ✓');
+      else if (shopifyFulfillError) noteParts.push(`Shopify fulfill failed: ${shopifyFulfillError}`);
+      assignNotes += ` (${noteParts.join(', ')})`;
+
       await supabase.from('order_activity_log').insert({
         order_id,
         action: 'packer_set',
-        notes: statusPromoted
-          ? `Packed by: ${empName} (status → on_packing, ${packingLogWritten.rowsInserted} log row(s), Rs ${packingLogWritten.totalAmount.toLocaleString()})`
-          : `Packed by: ${empName} (${packingLogWritten.rowsInserted} log row(s), Rs ${packingLogWritten.totalAmount.toLocaleString()})`,
+        notes: assignNotes,
         performed_by: performer,
         performed_by_email: performerEmail,
         performed_at: nowIso,
@@ -348,6 +404,8 @@ export async function POST(request) {
         status_promoted: statusPromoted,
         packing_log_rows: packingLogWritten.rowsInserted,
         items_amount: packingLogWritten.totalAmount,
+        shopify_fulfilled: shopifyFulfilled,
+        shopify_fulfill_error: shopifyFulfillError,
       });
     }
 
