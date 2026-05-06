@@ -188,6 +188,18 @@ export async function POST(request) {
       throw junctionErr;
     }
 
+    // ── Clear loadsheet_pending flag (May 6 2026) ──────────────────────────
+    // In orders ka kaam pura — flag clear karke pending list se hata do.
+    // Failure non-fatal — loadsheet already saved, race-check next time
+    // duplicate prevent karega anyway.
+    const { error: flagClearErr } = await supabase
+      .from('orders')
+      .update({ loadsheet_pending: false })
+      .in('id', order_ids);
+    if (flagClearErr) {
+      console.warn('[loadsheet:generate] flag clear failed (non-fatal):', flagClearErr.message);
+    }
+
     // ── Activity log entries (one per order) ──────────────────────────────
     const activityRows = orderedOrders.map(o => ({
       order_id: o.id,
