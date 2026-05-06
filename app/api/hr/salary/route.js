@@ -47,6 +47,42 @@ function monthRange(monthStr) {
   };
 }
 
+// ─── Late charge helper (May 6 2026 — tiered) ────────────────────────────
+// Computes per-late charge based on actual arrival time.
+//   - First hour past office_start (11:00–12:00) = late_charge_first_hour
+//   - Each additional 30-min slab past 12:00 = +late_charge_per_30min_slab
+//   - Partial slabs round UP (12:01 → next slab; 12:30 still in same slab)
+// Examples (defaults 100 + 50):
+//   11:50 (50 min past) → 100
+//   12:00 (60 min past) → 100
+//   12:15 (75 min past) → 150  (1 slab past first hour)
+//   12:30 (90 min past) → 150  (still in 1st 30-min slab)
+//   12:31 (91 min past) → 200  (2 slabs past)
+//   13:00 (120 min past) → 200
+//   13:30 (150 min past) → 250
+function computeChargedLateAmount(minutesPastOfficeStart, policy) {
+  const firstHour = parseFloat(policy.late_charge_first_hour) || 100;
+  const slab      = parseFloat(policy.late_charge_per_30min_slab) || 50;
+  if (minutesPastOfficeStart <= 60) return firstHour;
+  const slabsBeyond = Math.ceil((minutesPastOfficeStart - 60) / 30);
+  return Math.round(firstHour + slab * slabsBeyond);
+}
+
+// Compute "minutes past office_start" for an attendance row.
+// Prefers row.time_in (most accurate); falls back to (late_minutes + grace).
+function minutesPastOfficeStart(row, officeStartMins, graceMinutes) {
+  if (row.time_in) {
+    const parts = String(row.time_in).split(':').map(Number);
+    if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+      const arrivalMins = parts[0] * 60 + parts[1];
+      return Math.max(0, arrivalMins - officeStartMins);
+    }
+  }
+  // Fallback: late_minutes is "minutes past grace deadline"
+  // So minutes_past_office_start = late_minutes + grace
+  return Math.max(0, (row.late_minutes || 0) + (graceMinutes || 25));
+}
+
 async function getPolicy(supabase) {
   const { data } = await supabase.from('hr_settings').select('key, value');
   const map = {};
@@ -56,10 +92,14 @@ async function getPolicy(supabase) {
     return Number.isFinite(v) ? v : d;
   };
   return {
-    grace_minutes:               num('grace_minutes', 30),
+    grace_minutes:               num('grace_minutes', 25),
     max_lates_allowed:           num('max_lates_allowed', 6),
-    max_half_days_allowed:       num('max_half_days_allowed', 3),
-    late_deduction_amount:       num('late_deduction_amount', 100),
+    max_half_days_allowed:       num('max_half_days_allowed', 1),
+    late_deduction_amount:       num('late_deduction_amount', 100), // deprecated fallback
+    late_charge_first_hour:      num('late_charge_first_hour',
+                                     num('late_deduction_amount', 100)),
+    late_charge_per_30min_slab:  num('late_charge_per_30min_slab', 50),
+    office_start_time:           map.office_start_time || '11:00',
     leaderboard_bonus_1st:       num('leaderboard_bonus_1st', num('leaderboard_bonus', 2000)),
     leaderboard_bonus_2nd:       num('leaderboard_bonus_2nd', Math.round(num('leaderboard_bonus', 2000) / 2)),
     overtime_rate_multiplier:    num('overtime_rate_multiplier', 1.5),
@@ -90,9 +130,10 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   //                      (salary se deduction NAHI hogi)
   //   - 'unpaid'       → yearly allowance khatam → salary deduction
   //   - null           → legacy data (pehle ka), default unpaid treat karte
+  // time_in + late_minutes — tiered late charge calc ke liye chahiye
   const { data: attendance } = await supabase
     .from('employee_attendance')
-    .select('date, status, leave_type')
+    .select('date, status, leave_type, time_in, late_minutes')
     .eq('employee_id', employee_id)
     .gte('date', start)
     .lte('date', end);
@@ -126,9 +167,40 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const policy = await getPolicy(supabase);
   const perDayRate = totalDays > 0 ? baseSalary / totalDays : 0;
 
-  // ── Late deduction (only on lates beyond the allowed buffer) ────────────
-  const excessLates = Math.max(0, lateDays - policy.max_lates_allowed);
-  const lateDeduction = excessLates * policy.late_deduction_amount;
+  // Office start time in minutes (e.g., "11:00" → 660)
+  const officeStartStr = policy.office_start_time || '11:00';
+  const [osH, osM] = String(officeStartStr).split(':').map(Number);
+  const officeStartMins = (osH || 11) * 60 + (osM || 0);
+
+  // ── Late deduction (May 6 2026 — TIERED CHARGE) ────────────────────────
+  // First N lates per month (max_lates_allowed) are FREE.
+  // Beyond that, each "charged late" amount depends on actual arrival time:
+  //   11:00–12:00 = first hour rate
+  //   12:01–12:30 = first hour + 1 slab
+  //   12:31–13:00 = first hour + 2 slabs
+  //   ... etc
+  // Free lates assigned in DATE ORDER — earliest 6 lates count as free.
+  const lateRows = (attendance || [])
+    .filter(r => String(r.status || '').toLowerCase() === 'late')
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  const freeLatesQuota   = policy.max_lates_allowed;            // typically 6
+  const freeLatesUsed    = Math.min(lateRows.length, freeLatesQuota);
+  const chargedLateRows  = lateRows.slice(freeLatesQuota);
+
+  const lateChargesBreakdown = chargedLateRows.map(row => {
+    const minsPast = minutesPastOfficeStart(row, officeStartMins, policy.grace_minutes);
+    const charge   = computeChargedLateAmount(minsPast, policy);
+    return {
+      date: row.date,
+      time_in: row.time_in || null,
+      minutes_past_office: minsPast,
+      charge,
+    };
+  });
+
+  const lateDeduction = lateChargesBreakdown.reduce((s, x) => s + x.charge, 0);
+  const excessLates   = chargedLateRows.length;   // for time bonus eligibility
 
   // ── Absent deduction ────────────────────────────────────────────────────
   // Sirf PAID absents par cut hota hai (jo yearly allowance se bahar gaye).
@@ -244,6 +316,16 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
     time_bonus_eligible:  timeBonusEligible,
     time_bonus_configured: empTimeBonusAmount,    // for UI hint when not eligible
     manual:               manual,
+    // ── Late breakdown (May 6 2026 tiered) ────────────────────────────────
+    // Stored in bonus_breakdown JSONB to avoid schema migration. Slip + UI
+    // read this for showing free vs charged late breakdown.
+    late_breakdown: {
+      free_quota:        freeLatesQuota,
+      free_used:         freeLatesUsed,
+      charged_count:     chargedLateRows.length,
+      charged_total_rs:  Math.round(lateDeduction),
+      charged_details:   lateChargesBreakdown,    // [{date, time_in, charge}]
+    },
   };
 
   // ── Pending advances (eligible for deduction this month) ────────────────
