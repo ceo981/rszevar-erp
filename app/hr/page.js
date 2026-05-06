@@ -742,6 +742,22 @@ function SalaryTab({ employees }) {
       <div class="section">
         <b>Deductions</b>
         <div class="row"><span>Late Deduction:</span><span>- Rs. ${fmt(rec.late_deduction)}</span></div>
+        ${(() => {
+          const lb = (rec.bonus_breakdown && rec.bonus_breakdown.late_breakdown) || null;
+          if (!lb || lb.charged_count === 0) return '';
+          const detailRows = (lb.charged_details || []).map(d =>
+            `<div style="display:flex;justify-content:space-between;font-size:11px;color:#666;padding:2px 0;">
+              <span>&nbsp;&nbsp;• ${d.date}${d.time_in ? ` (${String(d.time_in).slice(0,5)})` : ''}</span>
+              <span>- Rs. ${fmt(d.charge)}</span>
+            </div>`
+          ).join('');
+          return `
+            <div style="font-size:11px;color:#666;margin:4px 0 6px 12px;">
+              ${lb.free_used}/${lb.free_quota} free lates used, ${lb.charged_count} charged:
+            </div>
+            ${detailRows}
+          `;
+        })()}
         <div class="row"><span>Absent Deduction:</span><span>- Rs. ${fmt(rec.absent_deduction)}</span></div>
         <div class="row"><span>Advance Deduction:</span><span>- Rs. ${fmt(rec.advance_deduction)}</span></div>
         <div class="row"><span>Unpaid Leave:</span><span>- Rs. ${fmt(rec.unpaid_leave_deduction)}</span></div>
@@ -1201,10 +1217,11 @@ function EmployeeOrdersDetail({ employeeName, month, drill }) {
 function PolicyTab() {
   const [policy, setPolicy] = useState({
     office_start_time: '11:00',
-    grace_minutes: '30',
+    grace_minutes: '25',                  // 11:00 → 11:25 = ON TIME
     max_lates_allowed: '6',
-    max_half_days_allowed: '3',
-    late_deduction_amount: '100',
+    max_half_days_allowed: '1',
+    late_charge_first_hour: '100',        // 11:00–12:00 charged late = Rs 100
+    late_charge_per_30min_slab: '50',     // each 30-min slab after = +Rs 50
     leaderboard_bonus_1st: '2000',
     leaderboard_bonus_2nd: '1000',
     overtime_rate_multiplier: '1.5',
@@ -1248,10 +1265,16 @@ function PolicyTab() {
     <div>
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Office Timing & Late Policy</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
-        <Field label="Office Start Time" k="office_start_time" type="time" help="Yeh time ke baad late count hoga" />
-        <Field label="Grace Period" k="grace_minutes" suffix="minutes" help="Kitne minutes baad aana late count hoga" />
-        <Field label="Max Lates Allowed" k="max_lates_allowed" suffix="per month" help="Is se zyada late = time bonus nahi milega" />
-        <Field label="Max Half Days Allowed" k="max_half_days_allowed" suffix="per month" />
+        <Field label="Office Start Time" k="office_start_time" type="time" help="11:00 AM = official check-in time" />
+        <Field label="On-Time Grace" k="grace_minutes" suffix="minutes" help="Office Start + ye minutes = ON TIME (e.g., 25 = 11:00-11:25 on time)" />
+        <Field label="Max Free Lates" k="max_lates_allowed" suffix="per month" help="Pehli itni lates FREE (e.g., 6). Iske baad charge lagega" />
+        <Field label="Max Free Half Days" k="max_half_days_allowed" suffix="per month" help="Itni half-days FREE (e.g., 1)" />
+      </div>
+
+      <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Charged Late Tiers (after free quota)</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <Field label="First Hour Charge" k="late_charge_first_hour" suffix="Rs" help="11:00-12:00 arrival pe charge (1st slab)" />
+        <Field label="Per 30min Slab" k="late_charge_per_30min_slab" suffix="Rs" help="12:00 ke baad har 30 min slab pe extra charge" />
       </div>
 
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Bonuses</h3>
@@ -1266,15 +1289,44 @@ function PolicyTab() {
         <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour rate" />
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: 8, padding: 14, marginBottom: 20, fontSize: 13, color: '#94a3b8' }}>
-        <strong style={{ color: '#c9a96e' }}>Late ka Rule:</strong> Agar employee office start se {policy.grace_minutes} min baad aaye to late count hoga. {policy.max_lates_allowed} late + {policy.max_half_days_allowed} half day free hain. Baad wale ka salary cut hoga (hours × per hour rate). Deduction = Salary ÷ 30 days ÷ 10 hours.
+      <div style={{ background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
+        <strong style={{ color: '#c9a96e', fontSize: 14 }}>📋 Late Rule Summary:</strong>
+        <div style={{ marginTop: 8 }}>
+          • <strong>{policy.office_start_time}</strong> – <strong>{(() => {
+            const [h, m] = (policy.office_start_time || '11:00').split(':').map(Number);
+            const grace = parseInt(policy.grace_minutes) || 25;
+            const totalMins = h * 60 + m + grace;
+            return `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`;
+          })()}</strong> = <span style={{ color: '#22c55e' }}>ON TIME</span> (no late count)
+        </div>
+        <div>
+          • <strong>{policy.max_lates_allowed} lates/month</strong> + <strong>{policy.max_half_days_allowed} half-day/month</strong> = FREE (no salary cut)
+        </div>
+        <div>
+          • Quota exceed hone ke baad CHARGED LATE start hoti hai actual arrival time pe:
+        </div>
+        <div style={{ marginLeft: 16, marginTop: 4, fontSize: 12 }}>
+          – 11:00 to 12:00 arrival = <strong style={{ color: '#fbbf24' }}>Rs {policy.late_charge_first_hour}</strong>
+          <br/>– 12:01 to 12:30 = <strong style={{ color: '#fbbf24' }}>Rs {parseInt(policy.late_charge_first_hour) + parseInt(policy.late_charge_per_30min_slab)}</strong>
+          <br/>– 12:31 to 13:00 = <strong style={{ color: '#fbbf24' }}>Rs {parseInt(policy.late_charge_first_hour) + 2 * parseInt(policy.late_charge_per_30min_slab)}</strong>
+          <br/>– 13:01 to 13:30 = <strong style={{ color: '#fbbf24' }}>Rs {parseInt(policy.late_charge_first_hour) + 3 * parseInt(policy.late_charge_per_30min_slab)}</strong> (… +Rs {policy.late_charge_per_30min_slab} per 30 min slab)
+        </div>
+        <div style={{ marginTop: 8 }}>
+          • <strong>Time Bonus:</strong> sirf jab lates ≤ {policy.max_lates_allowed} AND half-days ≤ {policy.max_half_days_allowed} AND koi paid absent NAHI ho.
+        </div>
       </div>
 
       {msg && <div style={{ marginBottom: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
       <div style={{ display: 'flex', gap: 10 }}>
         <button onClick={save} style={btnStyle}>💾 Save Policy</button>
         <button
-          onClick={() => window.open('/api/hr/print-report?upto=2026-03-31', '_blank')}
+          onClick={() => {
+            // May 6 2026 — month-aware: use current month's last day as upto
+            const now = new Date();
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            const upto = lastDay.toISOString().slice(0, 10);
+            window.open(`/api/hr/print-report?upto=${upto}`, '_blank');
+          }}
           style={{ ...btnStyle, background: '#1e293b', color: '#c9a96e', border: '1px solid #c9a96e44' }}
         >
           📄 Print HR Rules + Leave Report
