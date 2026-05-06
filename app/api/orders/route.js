@@ -238,29 +238,32 @@ export async function GET(request) {
         // WhatsApp-cancelled orders pending team review
         q = q.eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]');
       }
-      // FIX Apr 2026 — Shopify "unfulfilled" filter: order Shopify side pe abhi
-      // tak fulfill nahi hua. JSONB query: shopify_raw.fulfillment_status null
-      // hai (no fulfillment) ya 'partial' (kuch items reh gaye). Yeh ERP status
-      // ke alag hai — yahan Shopify ki nazar se filter ho raha.
+      // FIX May 6 2026 — Shopify "unfulfilled" filter: ab `shopify_fulfillment_id`
+      // column use karte hain, NA ke `shopify_raw->>fulfillment_status` JSONB field.
+      //
+      // Pehle wala bug: `fulfillment_status` Shopify ka snapshot field hai jo
+      // aksar stale/null reh jata tha chahe order pe tracking actually attach
+      // ho chuki ho. Result: tracked + dispatched orders Unfulfilled tab mein
+      // phans jate the. (Same bug pe convert-to-credit route mein bhi pichli
+      // baar comment likha gaya tha.)
+      //
+      // Ab `shopify_fulfillment_id` use karte hain — ye column directly
+      // extractFulfillmentInfo() se set hoti hai jab webhook mein fulfillments[]
+      // array dikhta hai. Manual-fulfill, dispatch, convert-to-credit, aur
+      // assign auto-fulfill — sab is column ko reliably set karte hain. Cancel
+      // fulfillment isi ko clear bhi karta hai.
       //
       // 4 exclusions + 1 inclusion for clean operational view:
       //   (a) ERP status cancelled — local cancel — EXCEPT review orders
       //       (status=cancelled + tag whatsapp_cancelled) jo include hote hain
-      //       taake team unhe dekh sake aur decide kare. Badge automatically
-      //       lagta hai un rows pe (orders/page.js line 1296).
-      //   (b) Shopify cancelled_at set — Shopify side cancelled (catches
-      //       orphan orders jahan webhook miss ho gaya aur ERP status update
-      //       nahi hua)
-      //   (c) fulfillment_status null/partial — kya Shopify ne fulfill kiya
-      //   (d) **May 4 2026** is_credit_order = true wale orders exclude.
-      //       Credit/udhaar customer pe maal physically pohanch chuka hai —
-      //       packing operations ko un orders ki zaroorat nahi. `not is true`
-      //       use kiya hai taake NULL aur false dono match hoon (column ka
-      //       default na ho to bhi safe).
+      //       taake team unhe dekh sake aur decide kare.
+      //   (b) Shopify cancelled_at set — catches orphan cancellations
+      //   (c) shopify_fulfillment_id IS NULL — yani fulfilled nahi hua
+      //   (d) is_credit_order = true wale orders exclude (May 4 2026)
       if (fulfillment === 'unfulfilled') {
         q = q.is('shopify_raw->>cancelled_at', null)
              .not('is_credit_order', 'is', true)
-             .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
+             .is('shopify_fulfillment_id', null);
 
         // Status condition: not cancelled, OR if cancelled then must be a
         // whatsapp-review order (id in prefetched list). Empty list ke case
@@ -417,15 +420,15 @@ export async function GET(request) {
       baseCount().eq('payment_status', 'paid'),
       baseCount().eq('payment_status', 'unpaid'),
       baseCount().eq('status', 'cancelled').contains('tags', '["whatsapp_cancelled"]'),
-      // FIX Apr 2026 — Shopify "unfulfilled" count (operational view).
-      // Match karta hai applyFilters mein wala logic — 4 exclusions + 1 inclusion
-      // (May 4 2026: added is_credit_order exclusion + WhatsApp review inclusion
-      // taake count list ke saath sync rahe).
+      // FIX May 6 2026 — Shopify "unfulfilled" count must mirror list filter.
+      // List ne shopify_fulfillment_id pe shift kiya hai (reliable column
+      // vs flaky shopify_raw->>fulfillment_status). Count yahan bhi same
+      // logic — warna tab badge aur list rows ka mismatch hota hai.
       (() => {
         let q = baseCount()
           .is('shopify_raw->>cancelled_at', null)
           .not('is_credit_order', 'is', true)
-          .or('shopify_raw->>fulfillment_status.is.null,shopify_raw->>fulfillment_status.eq.partial');
+          .is('shopify_fulfillment_id', null);
         if (reviewIncludeIds.length > 0) {
           q = q.or(`status.neq.cancelled,id.in.(${reviewIncludeIds.join(',')})`);
         } else {
