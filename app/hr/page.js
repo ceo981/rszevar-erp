@@ -319,6 +319,10 @@ function AdvancesTab({ employees }) {
   const [pendingTotal, setPendingTotal] = useState(0);
   const [form, setForm] = useState({ employee_id: '', amount: '', given_by: '', given_date: today(), deduct_month: thisMonth(), notes: '' });
   const [msg, setMsg] = useState('');
+  // May 6 2026 — Month filter (default = current month)
+  // Advances list ko sirf selected month ke given_date wali entries dikhao.
+  // Aaj k cards saaf rakhne ke liye — past months alag se browse kar sakte hain.
+  const [filterMonth, setFilterMonth] = useState(thisMonth());
 
   const load = useCallback(async () => {
     const r = await fetch('/api/hr/advances');
@@ -328,6 +332,22 @@ function AdvancesTab({ employees }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Filter advances by selected month (based on given_date)
+  const filteredAdvances = (() => {
+    if (!filterMonth) return advances;
+    const [y, m] = filterMonth.split('-').map(Number);
+    return (advances || []).filter(a => {
+      if (!a.given_date) return false;
+      const d = new Date(a.given_date);
+      return d.getFullYear() === y && (d.getMonth() + 1) === m;
+    });
+  })();
+
+  // Per-month outstanding total (only pending advances within filter)
+  const monthOutstanding = filteredAdvances
+    .filter(a => a.status === 'pending')
+    .reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -356,10 +376,24 @@ function AdvancesTab({ employees }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 20px' }}>
-          <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Outstanding</div>
-          <div style={{ color: '#ef4444', fontSize: 20, fontWeight: 700 }}>Rs. {fmt(pendingTotal)}</div>
+          <div style={{ color: '#94a3b8', fontSize: 12 }}>This Month Outstanding</div>
+          <div style={{ color: '#ef4444', fontSize: 20, fontWeight: 700 }}>Rs. {fmt(monthOutstanding)}</div>
+          <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>(filtered month ke pending only)</div>
+        </div>
+        <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 20px' }}>
+          <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Outstanding (All Time)</div>
+          <div style={{ color: '#f59e0b', fontSize: 20, fontWeight: 700 }}>Rs. {fmt(pendingTotal)}</div>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <div style={{ color: '#94a3b8', fontSize: 11, marginBottom: 4 }}>Filter Month</div>
+          <input
+            type="month"
+            value={filterMonth}
+            onChange={e => setFilterMonth(e.target.value)}
+            style={{ ...inputStyle, fontSize: 14, fontWeight: 600 }}
+          />
         </div>
       </div>
 
@@ -390,7 +424,7 @@ function AdvancesTab({ employees }) {
             </tr>
           </thead>
           <tbody>
-            {advances.map(a => (
+            {filteredAdvances.map(a => (
               <tr key={a.id} style={{ borderBottom: '1px solid #1e293b' }}>
                 <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{a.employees?.name}</td>
                 <td style={{ padding: '8px 12px', color: '#ef4444', fontWeight: 600 }}>Rs. {fmt(a.amount)}</td>
@@ -413,7 +447,7 @@ function AdvancesTab({ employees }) {
                 </td>
               </tr>
             ))}
-            {advances.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No advances</td></tr>}
+            {filteredAdvances.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>{advances.length === 0 ? 'No advances yet' : `No advances in ${filterMonth}`}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -639,7 +673,11 @@ function OvertimeTab({ employees }) {
 // ─────────────────────────────────────────────
 // SALARY TAB
 // ─────────────────────────────────────────────
-function SalaryTab({ employees }) {
+function SalaryTab({ employees, allEmployees }) {
+  // `employees` = staff list (CEO filtered out) for rendering calculate cards
+  // `allEmployees` = full list (incl inactive + CEO) for name resolution on
+  //                  saved slip records — past data may reference any employee
+  const nameLookupList = allEmployees || employees;
   const [month, setMonth] = useState(thisMonth());
   const [records, setSalaryRecords] = useState([]);
   const [calculating, setCalculating] = useState(null);
@@ -680,7 +718,7 @@ function SalaryTab({ employees }) {
   }
 
   function printSlip(rec) {
-    const emp = employees.find(e => e.id === rec.employee_id) || {};
+    const emp = nameLookupList.find(e => e.id === rec.employee_id) || {};
     const w = window.open('', '_blank');
     w.document.write(`
       <html><head><title>Salary Slip - ${emp.name}</title>
@@ -1353,6 +1391,11 @@ export default function HRPage() {
   // process karne ke liye inactive bhi chahiye name-resolution ke liye.
   const activeEmployees = employees.filter(e => e.status !== 'inactive');
 
+  // May 6 2026 — CEO/super_admin ko Attendance + Salary list se hatao.
+  // Boss ko khud ko track nahi karna. Other tabs (advances/leaves/overtime)
+  // CEO ke liye still available agar zarurat ho.
+  const staffEmployees = activeEmployees.filter(e => String(e.role || '').toLowerCase() !== 'super_admin');
+
   return (
     <div style={{ padding: '24px', minHeight: '100vh', background: '#0f172a', color: '#e2e8f0' }}>
       <div style={{ marginBottom: 24 }}>
@@ -1376,11 +1419,11 @@ export default function HRPage() {
 
       {/* Tab content */}
       <div style={{ background: '#0f172a' }}>
-        {activeTab === 'attendance' && <AttendanceTab employees={activeEmployees} />}
+        {activeTab === 'attendance' && <AttendanceTab employees={staffEmployees} />}
         {activeTab === 'advances'   && <AdvancesTab   employees={activeEmployees} />}
         {activeTab === 'leaves'     && <LeavesTab     employees={activeEmployees} />}
         {activeTab === 'overtime'   && <OvertimeTab   employees={activeEmployees} />}
-        {activeTab === 'salary'      && <SalaryTab     employees={employees} />}
+        {activeTab === 'salary'      && <SalaryTab     employees={staffEmployees} allEmployees={employees} />}
         {activeTab === 'leaderboard' && <LeaderboardTab />}
         {activeTab === 'policy'      && <PolicyTab />}
       </div>
