@@ -1,5 +1,5 @@
 // ============================================================================
-// RS ZEVAR ERP — Auto Product Sync Webhook (Apr 28 2026 final)
+// RS ZEVAR ERP — Auto Product Sync Webhook (Apr 28 + May 6 2026 fix)
 // Route: /api/shopify/webhooks/products-update
 // ----------------------------------------------------------------------------
 // Multi-secret HMAC verification — supports BOTH:
@@ -9,6 +9,12 @@
 //     custom app's "API secret key", stored in env var SHOPIFY_APP_WEBHOOK_SECRET)
 //
 // Tries each configured secret in turn. First match wins.
+//
+// May 6 2026 fix — DELETED VARIANT CLEANUP:
+// Pehle webhook sirf upsert karta tha. Agar Shopify pe variant delete kiya,
+// to webhook fire hota tha (4 variants ke saath, 5th ke baghair) lekin DB
+// mein 5th variant orphan reh jata tha. Ab upsert ke baad cleanup chalta hai
+// — sirf wahi variants DB mein rehte hain jo Shopify ne payload mein bheje.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -168,13 +174,46 @@ export async function POST(request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // ── DELETED VARIANT CLEANUP (May 6 2026) ──────────────────────────────
+  // Shopify ne payload mein jo variants diye, sirf wahi DB mein rehne chahiyen.
+  // Baqi sab is product ke under orphan hain — delete kar do.
+  // Order matters: pehle upsert (data fresh ho jaye), phir delete (yahan fail
+  // ho bhi to editable data safe hai).
+  let orphansDeleted = 0;
+  try {
+    const freshVariantIds = variants.map(v => String(v.shopify_variant_id));
+    const productIdStr = String(shopifyProduct.id);
+
+    const { data: deletedRows, error: delErr } = await supabase
+      .from('products')
+      .delete()
+      .eq('shopify_product_id', productIdStr)
+      .not('shopify_variant_id', 'in', `(${freshVariantIds.map(v => `"${v}"`).join(',')})`)
+      .select('shopify_variant_id, sku');
+
+    if (delErr) {
+      console.error('[webhook:products] orphan cleanup failed:', delErr.message);
+    } else {
+      orphansDeleted = deletedRows?.length || 0;
+      if (orphansDeleted > 0) {
+        console.log(
+          `[webhook:products] cleaned ${orphansDeleted} orphan variant(s) for product ${productIdStr}:`,
+          deletedRows.map(r => `${r.sku || '?'} (${r.shopify_variant_id})`).join(', ')
+        );
+      }
+    }
+  } catch (e) {
+    console.error('[webhook:products] orphan cleanup exception:', e.message);
+  }
+
   const elapsed = Date.now() - startTime;
-  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} extras=${JSON.stringify(extrasFetched)} elapsed_ms=${elapsed}`);
+  console.log(`[webhook:products] SUCCESS — product_id=${shopifyProduct.id} title="${(shopifyProduct.title || '').slice(0, 50)}" variants_synced=${variants.length} orphans_deleted=${orphansDeleted} extras=${JSON.stringify(extrasFetched)} elapsed_ms=${elapsed}`);
 
   return NextResponse.json({
     success: true,
     product: shopifyProduct.title,
     variants_synced: variants.length,
+    orphans_deleted: orphansDeleted,
     extras: extrasFetched,
   });
 }
