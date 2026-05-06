@@ -525,6 +525,13 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     if (!assignedTo) return;
     setLoading(true); setMsg('');
     try {
+      // FIX May 6 2026 — 'packing_team' string ko parseInt nahi karna.
+      // Pehle: parseInt('packing_team') → NaN → JSON serialize → null → API
+      // "Valid employee select karo" reject karta tha.
+      // Ab: agar 'packing_team' hai to as-is bhejo, warna employee numeric ID.
+      const isTeam = assignedTo === 'packing_team';
+      const assignPayload = isTeam ? 'packing_team' : parseInt(assignedTo);
+
       // FIX: explicit action field (was silently failing with "Unknown action")
       // + performer attribution for audit log
       const r = await fetch('/api/orders/assign', {
@@ -533,18 +540,22 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
         body: JSON.stringify({
           order_id: order.id,
           action: 'set_packer',
-          assigned_to: parseInt(assignedTo),
+          assigned_to: assignPayload,
           performed_by: performer,
           performed_by_email: userEmail,
         }),
       });
       const d = await r.json();
       if (d.success) {
-        const emp = packingStaff.find(e => String(e.id) === String(assignedTo));
-        setCurrentAssignment({ assigned_to: parseInt(assignedTo), employee: emp });
+        const emp = isTeam ? null : packingStaff.find(e => String(e.id) === String(assignedTo));
+        setCurrentAssignment({
+          assigned_to: isTeam ? null : parseInt(assignedTo),
+          employee: emp,
+          notes: isTeam ? 'packing_team' : '',
+        });
         // Only claim on_packing if backend actually promoted the status
         if (d.status_promoted) setLocalStatus('on_packing');
-        setMsg(`✅ Assigned to ${emp?.name || 'packer'}!`);
+        setMsg(`✅ Assigned to ${isTeam ? 'Packing Team' : (emp?.name || 'packer')}!`);
         onRefresh();
       } else { setMsg('❌ ' + d.error); }
     } catch (e) { setMsg('❌ ' + e.message); }
