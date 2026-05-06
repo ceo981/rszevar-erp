@@ -34,6 +34,48 @@ const success = '#22c55e';
 const danger = '#ef4444';
 const warn = '#f59e0b';
 
+// ── Scan input parser (May 6 2026) ────────────────────────────────────────
+// Different couriers ke barcode/QR codes mein different content hota hai.
+// Ye function us raw scanned text ko clean karke actual tracking number
+// extract karta hai jo DB mein match karega.
+//
+// Cases handle hote hain:
+//   1. Plain tracking (e.g. "KI7534542222")        → as-is
+//   2. Leopards QR     (e.g. "KI7534528163,789,2500.00") → "KI7534528163"
+//      (comma-separated: tracking, user_id, cod_amount)
+//   3. Scan-to-Pay QR  (e.g. "https://payment...")  → REJECT with hint
+//   4. Order number    (e.g. "ZEVAR-119098")        → as-is (backend handles)
+//   5. Kangaroo 1D     (e.g. "KL97671415")          → as-is
+function parseScanInput(rawText) {
+  let text = String(rawText || '').trim();
+  if (!text) return { value: '', valid: false, reason: 'Empty input' };
+
+  // Scan-to-Pay QRs contain URLs — Leopards aur baqi couriers ka payment QR.
+  // Hum tracking chahte hain, payment URL nahi.
+  if (/^https?:\/\//i.test(text)) {
+    return {
+      value: text,
+      valid: false,
+      reason: 'Ye Scan-to-Pay QR lagta hai (URL hai). Tracking barcode/QR scan karein',
+    };
+  }
+
+  // Leopards QR format: "TRACKING,USER_ID,COD_AMOUNT"
+  // Pehle segment ko (tracking) lelo
+  if (text.includes(',')) {
+    text = text.split(',')[0].trim();
+  }
+
+  // Trailing non-alphanumeric chars hata do (rare scanner artifact)
+  text = text.replace(/[^A-Za-z0-9-]+$/, '');
+  if (!text) {
+    return { value: '', valid: false, reason: 'Parse ke baad text empty' };
+  }
+
+  // Normalize to uppercase — DB mein tracking + ZEVAR-XXX uppercase store hote hain
+  return { value: text.toUpperCase(), valid: true };
+}
+
 // ── Audio feedback (Web Audio API — no asset files) ──────────────────────
 function playBeep(type = 'success') {
   try {
@@ -130,7 +172,8 @@ export default function DispatchScanPage() {
 
     (async () => {
       try {
-        const { Html5Qrcode } = await import('html5-qrcode');
+        const lib = await import('html5-qrcode');
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = lib;
         if (!mounted) return;
         scanner = new Html5Qrcode('qr-reader');
         scannerRef.current = scanner;
@@ -139,15 +182,47 @@ export default function DispatchScanPage() {
           { facingMode: 'environment' },     // Back camera on phones
           {
             fps: 10,
-            qrbox: { width: 280, height: 140 },  // Wider for 1D barcodes
-            aspectRatio: 1.5,
+            // Wider qrbox so 1D barcodes (Kangaroo KL..., Leopards 1D KI...)
+            // ke saath bhi work kare. Adapts to viewfinder size.
+            qrbox: (vw, vh) => {
+              const minEdge = Math.min(vw || 320, vh || 320);
+              const w = Math.floor(minEdge * 0.85);
+              const h = Math.floor(w * 0.55);  // 1D-friendly aspect
+              return { width: w, height: h };
+            },
+            aspectRatio: 1.4,
+            // Explicit format support — both 2D (QR) AND common 1D barcodes
+            // jo Pakistani couriers use karte hain
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.QR_CODE,
+              Html5QrcodeSupportedFormats.CODE_128,   // Leopards/Kangaroo 1D
+              Html5QrcodeSupportedFormats.CODE_39,
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.CODE_93,
+              Html5QrcodeSupportedFormats.ITF,
+            ],
+            // Native browser BarcodeDetector use karo agar available — Chrome/Edge
+            // pe much faster aur reliable hai 1D barcodes ke liye
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true },
           },
           (decodedText) => {
             // Debounce: same camera might fire same code multiple times rapidly
             const now = Date.now();
             if (now - lastScanTimeRef.current < 1500) return;
             lastScanTimeRef.current = now;
-            handleScan(decodedText);
+
+            // Parse raw scan output → extract clean tracking number
+            // (handles Leopards comma-separated QR, rejects Scan-to-Pay URLs)
+            const parsed = parseScanInput(decodedText);
+            if (!parsed.valid) {
+              setFeedback({ type: 'error', text: parsed.reason });
+              playBeep('error');
+              return;
+            }
+            handleScan(parsed.value);
           },
           () => {} // Ignore per-frame parse errors
         );
@@ -234,7 +309,16 @@ export default function DispatchScanPage() {
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && scanInput.trim()) {
       e.preventDefault();
-      handleScan(scanInput);
+      // Parse the input — strips Leopards comma-separated format,
+      // rejects URLs, normalizes to uppercase
+      const parsed = parseScanInput(scanInput);
+      if (!parsed.valid) {
+        setFeedback({ type: 'error', text: parsed.reason });
+        playBeep('error');
+        setScanInput('');
+        return;
+      }
+      handleScan(parsed.value);
     }
   };
 
