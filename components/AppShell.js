@@ -27,9 +27,9 @@ const MODULES = [
   { id: 'dashboard',    href: '/dashboard',    label: 'Dashboard',     icon: '◫',  perm: 'dashboard.view' },
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
   // ── Children of 'orders' parent (May 6 2026 — sidebar nesting) ───────────
-  { id: 'dispatch-scan', href: '/orders/dispatch-scan', label: 'Dispatch Scan', icon: '📡', perm: 'orders.view', parent: 'orders' },
-  { id: 'credits',      href: '/credits',      label: 'Customer Credits', icon: '📒', perm: 'credits.view', parent: 'orders' },
-  { id: 'historical-orders', href: '/historical-orders', label: 'Archive', icon: '📁', perm: 'historical_orders.view' },
+  { id: 'dispatch-scan',     href: '/orders/dispatch-scan', label: 'Dispatch Scan',     icon: '📡', perm: 'orders.view',             parent: 'orders' },
+  { id: 'credits',           href: '/credits',              label: 'Customer Credits',  icon: '📒', perm: 'credits.view',            parent: 'orders' },
+  { id: 'historical-orders', href: '/historical-orders',    label: 'Archive',           icon: '📁', perm: 'historical_orders.view', parent: 'orders' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
   { id: 'accounts',     href: '/accounts',     label: 'Accounts',      icon: '💰', perm: 'accounts.view' },
   { id: 'courier',      href: '/courier',      label: 'Courier',       icon: '🚚', perm: 'courier.view' },
