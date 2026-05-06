@@ -28,6 +28,7 @@ const MODULES = [
   { id: 'orders',       href: '/orders',       label: 'Orders',        icon: '📋', perm: 'orders.view' },
   // ── Children of 'orders' parent (May 6 2026 — sidebar nesting) ───────────
   { id: 'dispatch-scan',     href: '/orders/dispatch-scan', label: 'Dispatch Scan',     icon: '📡', perm: 'orders.view',             parent: 'orders' },
+  { id: 'loadsheets',        href: '/orders/loadsheets',    label: 'Loadsheets',        icon: '🧾', perm: 'orders.view',             parent: 'orders' },
   { id: 'credits',           href: '/credits',              label: 'Customer Credits',  icon: '📒', perm: 'credits.view',            parent: 'orders' },
   { id: 'historical-orders', href: '/historical-orders',    label: 'Archive',           icon: '📁', perm: 'historical_orders.view', parent: 'orders' },
   { id: 'inventory',    href: '/inventory',    label: 'Inventory',     icon: '📦', perm: 'inventory.view' },
