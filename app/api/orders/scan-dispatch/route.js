@@ -63,7 +63,7 @@ export async function POST(request) {
     {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, status, tracking_number, dispatched_courier, customer_name, customer_city, total_amount, payment_method, payment_status, shopify_order_id, shopify_fulfillment_id')
+        .select('id, order_number, status, tracking_number, dispatched_courier, customer_name, customer_city, total_amount, payment_method, payment_status, shopify_order_id, shopify_fulfillment_id, loadsheet_pending')
         .eq('tracking_number', tracking_input)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -78,7 +78,7 @@ export async function POST(request) {
     if (!order) {
       const { data, error } = await supabase
         .from('orders')
-        .select('id, order_number, status, tracking_number, dispatched_courier, customer_name, customer_city, total_amount, payment_method, payment_status, shopify_order_id, shopify_fulfillment_id')
+        .select('id, order_number, status, tracking_number, dispatched_courier, customer_name, customer_city, total_amount, payment_method, payment_status, shopify_order_id, shopify_fulfillment_id, loadsheet_pending')
         .eq('order_number', tracking_input)
         .order('updated_at', { ascending: false })
         .limit(1)
@@ -102,14 +102,42 @@ export async function POST(request) {
     }
 
     // ── Re-scan detection ─────────────────────────────────────────────────
-    // Order pehle se dispatched / delivered hai — UI ko bata do taake user
-    // ko duplicate scan ka warning dikha sake. Ye error nahi hai — just info.
+    // Order pehle se dispatched / delivered hai. May 6 2026 update:
+    //   - Agar order kisi loadsheet mein PEHLE SE hai → error, kuch nahi karte
+    //   - Agar nahi hai (dispatched via Shopify auto, etc.) → loadsheet_pending
+    //     flag TRUE set kar do taake current session mein dikhe.
     if (order.status === 'dispatched' || order.status === 'delivered') {
+      // Check if already in any loadsheet
+      const { data: linkedRows } = await supabase
+        .from('loadsheet_orders')
+        .select('loadsheet_id')
+        .eq('order_id', order.id)
+        .limit(1);
+      const alreadyInLoadsheet = (linkedRows || []).length > 0;
+
+      if (alreadyInLoadsheet) {
+        return NextResponse.json({
+          success: false,
+          already_in_loadsheet: true,
+          error: `${order.order_number} pehle hi kisi loadsheet mein hai`,
+          order: buildOrderSummary(order),
+        }, { status: 200 });
+      }
+
+      // Not in any loadsheet — add to current session by setting flag
+      if (!order.loadsheet_pending) {
+        await supabase
+          .from('orders')
+          .update({ loadsheet_pending: true, updated_at: new Date().toISOString() })
+          .eq('id', order.id);
+      }
+
       return NextResponse.json({
-        success: false,
+        success: true,
         already_dispatched: true,
-        error: `${order.order_number} pehle se ${order.status} hai`,
-        order: buildOrderSummary(order),
+        added_to_session: true,
+        message: `${order.order_number} pehle se ${order.status} thi — loadsheet session mein add kar di`,
+        order: buildOrderSummary({ ...order, loadsheet_pending: true }),
       }, { status: 200 });
     }
 
@@ -147,6 +175,7 @@ export async function POST(request) {
       status: 'dispatched',
       dispatched_at: nowIso,
       updated_at: nowIso,
+      loadsheet_pending: true,   // May 6 2026 — flag for current scan session
     };
     if (lookupMethod === 'tracking_number' && !order.tracking_number) {
       updatePayload.tracking_number = tracking_input;
