@@ -89,7 +89,7 @@ export function PaymentBadge({ payment_status }) {
 // ─── OrderDrawer (the main export) ───────────────────────────────────────
 export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultTab = 'actions' }) {
   const isPage = variant === 'page';
-  const { profile } = useUser();
+  const { profile, can } = useUser();
   const userRole    = profile?.role || '';
   const { userEmail } = useUser();
   const isCEO       = userRole === 'super_admin' || userRole === 'admin';
@@ -97,6 +97,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const isDispatcher = userRole === 'dispatcher';
   const canConfirm  = isCEO || isOpsManager;
   const canPack     = isCEO || isDispatcher;
+  // May 6 2026 — granular DB-driven permission for cancel fulfillment.
+  // CEO/super_admin auto-passes via can(). Other roles need explicit grant
+  // from /roles page.
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
 
   // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
   const [isMobile, setIsMobile] = useState(false);
@@ -1187,8 +1191,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   staff ne accidentally galat courier book kar diya, ya order
                   edit hua aur dobara book karna hai. Tracking + courier clear
                   ho jate, status dispatched → confirmed wapas, Shopify side
-                  bhi cancel hoti hai (ya already cancelled hai toh skip). */}
-              {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
+                  bhi cancel hoti hai (ya already cancelled hai toh skip).
+                  May 6 2026 — Now uses granular permission orders.cancel_fulfillment.
+                  Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
+              {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
                 <button onClick={cancelFulfillment} disabled={loading}
                   style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   🔄 Cancel Fulfillment (remove tracking)
