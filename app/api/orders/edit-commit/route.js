@@ -47,13 +47,25 @@ async function resyncOrderFromShopify(orderRow) {
   const so = await fetchOrder(orderRow.shopify_order_id);
   if (!so) throw new Error('Shopify order not found after commit');
 
-  const subtotal = parseFloat(so.subtotal_price || so.current_subtotal_price || 0);
+  // FIX May 2026 — Post-edit totals: use `current_*` fields FIRST.
+  // Shopify ke saath orders edit hone ke baad:
+  //   - subtotal_price / total_price / total_discounts = ORIGINAL snapshot
+  //     (order create hone ke time wali values; edit ke baad bhi same rehti hain)
+  //   - current_subtotal_price / current_total_price / current_total_discounts
+  //     = LIVE post-edit values (authoritative truth)
+  //
+  // Pehle `||` ke saath subtotal_price first read ho raha tha — isliye
+  // ERP mein edit ke baad stale values store ho rahi thi (e.g. ZEVAR-XXXX
+  // par Shopify side total Rs 639,809 tha but ERP Rs 655,790 dikha raha tha).
+  // Ab `??` ke saath current_* first read karte hain — matches lib/shopify.js
+  // (transformOrder) aur app/api/orders/create/route.js ka pattern.
+  const subtotal = parseFloat(so.current_subtotal_price ?? so.subtotal_price ?? 0);
   const shippingFee = parseFloat(
     (so.shipping_lines || [])
       .reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0),
   );
-  const discount = parseFloat(so.total_discounts || so.current_total_discounts || 0);
-  const total = parseFloat(so.total_price || so.current_total_price || 0);
+  const discount = parseFloat(so.current_total_discounts ?? so.total_discounts ?? 0);
+  const total = parseFloat(so.current_total_price ?? so.total_price ?? 0);
 
   // Pre-fetch SKU → image map (same pattern as webhook)
   let skuImageMap = {};
