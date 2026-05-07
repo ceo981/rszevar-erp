@@ -199,9 +199,40 @@ export default function DispatchScanPage() {
       const r = await fetch('/api/orders/pending-loadsheet');
       const d = await r.json();
       if (d.success) {
-        setScannedOrders(d.orders || []);
-        // Auto-select all on initial / refresh fetch (default = include all)
-        setSelectedIds(new Set((d.orders || []).map(o => o.id)));
+        const newOrders = d.orders || [];
+        // May 2026 — Smart selection sync (fixes 30s polling bug):
+        //
+        // Pehle yahan blanket "select all" tha — har 30s wala silent refetch
+        // user ki deselections ko reset kar deta tha (user 20 parcels untick
+        // karta, scroll karta, 30s ho jaate, sab wapis tick ho jaate).
+        //
+        // Ab logic:
+        //   - Pichli list mein tha + selected tha → still selected
+        //   - Pichli list mein tha + deselected tha → still deselected (preserved!)
+        //   - BILKUL NEW (kabhi nahi dekha) → auto-select
+        //   - Pichli list mein tha but ab list se gayab → silently dropped
+        //
+        // Old scannedOrders ko "kya pehle dekha tha" ka source of truth use
+        // karte hain — selectedIds alone se differentiate nahi hota.
+        setScannedOrders(prevOrders => {
+          const prevIdSet = new Set(prevOrders.map(o => o.id));
+          setSelectedIds(prevSelected => {
+            const next = new Set();
+            for (const o of newOrders) {
+              if (prevIdSet.has(o.id)) {
+                // Pehle dekha tha — user ke decision ko honor karo
+                if (prevSelected.has(o.id)) next.add(o.id);
+                // else deselected, leave out
+              } else {
+                // Bilkul naya parcel → auto-select (initial load ya doosre
+                // device se scan)
+                next.add(o.id);
+              }
+            }
+            return next;
+          });
+          return newOrders;
+        });
       } else if (!silent) {
         console.error('Pending fetch failed:', d.error);
       }
