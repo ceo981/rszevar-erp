@@ -152,7 +152,7 @@ function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
 export default function SingleOrderPage() {
   const params = useParams();
   const router = useRouter();
-  const { profile, userEmail, activeUser } = useUser();
+  const { profile, userEmail, activeUser, can } = useUser();
   const performer = activeUser?.name || profile?.full_name || profile?.email || 'Staff';
   const userRole = profile?.role || '';
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
@@ -162,6 +162,9 @@ export default function SingleOrderPage() {
   const canPack    = isCEO || isDispatcher;
   // May 2 2026 — Assign permission: CEO/manager can assign packer regardless of fulfill status
   const canAssign  = isCEO || isOpsManager;
+  // May 6 2026 — Cancel Fulfillment uses granular DB-driven permission so
+  // Customer Support / Operations Manager can be granted via /roles page.
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
 
   const id = params?.id;
   const [order, setOrder] = useState(null);
@@ -1525,11 +1528,12 @@ export default function SingleOrderPage() {
                   )}
 
                   {/* Apr 2026 — Cancel Fulfillment button.
-                      Visible jab order pe tracking/fulfillment hai aur user
-                      CEO/Dispatcher hai. Tracking + courier clear ho jate,
-                      dispatched → confirmed wapas. Shopify pe bhi cancel hoti
-                      (ya already cancelled toh skip). Re-book ke liye safe. */}
-                  {canPack && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
+                      Visible jab order pe tracking/fulfillment hai. Tracking
+                      + courier clear ho jate, dispatched → confirmed wapas.
+                      Shopify pe bhi cancel hoti (ya already cancelled toh skip).
+                      May 6 2026 — uses granular permission orders.cancel_fulfillment.
+                      Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
+                  {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
                     <button
                       onClick={cancelFulfillment}
                       disabled={actionBusy}
