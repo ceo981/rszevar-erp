@@ -348,6 +348,31 @@ export default function CustomerKhaataPage() {
                       <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
                         {formatDate(o.created_at)}
                       </div>
+                      {/* May 2026 — Download invoice link.
+                          Opens print invoice page in new tab. Customer ko PDF
+                          chahiye toh wahan se Print → Save as PDF kar sakte hain.
+                          Invoice page mein partial-payment breakdown bhi dikhta
+                          hai (Total / Paid / Balance Due). */}
+                      <a
+                        href={`/orders/${o.id}/print/invoice`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open invoice — Print/Save as PDF"
+                        style={{
+                          display: 'inline-block',
+                          marginTop: 6,
+                          fontSize: 10,
+                          color: gold,
+                          textDecoration: 'none',
+                          background: 'rgba(201,169,110,0.08)',
+                          border: '1px solid rgba(201,169,110,0.25)',
+                          borderRadius: 3,
+                          padding: '2px 7px',
+                          fontWeight: 500,
+                        }}
+                      >
+                        📄 Download Invoice
+                      </a>
                       {/* May 5 2026 — Import badge + remove button */}
                       {o.is_imported && (
                         <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
