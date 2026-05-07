@@ -546,7 +546,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                         padding: (sidebarOpen || isMobile) ? '10px 12px' : '10px 0',
-                        paddingRight: (sidebarOpen || isMobile) && hasKids ? 36 : undefined,
+                        paddingRight: (sidebarOpen || isMobile) && hasKids ? 44 : undefined,
                         justifyContent: (sidebarOpen || isMobile) ? 'flex-start' : 'center',
                         background: isActive
                           ? 'linear-gradient(90deg, rgba(201,169,110,0.14), rgba(74,130,216,0.08))'
@@ -581,23 +581,47 @@ function AuthenticatedShell({ pathname, router, children }) {
                       )}
                     </Link>
 
-                    {/* Chevron toggle — only when sidebar open + has children */}
+                    {/* Chevron toggle — only when sidebar open + has children.
+                        May 2026 — visibility upgrade: pehle chevron tiny tha
+                        (font 11pt, muted color, no background) — staff ko
+                        dikhta hi nahi tha ke parent expand/collapse hota hai.
+                        Ab gold-tinted pill button (font 16, bold triangles,
+                        soft gold background ring) — clearly clickable. */}
                     {hasKids && (sidebarOpen || isMobile) && (
                       <button
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleParent(mod.id); }}
                         title={isExpanded ? 'Collapse' : 'Expand'}
+                        aria-label={isExpanded ? `Collapse ${mod.label}` : `Expand ${mod.label}`}
+                        aria-expanded={isExpanded}
                         style={{
                           position: 'absolute',
-                          right: 6, top: '50%', transform: 'translateY(-50%)',
-                          width: 26, height: 26,
-                          background: 'transparent', border: 'none',
-                          color: isActive ? 'var(--gold)' : 'var(--text2)',
-                          fontSize: 11, cursor: 'pointer',
+                          right: 8, top: '50%', transform: 'translateY(-50%)',
+                          width: 30, height: 30,
+                          background: isExpanded
+                            ? 'rgba(201,169,110,0.18)'
+                            : 'rgba(201,169,110,0.10)',
+                          border: '1px solid rgba(201,169,110,0.35)',
+                          color: 'var(--gold)',
+                          fontSize: 14,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          borderRadius: 4,
+                          borderRadius: 6,
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(201,169,110,0.28)';
+                          e.currentTarget.style.borderColor = 'rgba(201,169,110,0.55)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = isExpanded
+                            ? 'rgba(201,169,110,0.18)'
+                            : 'rgba(201,169,110,0.10)';
+                          e.currentTarget.style.borderColor = 'rgba(201,169,110,0.35)';
                         }}
                       >
-                        {isExpanded ? '▾' : '▸'}
+                        {isExpanded ? '▼' : '▶'}
                       </button>
                     )}
                   </div>
