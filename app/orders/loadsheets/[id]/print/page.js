@@ -106,7 +106,8 @@ export default function LoadsheetPrintPage() {
       <style>{`
         @page {
           size: A4;
-          margin: 12mm 10mm;
+          /* May 2026 — Tighter margins (was 12mm 10mm) to fit ~35 parcels per A4. */
+          margin: 8mm 9mm;
         }
 
         * { box-sizing: border-box; }
@@ -156,7 +157,8 @@ export default function LoadsheetPrintPage() {
           background: #fff;
           max-width: 210mm;
           margin: 20px auto;
-          padding: 16mm 14mm;
+          /* May 2026 — Tighter desktop preview padding (was 16mm 14mm). */
+          padding: 9mm 10mm;
           box-shadow: 0 4px 24px rgba(0,0,0,0.18);
           min-height: 297mm;
         }
@@ -173,52 +175,57 @@ export default function LoadsheetPrintPage() {
           }
         }
 
-        /* Header */
+        /* Header — May 2026 compressed (was: 32px name, 14/18px paddings,
+           22px title with 12px top margin). New layout puts the brand block
+           and "Dispatch Report" on a single horizontal row to save ~20mm
+           vertical without losing branding. */
         .brand {
-          text-align: center;
-          padding-bottom: 14px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          padding-bottom: 6px;
           border-bottom: 2px solid #c9a96e;
-          margin-bottom: 18px;
+          margin-bottom: 8px;
         }
         .brand .name {
           font-family: 'Cormorant Garamond', Georgia, serif;
-          font-size: 32px;
+          font-size: 24px;
           font-weight: 700;
           color: #c9a96e;
-          letter-spacing: 8px;
+          letter-spacing: 6px;
           margin: 0;
           line-height: 1;
         }
         .brand .tag {
-          font-size: 10px;
-          letter-spacing: 6px;
+          font-size: 9px;
+          letter-spacing: 4px;
           color: #1a1a1a;
-          margin-top: 4px;
+          margin-top: 2px;
           text-transform: uppercase;
           font-weight: 500;
         }
         .brand .title {
           font-family: 'Cormorant Garamond', Georgia, serif;
-          font-size: 22px;
+          font-size: 16px;
           font-weight: 600;
           color: #1a1a1a;
-          margin: 12px 0 0;
-          letter-spacing: 3px;
+          margin: 0;
+          letter-spacing: 2px;
           text-transform: uppercase;
         }
 
-        /* Meta info */
+        /* Meta info — compressed (was margin-bottom 16px, font 11px). */
         .meta {
           display: flex;
           justify-content: space-between;
           flex-wrap: wrap;
-          gap: 10px;
-          margin-bottom: 16px;
-          font-size: 11px;
+          gap: 8px;
+          margin-bottom: 8px;
+          font-size: 10px;
         }
         .meta .row {
           display: flex;
-          gap: 8px;
+          gap: 6px;
         }
         .meta .label {
           color: #666;
@@ -229,29 +236,40 @@ export default function LoadsheetPrintPage() {
           font-weight: 600;
         }
 
-        /* Table */
+        /* Table — May 2026 compressed:
+           - row padding 6/6 → 3/5 (saves ~6px per row)
+           - font 10 → 9.5 (still readable, still tabular-nums for COD)
+           - thead repeats on every printed page automatically
+           - rows can't split across pages */
         table.parcels {
           width: 100%;
           border-collapse: collapse;
-          font-size: 10px;
-          margin-bottom: 14px;
+          font-size: 9.5px;
+          margin-bottom: 8px;
+        }
+        table.parcels thead {
+          display: table-header-group;
+        }
+        table.parcels tr {
+          page-break-inside: avoid;
         }
         table.parcels th {
           background: #1a1a1a;
           color: #c9a96e;
           font-weight: 600;
           text-align: left;
-          padding: 8px 6px;
-          font-size: 10px;
+          padding: 4px 5px;
+          font-size: 9px;
           letter-spacing: 0.5px;
           text-transform: uppercase;
           border: 1px solid #1a1a1a;
         }
         table.parcels td {
-          padding: 6px 6px;
+          padding: 3px 5px;
           border: 1px solid #ccc;
-          vertical-align: top;
-          font-size: 10px;
+          vertical-align: middle;
+          font-size: 9.5px;
+          line-height: 1.25;
         }
         table.parcels tr:nth-child(even) td {
           background: #fafafa;
@@ -266,47 +284,49 @@ export default function LoadsheetPrintPage() {
         }
         table.parcels .mono {
           font-family: 'Courier New', monospace;
-          font-size: 9.5px;
+          font-size: 9px;
         }
 
-        /* Totals row */
+        /* Totals row — compressed (was padding 10, margin-bottom 14, value 14px). */
         .totals-row {
           display: flex;
           justify-content: flex-end;
           gap: 16px;
-          padding: 10px 0;
-          border-top: 2px solid #1a1a1a;
-          border-bottom: 2px solid #1a1a1a;
-          margin-bottom: 14px;
-          font-size: 12px;
+          padding: 5px 0;
+          border-top: 1.5px solid #1a1a1a;
+          border-bottom: 1.5px solid #1a1a1a;
+          margin-bottom: 8px;
+          font-size: 11px;
+          page-break-inside: avoid;
         }
         .totals-row .item {
           text-align: right;
         }
         .totals-row .label {
-          font-size: 10px;
+          font-size: 9px;
           color: #666;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
         .totals-row .value {
-          font-size: 14px;
+          font-size: 12px;
           font-weight: 700;
           color: #1a1a1a;
-          margin-top: 2px;
+          margin-top: 1px;
         }
         .totals-row .gold {
           color: #c9a96e;
         }
 
-        /* Per-courier breakdown */
+        /* Per-courier breakdown — compressed. */
         .courier-breakdown {
           background: #fafafa;
           border: 1px solid #ddd;
-          padding: 10px 12px;
-          margin-bottom: 16px;
+          padding: 6px 9px;
+          margin-bottom: 10px;
           border-radius: 4px;
-          font-size: 11px;
+          font-size: 10px;
+          page-break-inside: avoid;
         }
         .courier-breakdown .heading {
           font-weight: 600;
@@ -314,17 +334,17 @@ export default function LoadsheetPrintPage() {
           text-transform: uppercase;
           font-size: 9px;
           letter-spacing: 0.5px;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
         }
         .courier-breakdown .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-          gap: 8px;
+          gap: 6px;
         }
         .courier-breakdown .pill {
           display: flex;
           justify-content: space-between;
-          padding: 4px 8px;
+          padding: 3px 7px;
           background: #fff;
           border: 1px solid #ddd;
           border-radius: 3px;
@@ -338,63 +358,65 @@ export default function LoadsheetPrintPage() {
           font-size: 10px;
         }
 
-        /* Notes */
+        /* Notes — compressed. */
         .notes {
-          padding: 8px 12px;
+          padding: 6px 10px;
           background: #fffbe6;
           border-left: 3px solid #c9a96e;
-          font-size: 11px;
-          margin-bottom: 16px;
+          font-size: 10px;
+          margin-bottom: 8px;
           color: #4a4a4a;
         }
 
-        /* Signature block */
+        /* Signature block — compressed (was margin-top 28, gap 30,
+           heading margin-bottom 28). */
         .signatures {
-          margin-top: 28px;
+          margin-top: 14px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 30px;
+          gap: 22px;
+          page-break-inside: avoid;
         }
         .signatures .sig {
           text-align: center;
         }
         .signatures .sig .heading {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 600;
           color: #1a1a1a;
           text-transform: uppercase;
           letter-spacing: 1px;
-          margin-bottom: 28px;
+          margin-bottom: 18px;
         }
         .signatures .sig .line {
           border-top: 1px solid #1a1a1a;
           margin: 0 12px;
-          padding-top: 4px;
-          font-size: 10px;
+          padding-top: 3px;
+          font-size: 9px;
           color: #666;
         }
         .signatures .sig .fields {
-          margin-top: 14px;
-          font-size: 10px;
+          margin-top: 10px;
+          font-size: 9px;
           color: #666;
           text-align: left;
         }
         .signatures .sig .fields .row {
-          margin-bottom: 6px;
+          margin-bottom: 4px;
           border-bottom: 1px solid #999;
           padding-bottom: 2px;
         }
 
-        /* Footer */
+        /* Footer — compressed. */
         .doc-footer {
-          margin-top: 22px;
-          padding-top: 10px;
+          margin-top: 12px;
+          padding-top: 6px;
           border-top: 1px solid #ddd;
           text-align: center;
-          font-size: 9px;
+          font-size: 8.5px;
           color: #999;
           letter-spacing: 0.5px;
-          line-height: 1.6;
+          line-height: 1.5;
         }
       `}</style>
 
@@ -414,10 +436,13 @@ export default function LoadsheetPrintPage() {
 
       <div className="page">
 
-        {/* Brand header */}
+        {/* Brand header — May 2026: horizontal layout to save vertical space.
+            Left: RS ZEVAR + Designer Jewelry tagline. Right: Dispatch Report. */}
         <div className="brand">
-          <h1 className="name">RS ZEVAR</h1>
-          <div className="tag">Designer Jewelry</div>
+          <div>
+            <h1 className="name">RS ZEVAR</h1>
+            <div className="tag">Designer Jewelry</div>
+          </div>
           <div className="title">Dispatch Report</div>
         </div>
 
