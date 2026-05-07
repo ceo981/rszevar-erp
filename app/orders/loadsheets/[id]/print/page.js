@@ -499,19 +499,21 @@ export default function LoadsheetPrintPage() {
           </tbody>
         </table>
 
-        {/* Totals */}
+        {/* Totals — May 2026: COD ka aggregate figure removed.
+            Loadsheet courier walay ke saath sign hoti hai — total cash figure
+            highlight karne se security/info-leak issue hota hai. Sirf parcel
+            count rakha hai. Per-row COD column intact (waise bhi har parcel
+            ke shipping label pe likha hota hai). */}
         <div className="totals-row">
           <div className="item">
             <div className="label">Total Parcels</div>
             <div className="value">{loadsheet.total_parcels}</div>
           </div>
-          <div className="item">
-            <div className="label">Total COD</div>
-            <div className="value gold">{fmt(loadsheet.total_cod)}</div>
-          </div>
         </div>
 
-        {/* Per-courier breakdown */}
+        {/* Per-courier breakdown — May 2026: courier ke COD totals bhi remove
+            (same security reason — aggregate paise loadsheet pe nahi). Sirf
+            parcel count per courier dikhata hai. */}
         {Object.keys(couriersSummary).length > 0 && (
           <div className="courier-breakdown">
             <div className="heading">Per Courier Breakdown</div>
@@ -520,7 +522,7 @@ export default function LoadsheetPrintPage() {
                 <div key={courier} className="pill">
                   <span className="courier">{courier}</span>
                   <span className="stats">
-                    {stats.count} parcels · {fmt(stats.cod)}
+                    {stats.count} parcel{stats.count !== 1 ? 's' : ''}
                   </span>
                 </div>
               ))}
