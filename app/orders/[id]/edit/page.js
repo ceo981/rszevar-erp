@@ -237,9 +237,18 @@ function ProductPicker({ onClose, onAdd }) {
 }
 
 // ─── Discount Modal ──────────────────────────────────────────────────────────
-function DiscountModal({ item, onClose, onApply }) {
+// May 2026 — Edit mode support:
+//   - When `existingDiscountAmount > 0`, opens in EDIT mode: title changes,
+//     value pre-fills with the existing per-line discount, type defaults to
+//     FIXED_AMOUNT (we can't recover original PERCENTAGE intent from Shopify
+//     calculated order — it only exposes discountedUnitPrice, not the
+//     PERCENTAGE/FIXED_AMOUNT decision).
+//   - Caller (parent component) does the rebuild-and-replay flow on apply,
+//     so the modal itself stays simple — just collects new value.
+function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
+  const isEdit = existingDiscountAmount > 0.005;
   const [type, setType] = useState('FIXED_AMOUNT');
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(isEdit ? String(Math.round(existingDiscountAmount * 100) / 100) : '');
   const [description, setDescription] = useState('');
 
   const apply = () => {
@@ -271,13 +280,27 @@ function DiscountModal({ item, onClose, onApply }) {
           padding: '16px 20px', borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Add discount</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>
+            {isEdit ? 'Edit discount' : 'Add discount'}
+          </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: 20 }}>
           <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
             Item: <span style={{ color: '#ddd' }}>{item.title}</span>
           </div>
+
+          {isEdit && (
+            <div style={{
+              fontSize: 11, color: '#a8b8d0', lineHeight: 1.5,
+              background: 'rgba(74,130,216,0.08)',
+              border: '1px solid rgba(74,130,216,0.3)',
+              borderRadius: 6, padding: '8px 11px', marginBottom: 14,
+            }}>
+              ℹ Naya discount apply hone se purana <strong style={{ color: '#fff' }}>replace</strong> ho jayega.
+              Saari baki staged changes (qty, shipping, etc.) preserve rahengi.
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
             <button onClick={() => setType('FIXED_AMOUNT')}
@@ -318,7 +341,9 @@ function DiscountModal({ item, onClose, onApply }) {
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={btnGhost}>Cancel</button>
-            <button onClick={apply} disabled={!value} style={{ ...btnPrimary, opacity: !value ? 0.4 : 1 }}>Apply</button>
+            <button onClick={apply} disabled={!value} style={{ ...btnPrimary, opacity: !value ? 0.4 : 1 }}>
+              {isEdit ? 'Update' : 'Apply'}
+            </button>
           </div>
         </div>
       </div>
@@ -476,6 +501,13 @@ export default function OrderEditPage() {
   const [showCustom, setShowCustom] = useState(false);
   const [discountFor, setDiscountFor] = useState(null); // item being discounted
 
+  // May 2026 — Op history for discount edit/remove via rebuild-and-replay.
+  // Each entry mirrors what was sent to /api/orders/edit-stage:
+  //   { action, params, _meta: { result_line_id?, result_ship_id? } }
+  // _meta tracks NEW IDs created by add_variant/add_custom/add_ship so that
+  // subsequent ops referencing those IDs can be retargeted during replay.
+  const [stagedOps, setStagedOps] = useState([]);
+
   const [reason, setReason] = useState('');
   const [notify, setNotify] = useState(false);
   const [committing, setCommitting] = useState(false);
@@ -530,6 +562,10 @@ export default function OrderEditPage() {
     if (!calcOrder) return;
     setBusy(true);
     setBusyMsg(msg);
+    // Snapshot pre-call IDs so we can detect what got created (for add_variant/
+    // add_custom/add_ship → captures the new line_item_id or shipping_line_id).
+    const beforeLineIds = new Set(calcOrder.items.map(i => i.id));
+    const beforeShipIds = new Set((calcOrder.shipping_lines || []).map(s => s.id));
     try {
       const r = await fetch('/api/orders/edit-stage', {
         method: 'POST',
@@ -554,6 +590,30 @@ export default function OrderEditPage() {
           shipping_lines: d.shipping_lines,
         }));
         setHasChanges(true);
+
+        // Record successful op in history for rebuild-replay.
+        // For add_variant/add_custom: capture the NEW line_item_id so subsequent
+        // ops on that item (e.g. quantity bumps, discount) reference a known ID
+        // we can retarget when replaying in a fresh edit session.
+        let resultLineId = null;
+        let resultShipId = null;
+        if (action === 'add_variant' || action === 'add_custom') {
+          for (const it of d.items || []) {
+            if (it.id && !beforeLineIds.has(it.id)) { resultLineId = it.id; break; }
+          }
+        } else if (action === 'add_ship') {
+          for (const sl of d.shipping_lines || []) {
+            if (sl.id && !beforeShipIds.has(sl.id)) { resultShipId = sl.id; break; }
+          }
+        }
+        setStagedOps(prev => [
+          ...prev,
+          {
+            action,
+            params: { ...params },
+            _meta: { result_line_id: resultLineId, result_ship_id: resultShipId },
+          },
+        ]);
       }
     } catch (e) {
       alert(`❌ ${e.message}`);
@@ -606,6 +666,136 @@ export default function OrderEditPage() {
       discount_value: payload.discount_value,
       description: payload.description,
     }, 'Discount apply ho raha hai...');
+  };
+
+  // ── Rebuild-and-replay strategy for editing/removing line item discount ──
+  // Shopify's public Order Editing API has no remove/replace mutation for line
+  // item discounts. To genuinely "edit" or "remove" a discount, we discard the
+  // current calculatedOrder and start a fresh one, then replay all OTHER
+  // staged ops. This is what Shopify Admin does internally too.
+  //
+  // Filter strategy: drop any add_discount op that targets the same line item
+  // (covers both currently-staged ID and any aliased IDs from add_variant/
+  // add_custom that may have been retargeted).
+  const rebuildWithoutItemDiscount = useCallback(async (item, replacementDiscount) => {
+    if (!calcOrder) return;
+    setBusy(true);
+    setBusyMsg(replacementDiscount ? 'Discount update ho raha hai...' : 'Discount remove ho raha hai...');
+
+    // Build set of line_item_ids that REPRESENT this item across history:
+    //   - the current calculatedOrder ID (item.id)
+    //   - any add_variant/add_custom result_line_id that matches item.id
+    //     (so when replaying, we drop discounts that targeted the alias too)
+    const itemAliases = new Set([item.id]);
+    for (const op of stagedOps) {
+      if ((op.action === 'add_variant' || op.action === 'add_custom') &&
+          op._meta?.result_line_id === item.id) {
+        // The pre-rebuild ID was the same id (id is stable for added items
+        // within a session). When we replay, the new add_variant will create
+        // a new ID, but the discount we WANT to drop is identified by the
+        // current item.id. So this branch is mostly defensive — usually
+        // result_line_id IS item.id.
+        itemAliases.add(op._meta.result_line_id);
+      }
+    }
+
+    // Drop the discount op(s) targeting this item, keep everything else.
+    const filteredOps = stagedOps.filter(op => {
+      if (op.action !== 'add_discount') return true;
+      return !itemAliases.has(op.params?.line_item_id);
+    });
+
+    // If replacing (not removing), append the new discount at the end.
+    // Add `_original_line_id` annotation on add_variant/add_custom ops so
+    // backend can rebuild ID mappings correctly during replay.
+    const opsToReplay = filteredOps.map(op => {
+      if (op.action === 'add_variant' || op.action === 'add_custom') {
+        return {
+          ...op,
+          params: { ...op.params, _original_line_id: op._meta?.result_line_id },
+        };
+      }
+      if (op.action === 'add_ship') {
+        return {
+          ...op,
+          params: { ...op.params, _original_ship_id: op._meta?.result_ship_id },
+        };
+      }
+      return op;
+    });
+
+    if (replacementDiscount) {
+      opsToReplay.push({
+        action: 'add_discount',
+        params: {
+          line_item_id: item.id,
+          discount_type: replacementDiscount.discount_type,
+          discount_value: replacementDiscount.discount_value,
+          description: replacementDiscount.description,
+        },
+      });
+    }
+
+    try {
+      const r = await fetch('/api/orders/edit-rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: id,
+          ops: opsToReplay.map(({ action, params }) => ({ action, params })),
+          performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (!d.success) {
+        alert(`❌ ${d.error || 'Rebuild fail hua'}`);
+      } else {
+        setCalcOrder({
+          calculated_order_id: d.calculated_order_id,
+          subtotal: d.subtotal,
+          total: d.total,
+          shipping: d.shipping,
+          cart_discount: d.cart_discount,
+          items: d.items,
+          shipping_lines: d.shipping_lines,
+        });
+        // Refresh stagedOps to match the replayed history
+        setStagedOps(opsToReplay.map(op => ({
+          action: op.action,
+          params: { ...op.params },
+          _meta: op._meta || {},
+        })));
+        // If replay leaves zero ops (user removed the only staged change —
+        // the discount itself), order is back to original → no unsaved changes.
+        setHasChanges(opsToReplay.length > 0);
+        // Re-seed shipping draft from new IDs
+        const shipSeed = {};
+        for (const sl of (d.shipping_lines || [])) {
+          shipSeed[sl.id] = String(sl.price);
+        }
+        setShipDraft(shipSeed);
+        // Show any per-op replay errors so user knows
+        if (Array.isArray(d.replay_errors) && d.replay_errors.length > 0) {
+          const summary = d.replay_errors
+            .map(e => `  • ${e.action}: ${e.error}`)
+            .join('\n');
+          alert(`⚠ Discount update ho gaya, but kuch staged changes replay nahi ho saki:\n${summary}\n\nUpdated order pe dekh lo, agar zaroori hai to dobara apply karo.`);
+        }
+      }
+    } catch (e) {
+      alert(`❌ ${e.message}`);
+    }
+    setBusy(false);
+    setBusyMsg('');
+  }, [calcOrder, id, stagedOps, userEmail]);
+
+  const editLineDiscount = (item, payload) => {
+    return rebuildWithoutItemDiscount(item, payload);
+  };
+
+  const removeLineDiscount = (item) => {
+    if (!window.confirm(`"${item.title}" se discount hata dein?\n\nNote: Iss item ka purana discount remove ho jayega aur baki saari staged changes preserve rahengi.`)) return;
+    rebuildWithoutItemDiscount(item, null);
   };
 
   const applyShipping = (sl) => {
@@ -836,9 +1026,18 @@ export default function OrderEditPage() {
                             <span style={{ marginRight: 8 }}>{item.variant_title}</span>
                           )}
                           SKU: {item.sku || '—'} • Unit: {fmt(item.unit_price)}
-                          {item.has_discount && (
-                            <span style={{ marginLeft: 6, color: '#7dc88a' }}>• discounted</span>
-                          )}
+                          {item.has_discount && (() => {
+                            // May 2026 — show actual per-line discount amount, not just a label.
+                            // Computed from original vs discounted unit price × qty.
+                            const lineDisc = Math.max(0,
+                              (parseFloat(item.unit_price) || 0) * (item.quantity || 0) -
+                              (parseFloat(item.line_total) || 0));
+                            return (
+                              <span style={{ marginLeft: 6, color: '#7dc88a' }}>
+                                • discounted {lineDisc > 0.005 ? `(−${fmt(lineDisc)})` : ''}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {locked && (
                           <div style={{
@@ -849,13 +1048,31 @@ export default function OrderEditPage() {
                           }}>🔒 {item.uneditable_reason}</div>
                         )}
                         {!locked && (
-                          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                            {/* May 2026 — Edit/Remove discount controls.
+                                When item has_discount: button label switches to
+                                "✏ Edit Discount" + a "✕ Remove" appears.
+                                Click flow uses rebuild-and-replay (see
+                                rebuildWithoutItemDiscount) since Shopify has no
+                                public mutation to remove/replace a line discount. */}
                             <button onClick={() => setDiscountFor(item)} disabled={busy} style={{
-                              background: 'transparent', border: `1px solid ${border}`,
-                              color: '#aaa', borderRadius: 4, padding: '3px 8px',
+                              background: item.has_discount ? 'rgba(125,200,138,0.08)' : 'transparent',
+                              border: `1px solid ${item.has_discount ? 'rgba(125,200,138,0.35)' : border}`,
+                              color: item.has_discount ? '#7dc88a' : '#aaa',
+                              borderRadius: 4, padding: '3px 8px',
                               fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
                               fontFamily: 'inherit',
-                            }}>+ Discount</button>
+                            }}>{item.has_discount ? '✏ Edit Discount' : '+ Discount'}</button>
+                            {item.has_discount && (
+                              <button onClick={() => removeLineDiscount(item)} disabled={busy} style={{
+                                background: 'transparent',
+                                border: `1px solid rgba(248,113,113,0.35)`,
+                                color: '#f87171',
+                                borderRadius: 4, padding: '3px 8px',
+                                fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
+                                fontFamily: 'inherit',
+                              }}>✕ Remove discount</button>
+                            )}
                             <button onClick={() => removeItem(item)} disabled={busy} style={btnDanger}>
                               🗑 Remove
                             </button>
@@ -1039,10 +1256,23 @@ export default function OrderEditPage() {
       {showCustom && (
         <CustomItemModal onClose={() => setShowCustom(false)} onAdd={addCustomItem} />
       )}
-      {discountFor && (
-        <DiscountModal item={discountFor} onClose={() => setDiscountFor(null)}
-          onApply={(payload) => applyDiscount(discountFor, payload)} />
-      )}
+      {discountFor && (() => {
+        // For items with existing discount: pre-fill the modal with current
+        // per-line discount and route apply through rebuild-and-replay.
+        const existingDisc = discountFor.has_discount ? Math.max(0,
+          (parseFloat(discountFor.unit_price) || 0) * (discountFor.quantity || 0) -
+          (parseFloat(discountFor.line_total) || 0)) : 0;
+        return (
+          <DiscountModal
+            item={discountFor}
+            existingDiscountAmount={existingDisc}
+            onClose={() => setDiscountFor(null)}
+            onApply={(payload) => discountFor.has_discount
+              ? editLineDiscount(discountFor, payload)
+              : applyDiscount(discountFor, payload)}
+          />
+        );
+      })()}
     </div>
   );
 }
