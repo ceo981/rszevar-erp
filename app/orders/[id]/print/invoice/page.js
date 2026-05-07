@@ -108,7 +108,10 @@ export default function InvoicePage() {
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
   const total = parseFloat(order.total_amount || 0);
+  const paidAmount = parseFloat(order.paid_amount || 0);
+  const balance = Math.max(0, total - paidAmount);
   const isPaid = order.payment_status === 'paid';
+  const isPartial = order.payment_status === 'partial' || (paidAmount > 0.01 && balance > 0.01);
   const isCOD = order.payment_method === 'COD' || !order.payment_method;
   const isCancelled = order.status === 'cancelled';
 
@@ -660,6 +663,25 @@ export default function InvoicePage() {
                 <span className="label">Total</span>
                 <span className="value">{fmt(total)}</span>
               </div>
+
+              {/* May 2026 — Khaata / partial-payment breakdown.
+                  Jab order khaata pe ho (partially paid), customer ko PDF mein
+                  saaf dikhna chahiye ke kitna paid hua aur kitna baqi hai.
+                  Fully paid ya fully unpaid orders mein ye section nahi dikhta. */}
+              {(isPartial || (isPaid && paidAmount > 0.01)) && (
+                <>
+                  <div className="totals-row" style={{ marginTop: 8 }}>
+                    <span className="label">Paid</span>
+                    <span style={{ color: '#059669' }}>-{fmt(paidAmount)}</span>
+                  </div>
+                  {balance > 0.01 && (
+                    <div className="totals-grand" style={{ borderTop: '1px solid #e5e1d8' }}>
+                      <span className="label" style={{ color: '#dc2626' }}>Balance Due</span>
+                      <span className="value" style={{ color: '#dc2626' }}>{fmt(balance)}</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -667,14 +689,20 @@ export default function InvoicePage() {
           <div className="payment-info">
             <div className="item">
               <div className="label">Payment Status</div>
-              <div className={`value ${isPaid ? 'status-paid' : 'status-pending'}`}>
-                {isPaid ? '✓ Paid' : isCancelled ? 'Cancelled' : 'Payment Pending (COD)'}
+              <div className={`value ${isPaid ? 'status-paid' : isPartial ? 'status-pending' : 'status-pending'}`}>
+                {isCancelled
+                  ? 'Cancelled'
+                  : isPaid
+                    ? '✓ Paid'
+                    : isPartial
+                      ? `Partial — Rs ${Number(paidAmount).toLocaleString('en-PK')} of Rs ${Number(total).toLocaleString('en-PK')} received`
+                      : 'Payment Pending (COD)'}
               </div>
             </div>
             <div className="item" style={{ textAlign: 'right' }}>
-              <div className="label">Amount Due</div>
-              <div className="value" style={{ fontSize: '13pt' }}>
-                {isPaid || isCancelled ? 'Rs 0' : fmt(total)}
+              <div className="label">{isPartial ? 'Balance Due' : 'Amount Due'}</div>
+              <div className="value" style={{ fontSize: '13pt', color: balance > 0.01 && !isCancelled ? '#dc2626' : undefined }}>
+                {isPaid || isCancelled ? 'Rs 0' : fmt(balance > 0.01 ? balance : total)}
               </div>
             </div>
           </div>
