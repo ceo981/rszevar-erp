@@ -658,7 +658,6 @@ export default function DispatchScanPage() {
                     type="checkbox"
                     checked={isSel}
                     onChange={() => {/* outer onClick handles toggle */}}
-                    onClick={e => e.stopPropagation()}
                     style={{
                       width: 16, height: 16, cursor: 'pointer',
                       accentColor: gold,
