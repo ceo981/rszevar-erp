@@ -158,6 +158,11 @@ export default function DispatchScanPage() {
   // ── State ──────────────────────────────────────────────────────────────
   const [scanInput, setScanInput] = useState('');
   const [scannedOrders, setScannedOrders] = useState([]);  // newest first
+  // May 2026 — Per-parcel selection. Default: every scanned parcel is selected.
+  // User can uncheck the ones they don't want in this loadsheet (e.g. wo
+  // parcel jiska tracking abhi missing hai, ya wo jis pe dispute chal raha hai).
+  // Generate loadsheet sirf selected IDs ke saath kaam karta hai.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [feedback, setFeedback] = useState(null);          // {type, text}
@@ -195,6 +200,8 @@ export default function DispatchScanPage() {
       const d = await r.json();
       if (d.success) {
         setScannedOrders(d.orders || []);
+        // Auto-select all on initial / refresh fetch (default = include all)
+        setSelectedIds(new Set((d.orders || []).map(o => o.id)));
       } else if (!silent) {
         console.error('Pending fetch failed:', d.error);
       }
@@ -364,6 +371,12 @@ export default function DispatchScanPage() {
       if (d.success) {
         // Prepend (newest first)
         setScannedOrders(prev => [d.order, ...prev]);
+        // Auto-select newly scanned parcel
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          next.add(d.order.id);
+          return next;
+        });
         setFeedback({
           type: 'success',
           text: `✓ ${d.order.order_number} dispatched (${d.from_status} → dispatched)`,
@@ -407,10 +420,14 @@ export default function DispatchScanPage() {
 
   // ── Generate loadsheet → DB save → redirect to print ───────────────────
   const generateLoadsheet = async () => {
-    if (scannedOrders.length === 0) return;
+    // Use selected only — user uncheck karke filter kar sakta hai.
+    const selectedOrders = scannedOrders.filter(o => selectedIds.has(o.id));
+    if (selectedOrders.length === 0) return;
     if (!confirm(
-      `${scannedOrders.length} parcel(s) ki loadsheet generate karein?\n\n` +
-      `Total COD: ${fmt(totalCod)}`
+      `${selectedOrders.length} parcel(s) ki loadsheet generate karein?` +
+      (selectedOrders.length < scannedOrders.length
+        ? `\n\n(${scannedOrders.length - selectedOrders.length} parcel(s) deselect kiye gaye — agle loadsheet ke liye pending rahenge)`
+        : '')
     )) return;
 
     setGenerating(true);
@@ -421,7 +438,7 @@ export default function DispatchScanPage() {
         body: JSON.stringify({
           // Reverse — backend sorts by position. UI showed newest-first;
           // loadsheet should be in scan order (oldest first = position 1).
-          order_ids: [...scannedOrders].reverse().map(o => o.id),
+          order_ids: [...selectedOrders].reverse().map(o => o.id),
           notes: notes.trim() || null,
           performed_by: performer,
           performed_by_email: userEmail,
@@ -451,10 +468,11 @@ export default function DispatchScanPage() {
     }
   };
 
-  // ── Computed totals ────────────────────────────────────────────────────
-  const totalCod = scannedOrders.reduce((s, o) => s + Number(o.cod_amount || 0), 0);
+  // ── Computed totals — based on SELECTED parcels (not all scanned) ──────
+  const selectedOrders = scannedOrders.filter(o => selectedIds.has(o.id));
+  const totalCod = selectedOrders.reduce((s, o) => s + Number(o.cod_amount || 0), 0);
 
-  const couriersBreakdown = scannedOrders.reduce((acc, o) => {
+  const couriersBreakdown = selectedOrders.reduce((acc, o) => {
     const c = o.courier || 'Other';
     acc[c] = (acc[c] || 0) + 1;
     return acc;
@@ -567,13 +585,36 @@ export default function DispatchScanPage() {
           <div style={{
             padding: '14px 18px', borderBottom: `1px solid ${border}`,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: 12, flexWrap: 'wrap',
           }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: text1 }}>
-              Scanned Parcels ({scannedOrders.length})
+              Scanned Parcels ({scannedOrders.length}
+              {scannedOrders.length > 0 && selectedIds.size !== scannedOrders.length && (
+                <span style={{ color: gold, fontSize: 12, fontWeight: 500, marginLeft: 6 }}>
+                  · {selectedIds.size} selected
+                </span>
+              )})
             </div>
+            {/* May 2026 — Select all/none toggle. When some/none selected,
+                clicking selects all. When all selected, clicking deselects all. */}
             {scannedOrders.length > 0 && (
-              <div style={{ fontSize: 12, color: text2 }}>
-                Newest first
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 12, color: text2 }}>
+                <button
+                  onClick={() => {
+                    if (selectedIds.size === scannedOrders.length) {
+                      setSelectedIds(new Set());
+                    } else {
+                      setSelectedIds(new Set(scannedOrders.map(o => o.id)));
+                    }
+                  }}
+                  style={{
+                    background: 'transparent', border: `1px solid ${border}`,
+                    color: text2, padding: '4px 10px', borderRadius: 4,
+                    fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  {selectedIds.size === scannedOrders.length ? 'Deselect all' : 'Select all'}
+                </button>
+                <span>Newest first</span>
               </div>
             )}
           </div>
@@ -590,14 +631,39 @@ export default function DispatchScanPage() {
             </div>
           ) : (
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-              {scannedOrders.map((o, i) => (
-                <div key={o.id} style={{
-                  padding: '12px 18px',
-                  borderBottom: i < scannedOrders.length - 1 ? `1px solid ${border}` : 'none',
-                  display: 'grid',
-                  gridTemplateColumns: '40px 1fr 130px 100px 90px',
-                  alignItems: 'center', gap: 12, fontSize: 13,
-                }}>
+              {scannedOrders.map((o, i) => {
+                const isSel = selectedIds.has(o.id);
+                return (
+                <div key={o.id}
+                  onClick={() => {
+                    setSelectedIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(o.id)) next.delete(o.id); else next.add(o.id);
+                      return next;
+                    });
+                  }}
+                  style={{
+                    padding: '12px 18px',
+                    borderBottom: i < scannedOrders.length - 1 ? `1px solid ${border}` : 'none',
+                    display: 'grid',
+                    // May 2026 — Added 28px checkbox column at start.
+                    gridTemplateColumns: '28px 40px 1fr 130px 100px 90px',
+                    alignItems: 'center', gap: 12, fontSize: 13,
+                    cursor: 'pointer',
+                    background: isSel ? 'transparent' : 'rgba(255,255,255,0.025)',
+                    opacity: isSel ? 1 : 0.6,
+                    transition: 'all 0.15s',
+                  }}>
+                  <input
+                    type="checkbox"
+                    checked={isSel}
+                    onChange={() => {/* outer onClick handles toggle */}}
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      width: 16, height: 16, cursor: 'pointer',
+                      accentColor: gold,
+                    }}
+                  />
                   <div style={{ color: text2, fontFamily: 'monospace' }}>
                     #{scannedOrders.length - i}
                   </div>
@@ -622,28 +688,34 @@ export default function DispatchScanPage() {
                     {o.cod_amount > 0 ? fmt(o.cod_amount) : <span style={{ color: text2 }}>—</span>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Footer / Generate */}
-        {scannedOrders.length > 0 && (
+        {/* Footer / Generate — only shown when at least 1 parcel selected */}
+        {selectedOrders.length > 0 && (
           <div style={{
             background: card, border: `1px solid ${border}`, borderRadius: 8,
             padding: 18, marginBottom: 16,
           }}>
-            {/* Totals */}
+            {/* Totals — based on SELECTED parcels */}
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: 24,
               paddingBottom: 14, borderBottom: `1px solid ${border}`, marginBottom: 14,
             }}>
               <div>
                 <div style={{ fontSize: 11, color: text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Total Parcels
+                  Selected Parcels
                 </div>
                 <div style={{ fontSize: 22, fontWeight: 700, color: text1, marginTop: 2 }}>
-                  {scannedOrders.length}
+                  {selectedOrders.length}
+                  {selectedOrders.length < scannedOrders.length && (
+                    <span style={{ fontSize: 12, fontWeight: 400, color: text2, marginLeft: 6 }}>
+                      / {scannedOrders.length}
+                    </span>
+                  )}
                 </div>
               </div>
               <div>
@@ -692,7 +764,7 @@ export default function DispatchScanPage() {
             {/* Generate button */}
             <button
               onClick={generateLoadsheet}
-              disabled={generating || scannedOrders.length === 0}
+              disabled={generating || selectedOrders.length === 0}
               style={{
                 width: '100%', padding: '16px', fontSize: 15, fontWeight: 700,
                 background: generating ? '#444' : gold,
@@ -703,7 +775,7 @@ export default function DispatchScanPage() {
             >
               {generating
                 ? '⏳ Loadsheet generate ho rahi hai...'
-                : `📋 Generate Loadsheet (${scannedOrders.length} parcels)`}
+                : `📋 Generate Loadsheet (${selectedOrders.length} parcel${selectedOrders.length !== 1 ? 's' : ''})`}
             </button>
           </div>
         )}
