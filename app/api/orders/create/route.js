@@ -273,6 +273,10 @@ async function upsertOrderInERP(supabase, shopifyOrder) {
         return {
           order_id: data.id,
           shopify_line_item_id: String(li.id),
+          // FIX May 8 2026 — Capture shopify_variant_id (variant_id is unique
+          // per variant; SKU may collide across Golden/Silver variants of
+          // same product). All downstream image lookups prefer variant_id.
+          shopify_variant_id: li.variant_id ? String(li.variant_id) : null,
           title: li.title + (li.variant_title ? ` - ${li.variant_title}` : ''),
           sku: li.sku || null,
           quantity: qty,
