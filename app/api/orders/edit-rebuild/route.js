@@ -35,6 +35,7 @@ import {
   stageAddLineDiscount,
   stageUpdateShipping,
   stageAddShipping,
+  stageRemoveShipping,
 } from '@/lib/shopify-order-edit';
 
 export const runtime = 'nodejs';
@@ -205,6 +206,9 @@ export async function POST(request) {
               calculated_order_id: calc.calculated_order_id,
               shipping_line_id: shipIdMap.get(params.shipping_line_id) || params.shipping_line_id,
               price: Number(params.price),
+              // Pass through fallback_title so committed-line replacement on
+              // replay uses the same name (e.g. "Free Shipping" → "Free Shipping").
+              fallback_title: params.fallback_title,
             });
             break;
 
@@ -220,6 +224,13 @@ export async function POST(request) {
                 shipIdMap.set(params._original_ship_id, newId);
               }
             }
+            break;
+
+          case 'remove_ship':
+            calc = await stageRemoveShipping({
+              calculated_order_id: calc.calculated_order_id,
+              shipping_line_id: shipIdMap.get(params.shipping_line_id) || params.shipping_line_id,
+            });
             break;
 
           default:
