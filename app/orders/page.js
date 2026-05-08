@@ -306,10 +306,16 @@ function BulkCancelModal({ count, onClose, onConfirm, running }) {
 function BulkStatusModal({ count, onClose, onConfirm, running }) {
   const [newStatus, setNewStatus] = useState('');
   const [notes, setNotes] = useState('');
-  // FIX: exclude cancelled (use action=cancel instead) and in_transit/processing
-  // (in_transit not in DB enum; processing barely used). 'dispatched' allowed —
-  // legitimate for Shopify-booked orders bulk status flip.
-  const BULK_ALLOWED = ['pending', 'confirmed', 'on_packing', 'packed', 'dispatched', 'delivered', 'returned', 'rto', 'attempted', 'hold'];
+  // FIX May 8 2026 — Removed courier/payment-driven statuses from bulk options.
+  // Pehle bulk dropdown mein returned, rto, delivered bhi the. Issue: staff
+  // galti se RTO bulk-set kar dete the (e.g. galat orders selection ho jata),
+  // phir terminal lock ki wajah se revert karna painful hota tha.
+  // Ab sirf "office workflow" statuses bulk se settable hain.
+  // Courier-driven (in_transit, delivered, rto): courier API se aate.
+  // Payment-driven (returned, refunded): settlement file upload se aate.
+  // Manual override of these requires the per-order Force Revert flow
+  // (super_admin only, terminal-state se revert).
+  const BULK_ALLOWED = ['pending', 'confirmed', 'on_packing', 'packed', 'dispatched', 'attempted', 'hold'];
   const options = BULK_ALLOWED
     .filter(val => STATUS_CONFIG[val])
     .map(val => ({ value: val, label: STATUS_CONFIG[val].label, color: STATUS_CONFIG[val].color }));
