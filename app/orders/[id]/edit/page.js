@@ -591,6 +591,25 @@ export default function OrderEditPage() {
         }));
         setHasChanges(true);
 
+        // May 8 2026 — Re-seed shipDraft after every stage call.
+        // update_ship may internally fall back to remove+add (when target line
+        // is committed/not-staged), which CHANGES the shipping_line_id. The
+        // shipDraft state is keyed by id, so without re-seeding the input for
+        // the new line would render blank. We seed from the new shipping_lines
+        // so the input shows the freshly-applied price for the new ID.
+        if (Array.isArray(d.shipping_lines)) {
+          setShipDraft(prev => {
+            const next = { ...prev };
+            for (const sl of d.shipping_lines) {
+              // Only seed if not already present (don't clobber user typing)
+              if (next[sl.id] === undefined) {
+                next[sl.id] = String(sl.price);
+              }
+            }
+            return next;
+          });
+        }
+
         // Record successful op in history for rebuild-replay.
         // For add_variant/add_custom: capture the NEW line_item_id so subsequent
         // ops on that item (e.g. quantity bumps, discount) reference a known ID
@@ -805,8 +824,14 @@ export default function OrderEditPage() {
       return;
     }
     if (newPrice === sl.price) return;
-    stage('update_ship', { shipping_line_id: sl.id, price: newPrice },
-      'Shipping update ho rahi hai...');
+    // fallback_title: agar Shopify update reject kare (committed line case),
+    // backend remove+add fallback chalata hai — uske liye new line ka naam
+    // chahiye taa-ke "Free Shipping" jaisa label preserve rahe replacement pe.
+    stage('update_ship', {
+      shipping_line_id: sl.id,
+      price: newPrice,
+      fallback_title: sl.title || 'Shipping',
+    }, 'Shipping update ho rahi hai...');
   };
 
   // ── Add NEW shipping line (May 2 2026) ──
