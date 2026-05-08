@@ -405,7 +405,19 @@ export default function SingleOrderPage() {
     );
   };
 
-  const setStatus    = (s) => { setShowStatusMenu(false); doAction('/api/orders/status', { order_id: id, status: s }, `✓ Status → ${s}`); };
+  // May 8 2026 — `force` parameter for super_admin terminal-state revert.
+  // Backend validates role server-side; client-side just plumbs the flag.
+  const setStatus = (s, opts = {}) => {
+    setShowStatusMenu(false);
+    const force = opts.force === true;
+    doAction('/api/orders/status', {
+      order_id: id,
+      status: s,
+      force,
+      performed_by: performer,
+      performed_by_email: userEmail,
+    }, force ? `⚡ Force revert → ${s}` : `✓ Status → ${s}`);
+  };
 
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
   // Apr 30 2026 — Method-aware. Optional payment_method ('Cash' | 'Bank Alfalah' |
@@ -898,7 +910,29 @@ export default function SingleOrderPage() {
     primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
   }
 
-  const statusOptions = Object.keys(STATUS_CONFIG).filter(s => s !== order.status && s !== 'cancelled');
+  // May 8 2026 — Manual status dropdown filter:
+  // Pehle Object.keys(STATUS_CONFIG) se SAB statuses dropdown mein aate the.
+  // Issue: in_transit / returned / rto / refunded courier API ya payment file
+  // upload se automatically set hote hain. Inhe manually click karke set
+  // karna xeshtruct hai — staff galti se rto pe daldete the (today's case:
+  // larke ne attempted ki jaga rto click kiya). Phir order terminal lock
+  // mein stuck ho jata.
+  //
+  // Naya behavior:
+  //   - Default dropdown: sirf "office workflow" statuses (manually settable).
+  //   - delivered/rto pe dedicated CEO buttons OrderDrawer mein already hain.
+  //   - in_transit/returned/refunded sirf automation se aate.
+  //
+  // Force-revert mode (super_admin only, terminal state se):
+  //   - Agar order terminal state mein hai (rto/returned/refunded/delivered)
+  //     aur user CEO hai, dropdown mein "office workflow" statuses dikhao
+  //     +  marker "⚡ force revert" + setStatus call force:true ke saath.
+  //   - Cancelled state ko expressly exclude — uska apna reopen flow alag.
+  const SAFE_OFFICE_STATUSES = ['pending', 'confirmed', 'on_packing', 'processing', 'packed', 'dispatched', 'attempted', 'hold'];
+  const TERMINAL_REVERTABLE = ['rto', 'returned', 'refunded', 'delivered']; // cancelled excluded
+  const inTerminal = TERMINAL_REVERTABLE.includes(order.status);
+  const isForceMode = inTerminal && isCEO; // CEO override available
+  const statusOptions = SAFE_OFFICE_STATUSES.filter(s => s !== order.status);
 
   // Fulfill dropdown items — secondary actions next to primary button
   const fulfillSecondary = [
@@ -1500,15 +1534,26 @@ export default function SingleOrderPage() {
                   <div style={{ position: 'relative' }}>
                     <button
                       onClick={() => setShowStatusMenu(v => !v)}
-                      style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      🔄 Change status ▾
+                      style={{
+                        background: isForceMode ? '#1a0000' : '#1a1a1a',
+                        border: `1px solid ${isForceMode ? '#660000' : border}`,
+                        color: isForceMode ? '#ef4444' : '#ccc',
+                        borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                      }}>
+                      {isForceMode ? '⚡ Force revert (admin)' : '🔄 Change status'} ▾
                     </button>
                     {showStatusMenu && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 180, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 200, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                        {isForceMode && (
+                          <div style={{ fontSize: 10, color: '#ef4444', padding: '4px 8px 8px', borderBottom: `1px solid ${border}`, marginBottom: 4, lineHeight: 1.4 }}>
+                            ⚡ Terminal state ({order.status}) override.<br/>
+                            Tracking + assignments preserve rahenge.
+                          </div>
+                        )}
                         {statusOptions.map(s => (
                           <button
                             key={s}
-                            onClick={() => setStatus(s)}
+                            onClick={() => setStatus(s, { force: isForceMode })}
                             style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 12, padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
                             onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
