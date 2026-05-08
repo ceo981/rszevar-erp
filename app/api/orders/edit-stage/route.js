@@ -10,10 +10,19 @@
 //   - add_variant    { variant_id, quantity }
 //   - add_custom     { title, price, quantity, taxable?, requires_shipping? }
 //   - add_discount   { line_item_id, discount_type, discount_value, description? }
-//   - update_ship    { shipping_line_id, price }
+//   - update_ship    { shipping_line_id, price, fallback_title? }
 //   - add_ship       { title, price }   ← NEW (May 2 2026): shipping line jab order pe nahi
+//   - remove_ship    { shipping_line_id } ← NEW (May 8 2026): shipping line hatane ke liye
 //
 // Returns the updated calculatedOrder state (normalized).
+//
+// May 8 2026 — fallback_title for update_ship:
+//   Shopify ki rule ke mutabiq, "committed" shipping lines (jo edit session se
+//   pehle order pe thi) ko orderEditUpdateShippingLine update nahi kar sakta.
+//   stageUpdateShipping internally fallback karta hai remove+add pe — but uske
+//   liye new shipping line ka title chahiye. Frontend pass karta hai sl.title
+//   ko fallback_title ke roop mein, taa-ke "Free Shipping" jaisa naam preserve
+//   rahe replacement line pe bhi.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -24,6 +33,7 @@ import {
   stageAddLineDiscount,
   stageUpdateShipping,
   stageAddShipping,
+  stageRemoveShipping,
 } from '@/lib/shopify-order-edit';
 
 export const runtime = 'nodejs';
@@ -86,6 +96,10 @@ export async function POST(request) {
           calculated_order_id,
           shipping_line_id: params.shipping_line_id,
           price: Number(params.price),
+          // Used by auto-fallback when Shopify rejects update on a committed
+          // shipping line — the fallback removes the line and adds a fresh one
+          // using fallback_title (defaults to "Shipping" if not provided).
+          fallback_title: params.fallback_title,
         });
         break;
 
@@ -94,6 +108,13 @@ export async function POST(request) {
           calculated_order_id,
           title: params.title || 'Shipping',
           price: Number(params.price),
+        });
+        break;
+
+      case 'remove_ship':
+        updated = await stageRemoveShipping({
+          calculated_order_id,
+          shipping_line_id: params.shipping_line_id,
         });
         break;
 
