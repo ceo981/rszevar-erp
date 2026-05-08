@@ -12,6 +12,21 @@
 //        confirmed  → confirmed_at set (if not already)
 //        cancelled  → redirects to /cancel (returns helpful error)
 //   5. Pre-fetches current status so canTransition has real fromStatus
+//
+// May 8 2026 — `force` flag added (super_admin only):
+//   Use case: staff galti se RTO/Returned/Delivered click karde → order stuck
+//   ho jata terminal state mein → canTransition manual revert block kar deta.
+//   Force mode:
+//     - canTransition skip (terminal lock bypass)
+//     - MINIMAL side-effect cleanup (sirf relevant timestamp clear, e.g. rto_at
+//       jab from=rto). Tracking, dispatched_at, assignment, packing_log SAB
+//       preserved — kyun ke order actually dispatch hua tha, sirf status
+//       galat lagi thi.
+//     - Auto-paid revert: agar from='delivered' aur payment_status='paid' tha
+//       (COD auto-paid), wapas 'unpaid' kar dete hain (paisa actually nahi
+//       mila tha agar delivery hi galat thi).
+//   Role check: SERVER-SIDE — sirf super_admin/admin allowed. Client agar
+//   force bheje aur user CEO nahi to 403.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -19,6 +34,7 @@ import { createServerClient } from '@/lib/supabase';
 import {
   canTransition,
   VALID_STATUSES,
+  TERMINAL_STATUSES,
   computeStatusRevertSideEffects,
   applyStatusRevertSideEffects,
 } from '@/lib/order-status';
@@ -40,10 +56,18 @@ const BLOCKED_VIA_STATUS_ROUTE = new Set([
   'cancelled',  // use /api/orders/cancel  — handles Shopify cancel + cancel_reason
 ]);
 
+// Server-side role check helper for `force` mode (super_admin/admin only).
+async function isCEORole(supabase, email) {
+  if (!email) return false;
+  const { data } = await supabase.from('profiles').select('role').eq('email', email).maybeSingle();
+  const r = data?.role;
+  return r === 'super_admin' || r === 'admin';
+}
+
 export async function POST(request) {
   const supabase = createServerClient();
   try {
-    const { order_id, status, notes, performed_by, performed_by_email } = await request.json();
+    const { order_id, status, notes, performed_by, performed_by_email, force } = await request.json();
 
     if (!order_id || !status) {
       return NextResponse.json(
@@ -68,6 +92,18 @@ export async function POST(request) {
       );
     }
 
+    // Server-side gate for force mode — super_admin/admin only.
+    const wantsForce = force === true;
+    if (wantsForce) {
+      const allowed = await isCEORole(supabase, performed_by_email);
+      if (!allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Force revert sirf super_admin/admin kar sakte hain' },
+          { status: 403 },
+        );
+      }
+    }
+
     // Fetch minimal fields — only what we strictly need for logic.
     // Avoid reading optional timestamp columns (delivered_at, rto_at, dispatched_at)
     // which may not exist in schema. We'll just always write them fresh.
@@ -88,13 +124,16 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    // Central transition guard — blocks illegal moves like delivered → pending
-    const gate = canTransition(order.status, status, 'manual');
-    if (!gate.allowed) {
-      return NextResponse.json(
-        { success: false, error: `Status change blocked: ${order.status} → ${status} (${gate.reason})` },
-        { status: 400 },
-      );
+    // Central transition guard — blocks illegal moves like delivered → pending.
+    // SKIP guard in force mode (CEO override for accidental terminal-state).
+    if (!wantsForce) {
+      const gate = canTransition(order.status, status, 'manual');
+      if (!gate.allowed) {
+        return NextResponse.json(
+          { success: false, error: `Status change blocked: ${order.status} → ${status} (${gate.reason})` },
+          { status: 400 },
+        );
+      }
     }
 
     // Build update payload with status-specific side effects
@@ -124,12 +163,35 @@ export async function POST(request) {
       patch.rto_at = nowIso;
     }
 
-    // Apr 2026 — Status DOWNGRADE side-effect cleanup.
-    // When user force-changes status to an earlier point in the workflow,
-    // strip artifacts from later stages (assignment, packing_log credit,
-    // tracking, dispatched_at, etc.) so the order doesn't carry stale data.
-    // Helper computes what to clear based on direction; we merge into patch.
-    const revert = computeStatusRevertSideEffects(order.status, status);
+    // Side-effect cleanup branch:
+    //   - NORMAL mode: full computeStatusRevertSideEffects (clears tracking,
+    //     assignment, packing_log when going backward — appropriate for legit
+    //     workflow reverts like "dispatched → confirmed because we re-fulfilled").
+    //   - FORCE mode (CEO override): MINIMAL cleanup. Only clear the timestamp
+    //     for the FROM status (rto_at if from=rto, delivered_at if from=delivered).
+    //     Tracking + dispatched_at + assignment + packing_log preserved kyun ke
+    //     order actually dispatch hua tha — sirf final status galat lagi thi.
+    let revert = { patchAdditions: {}, deleteAssignments: false, deletePackingLog: false, cleared: [] };
+    if (!wantsForce) {
+      revert = computeStatusRevertSideEffects(order.status, status);
+    } else {
+      // Force mode minimal cleanup
+      if (order.status === 'rto')        { revert.patchAdditions.rto_at = null;       revert.cleared.push('rto_at'); }
+      if (order.status === 'delivered')  { revert.patchAdditions.delivered_at = null; revert.cleared.push('delivered_at'); }
+      // Returned/refunded ke specific timestamp columns nahi hain schema mein,
+      // so just status flip + nothing to clear there.
+
+      // Auto-paid revert (only if going OUT of delivered AND COD auto-paid)
+      if (
+        order.status === 'delivered' &&
+        order.payment_method === 'COD' &&
+        order.payment_status === 'paid'
+      ) {
+        revert.patchAdditions.payment_status = 'unpaid';
+        revert.patchAdditions.paid_at = null;
+        revert.cleared.push('payment_status', 'paid_at');
+      }
+    }
     Object.assign(patch, revert.patchAdditions);
 
     // Resilient UPDATE — if an optional timestamp column (delivered_at, rto_at,
@@ -167,6 +229,9 @@ export async function POST(request) {
       } catch (e) {
         console.error('[status] revert side-effects failed:', e.message);
       }
+    } else if (wantsForce && revert.cleared.length > 0) {
+      // Force mode — record what we cleared for activity log
+      revertResult = { revertedFields: revert.cleared, rowsRemoved: { assignments: 0, packing_log: 0 } };
     }
 
     // Phase 2 (Apr 20 2026): if auto-paid happened (COD delivered flow), also
@@ -193,13 +258,21 @@ export async function POST(request) {
       if (revertResult.rowsRemoved.packing_log > 0) parts.push(`packing credit removed (${revertResult.rowsRemoved.packing_log} rows)`);
       if (revertResult.revertedFields.some(f => f.startsWith('tracking') || f === 'shopify_fulfillment_id')) parts.push(`tracking + fulfillment cleared`);
       if (revertResult.revertedFields.includes('dispatched_at')) parts.push(`dispatched_at cleared`);
+      if (revertResult.revertedFields.includes('rto_at')) parts.push(`rto_at cleared`);
+      if (revertResult.revertedFields.includes('delivered_at')) parts.push(`delivered_at cleared`);
+      if (revertResult.revertedFields.includes('payment_status')) parts.push(`auto-paid reverted to unpaid`);
       if (parts.length > 0) revertNote = ` Side-effects reverted: ${parts.join(', ')}.`;
     }
 
+    const baseAction = `status_changed_to_${status}`;
+    const finalAction = wantsForce ? `${baseAction}_forced` : baseAction;
+    const baseNote = notes || `${order.status} → ${status}`;
+    const forcePrefix = wantsForce ? '⚡ FORCE REVERT (admin override) — ' : '';
+
     await supabase.from('order_activity_log').insert({
       order_id,
-      action: `status_changed_to_${status}`,
-      notes: (notes || `${order.status} → ${status}`) + revertNote,
+      action: finalAction,
+      notes: forcePrefix + baseNote + revertNote,
       performed_by: performed_by || 'Staff',
       performed_by_email: performed_by_email || null,
       performed_at: nowIso,
@@ -227,11 +300,15 @@ export async function POST(request) {
       success: true,
       from_status: order.status,
       to_status: status,
+      forced: wantsForce,
       side_effects: {
         payment_auto_paid: patch.payment_status === 'paid',
+        payment_auto_paid_reverted: patch.payment_status === 'unpaid' && order.status === 'delivered',
         delivered_at_set: !!patch.delivered_at,
+        delivered_at_cleared: revert.patchAdditions.delivered_at === null,
         dispatched_at_set: !!patch.dispatched_at,
         rto_at_set: !!patch.rto_at,
+        rto_at_cleared: revert.patchAdditions.rto_at === null,
         confirmed_at_set: !!patch.confirmed_at,
         shopify_paid_synced: shopifyPaidSynced,
         shopify_paid_error: shopifyPaidError,
