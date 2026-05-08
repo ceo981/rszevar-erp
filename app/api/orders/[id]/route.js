@@ -66,28 +66,62 @@ export async function GET(request, { params }) {
       });
     }
 
-    // ── SKU → product_id + image enrichment from products table ──
+    // ── Variant_id + SKU → product enrichment (image + product_id) ──
+    // FIX May 8 2026 — Variant-id-aware lookup.
+    // Pehle sirf SKU se lookup hota tha. Lekin RS ZEVAR ke jewelry products
+    // mein typically Golden/Silver variants ka SKU same hota hai, jiski wajah
+    // se SKU-based lookup ambiguous tha (random variant ki image dikhti).
+    // Ab priority:
+    //   1) item.shopify_variant_id (unique per variant) — exact match
+    //   2) item.sku (only when variant_id missing — old order_items rows that
+    //      were synced before May 8 2026)
+    //
     // FIX Apr 2026 — Single query fetches BOTH shopify_product_id (for direct
     // product page navigation from order items — /inventory/[id] route is
     // keyed by shopify_product_id, NOT the table UUID) AND image_url (for
     // items missing thumbnails). Replaces previous image-only enrichment.
-    const allSkus = [...new Set(items.filter(i => i.sku).map(i => i.sku))];
+    const allVariantIds = [...new Set(items.filter(i => i.shopify_variant_id).map(i => i.shopify_variant_id))];
+    const allSkus       = [...new Set(items.filter(i => i.sku && !i.shopify_variant_id).map(i => i.sku))];
+
+    // Step 1: Primary lookup by variant_id (accurate, no SKU collisions)
+    const productByVariant = {};
+    if (allVariantIds.length > 0) {
+      const { data: prodsByVariant } = await supabase
+        .from('products')
+        .select('shopify_product_id, shopify_variant_id, sku, image_url')
+        .in('shopify_variant_id', allVariantIds);
+
+      for (const p of prodsByVariant || []) {
+        if (p.shopify_variant_id) productByVariant[p.shopify_variant_id] = p;
+      }
+    }
+
+    // Step 2: Fallback lookup by SKU (only for items where variant_id missing —
+    // typically pre-May-8-2026 order_items that haven't been backfilled).
+    const productBySku = {};
     if (allSkus.length > 0) {
-      const { data: prods } = await supabase
+      const { data: prodsBySku } = await supabase
         .from('products')
         .select('shopify_product_id, sku, image_url')
         .in('sku', allSkus);
 
-      const productMap = {};
-      for (const p of prods || []) {
-        if (p.sku && !productMap[p.sku]) productMap[p.sku] = p;
+      for (const p of prodsBySku || []) {
+        if (p.sku && !productBySku[p.sku]) productBySku[p.sku] = p;
       }
-      for (const item of items) {
-        if (item.sku && productMap[item.sku]) {
-          item.product_id = productMap[item.sku].shopify_product_id;
-          if (!item.image_url && productMap[item.sku].image_url) {
-            item.image_url = productMap[item.sku].image_url;
-          }
+    }
+
+    // Apply enrichment to each item (variant_id wins, SKU fallback)
+    for (const item of items) {
+      let prod = null;
+      if (item.shopify_variant_id && productByVariant[item.shopify_variant_id]) {
+        prod = productByVariant[item.shopify_variant_id];
+      } else if (item.sku && productBySku[item.sku]) {
+        prod = productBySku[item.sku];
+      }
+      if (prod) {
+        item.product_id = prod.shopify_product_id;
+        if (!item.image_url && prod.image_url) {
+          item.image_url = prod.image_url;
         }
       }
     }
