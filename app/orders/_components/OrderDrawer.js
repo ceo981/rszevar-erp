@@ -494,7 +494,34 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     if (reason === null) return; // user cancelled
     doAction('/api/orders/cancel-fulfillment', { order_id: order.id, reason: reason || 'No reason' }, '✅ Fulfillment cancelled — tracking removed');
   };
-  
+
+  // May 8 2026 — RTO parcel office wapas pohcha → restock + mark Returned.
+  // Yeh us workflow ko fill karta hai jo pehle missing tha:
+  //   RTO state mein order tha → staff cancel karna chahta tha taa-ke stock
+  //   wapas chala jaye, lekin cancel route RTO state se block hoti thi
+  //   ("RTO/Returned flow use karo" error). Returned flow UI mein tha hi nahi.
+  // Backend (/api/orders/return-restock):
+  //   - Sab order_items ka qty inventory mein wapas add karta (DB + Shopify)
+  //   - inventory_adjustments mein audit row source='rto_restock'
+  //   - status: rto → returned (terminal)
+  //   - Permission: super_admin/admin/manager only
+  const returnAndRestock = async () => {
+    const reason = window.prompt(
+      'Parcel wapas office aagaya — confirm restock?\n\n' +
+      'Ye karega:\n' +
+      '• Saara stock wapas inventory mein add (DB + Shopify sync)\n' +
+      '• Inventory audit log mein entry\n' +
+      '• Order status: RTO → Returned (terminal)\n\n' +
+      'Note (optional, e.g. "courier returned 8 May"):',
+    );
+    if (reason === null) return; // user cancelled
+    doAction(
+      '/api/orders/return-restock',
+      { order_id: order.id, reason: reason || `Returned to office — restock by ${performer}` },
+      '✅ Returned + restocked',
+    );
+  };
+
   const saveEdit = async () => {
     setLoading(true); setMsg('');
     try {
@@ -1186,6 +1213,21 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 </button>
               )}
 
+              {/* May 8 2026 — Return to Office + Restock.
+                  Visible jab order RTO state mein hai (parcel courier ne wapas
+                  bheja aur physically office aaya). Ye button:
+                    - Saara stock wapas inventory mein add karta (DB + Shopify)
+                    - Order status RTO → Returned (terminal)
+                    - inventory_adjustments mein audit log
+                  Permission: CEO ya manager. Cancel route ki jaga ye use karo
+                  RTO orders ke liye (cancel route RTO state se block hoti hai). */}
+              {(isCEO || isOpsManager) && s === 'rto' && (
+                <button onClick={returnAndRestock} disabled={loading}
+                  style={{ background: '#22c55e22', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  📦 Return to Office + Restock
+                </button>
+              )}
+
               {/* Apr 2026 — Cancel Fulfillment (Shopify-style).
                   Visible jab order pe tracking/fulfillment hai — useful jab
                   staff ne accidentally galat courier book kar diya, ya order
@@ -1322,6 +1364,8 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     'status changed to attempted': '#f97316',
                     'status changed to hold': '#64748b',
                     'status changed to packed': '#06b6d4',
+                    // May 8 2026 — Return + restock action
+                    'rto restocked': '#22c55e',
                   };
                   const actionColor = actionColors[actionLabel] || gold;
                   const actionEmojis = {
@@ -1335,6 +1379,8 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     'status changed to hold': '⏸',
                     'status changed to rto': '↩️',
                     'status changed to packed': '📦',
+                    // May 8 2026 — Return + restock action
+                    'rto restocked': '📦',
                   };
                   const emoji = actionEmojis[actionLabel] || '🔹';
 
