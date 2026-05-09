@@ -419,6 +419,77 @@ export default function SingleOrderPage() {
     }, force ? `⚡ Force revert → ${s}` : `✓ Status → ${s}`);
   };
 
+  // May 8 2026 — Return to Office + Restock handler.
+  // RTO state mein order ke liye: parcel office wapas pohcha → stock wapas
+  // inventory mein add + status RTO → returned (terminal). Backend handles
+  // DB + Shopify sync + audit log.
+  const returnAndRestock = async () => {
+    const reason = window.prompt(
+      'Parcel wapas office aagaya — confirm restock?\n\n' +
+      'Ye karega:\n' +
+      '• Saara stock wapas inventory mein add (DB + Shopify sync)\n' +
+      '• Inventory audit log mein entry\n' +
+      '• Order status: RTO → Returned (terminal)\n\n' +
+      'Note (optional, e.g. "courier returned 8 May"):',
+    );
+    if (reason === null) return; // user cancelled
+    await doAction(
+      '/api/orders/return-restock',
+      { order_id: id, reason: reason || `Returned to office — restock by ${performer}` },
+      '✓ Returned + restocked',
+    );
+  };
+
+  // May 8 2026 — Unconfirm: status confirmed/on_packing → pending.
+  // Mirrors OrderDrawer behavior. Paid orders blocked. Also unassigns packer.
+  const unconfirmOrder = async () => {
+    if (order.payment_status === 'paid' || order.payment_status === 'refunded') {
+      flash('error', `❌ Ye order "${order.payment_status}" hai — unconfirm nahi ho sakta`);
+      return;
+    }
+    if (!window.confirm('Order unconfirm karke wapas Pending mein bhejna hai?\n(Packer assignment bhi hat jayegi)')) return;
+    setActionBusy(true);
+    try {
+      // First unassign packer (best effort — fail silently)
+      await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+      });
+      // Then status revert
+      const r = await fetch('/api/orders/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: id, status: 'pending',
+          notes: 'Unconfirmed — wapas pending',
+          performed_by: performer, performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) { flash('success', '✓ Unconfirmed — wapas pending'); await refreshAll(); }
+      else flash('error', d.error || 'Unconfirm failed');
+    } catch (e) { flash('error', e.message); }
+    setActionBusy(false);
+  };
+
+  // May 8 2026 — Unassign packer: on_packing → confirmed (drops assignment + packing_log credit).
+  const unassignPacker = async () => {
+    if (!window.confirm('Packer assignment hatani hai?\n(Order on_packing se confirmed pe wapas chala jayega)')) return;
+    setActionBusy(true);
+    try {
+      const r = await fetch('/api/orders/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) { flash('success', '✓ Packer hata diya — status confirmed'); await refreshAll(); }
+      else flash('error', d.error || 'Unassign failed');
+    } catch (e) { flash('error', e.message); }
+    setActionBusy(false);
+  };
+
   // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
   // Apr 30 2026 — Method-aware. Optional payment_method ('Cash' | 'Bank Alfalah' |
   // 'Meezan Bank' | 'Easypaisa' | 'JazzCash' | 'Manual'), optional proof URL
@@ -914,9 +985,8 @@ export default function SingleOrderPage() {
   // Pehle Object.keys(STATUS_CONFIG) se SAB statuses dropdown mein aate the.
   // Issue: in_transit / returned / rto / refunded courier API ya payment file
   // upload se automatically set hote hain. Inhe manually click karke set
-  // karna xeshtruct hai — staff galti se rto pe daldete the (today's case:
-  // larke ne attempted ki jaga rto click kiya). Phir order terminal lock
-  // mein stuck ho jata.
+  // karna khatarnak hai — staff galti se rto pe daldete the. Phir order
+  // terminal lock mein stuck ho jata.
   //
   // Naya behavior:
   //   - Default dropdown: sirf "office workflow" statuses (manually settable).
@@ -1584,6 +1654,41 @@ export default function SingleOrderPage() {
                       disabled={actionBusy}
                       style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                       🔄 Cancel fulfillment
+                    </button>
+                  )}
+
+                  {/* May 8 2026 — Return to Office + Restock.
+                      Visible jab order RTO state mein hai (parcel courier ne wapas
+                      bheja aur physically office aaya). Permission: CEO/manager.
+                      Stock auto-restore + status RTO → returned (terminal). */}
+                  {(isCEO || isOpsManager) && order.status === 'rto' && (
+                    <button
+                      onClick={returnAndRestock}
+                      disabled={actionBusy}
+                      style={{ background: '#0a1f0a', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 7, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      📦 Return to office + Restock
+                    </button>
+                  )}
+
+                  {/* May 8 2026 — Unconfirm: status confirmed/on_packing → pending.
+                      Mirror of OrderDrawer button. Paid orders blocked server-side. */}
+                  {(isCEO || isOpsManager) && (order.status === 'confirmed' || order.status === 'on_packing') && (
+                    <button
+                      onClick={unconfirmOrder}
+                      disabled={actionBusy}
+                      style={{ background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      ↩️ Unconfirm
+                    </button>
+                  )}
+
+                  {/* May 8 2026 — Unassign packer: on_packing → confirmed.
+                      Useful jab packer ko hatana ho without losing fulfillment. */}
+                  {(isCEO || isOpsManager) && order.status === 'on_packing' && (
+                    <button
+                      onClick={unassignPacker}
+                      disabled={actionBusy}
+                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      👤 Unassign packer
                     </button>
                   )}
                 </div>
