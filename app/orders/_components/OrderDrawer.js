@@ -95,15 +95,19 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const isCEO       = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  const canConfirm  = isCEO || isOpsManager;
-  const canPack     = isCEO || isDispatcher;
+  // May 9 2026 — DB-driven permissions (was hardcoded role checks).
+  // Earlier `canConfirm = isCEO || isOpsManager` ki wajah se CSR ko grant
+  // dene ke baawajood Confirm Order button nahi dikhta tha — ab properly
+  // /roles page se grant karne pe immediate effect.
+  const canConfirm  = can('orders.confirm');
+  const canPack     = can('orders.dispatch');
+  const canAssign   = can('orders.assign');
   // May 6 2026 — granular DB-driven permission for cancel fulfillment.
   // CEO/super_admin auto-passes via can(). Other roles need explicit grant
   // from /roles page.
   const canCancelFulfillment = can('orders.cancel_fulfillment');
 
   // May 8 2026 — Granular cancel + restock + force permissions.
-  // Role-based hardcoded checks ki jaga DB-driven perms.
   // CEO can grant these to any role via /roles page without code changes.
   const canCancelOrder       = can('orders.cancel_order');
   const canCancelForce       = can('orders.cancel_force');
@@ -693,8 +697,6 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 return true;
               }).map((tag, ti) => {
                 // May 9 2026 — Prominent styling for 'returned' tag (RTO restock flow).
-                // Shows clearly that order was cancelled via return-to-office,
-                // not manual cancellation.
                 const isReturnedTag = String(tag).toLowerCase() === 'returned';
                 if (isReturnedTag) {
                   return (
@@ -971,7 +973,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {/* Reassign Packer — confirmed/on_packing orders */}
-              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+              {/* May 9 2026 — uses canAssign (orders.assign perm) instead of canConfirm,
+                  semantically correct. CEO can grant orders.assign separately to
+                  packing supervisors / dispatchers without giving them confirm rights. */}
+              {canAssign && (s === 'confirmed' || s === 'on_packing') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
                     👤 Packer Assignment
@@ -1243,8 +1248,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     - Order status RTO → Returned (terminal)
                     - inventory_adjustments mein audit log
                   Permission: orders.return_restock (default super_admin/admin/manager,
-                  delegate-able via /roles page). Cancel route ki jaga ye use karo
-                  RTO orders ke liye (cancel route RTO state se block hoti hai). */}
+                  delegate-able via /roles page). */}
               {canReturnRestock && s === 'rto' && (
                 <button onClick={returnAndRestock} disabled={loading}
                   style={{ background: '#22c55e22', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
