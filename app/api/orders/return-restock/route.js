@@ -36,7 +36,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { checkPermissionByEmail } from '@/lib/permissions';
-import { cancelShopifyOrder, addShopifyOrderNote } from '@/lib/shopify';
+import { cancelShopifyOrder, addShopifyOrderNote, updateShopifyOrderTags } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -366,6 +366,9 @@ export async function POST(request) {
     let shopifyCancelled = false;
     let shopifyAlreadyCancelledNote = false;
     let shopifyCancelError = null;
+    // May 9 2026 — also push 'returned' tag to Shopify so it's visible there.
+    let shopifyTagPushed = false;
+    let shopifyTagError = null;
 
     const shopifyAlreadyCancelled = !!order.shopify_raw?.cancelled_at;
 
@@ -395,6 +398,17 @@ export async function POST(request) {
           console.error('[return-restock] Shopify cancel error:', e.message);
         }
       }
+
+      // Push 'returned' tag to Shopify regardless of whether cancel succeeded
+      // or order was already cancelled — tag visibility is independent of
+      // cancel state. Helper is idempotent (won't dup-add existing tags).
+      try {
+        await updateShopifyOrderTags(order.shopify_order_id, ['returned'], []);
+        shopifyTagPushed = true;
+      } catch (e) {
+        shopifyTagError = e.message;
+        console.error('[return-restock] Shopify tag push error:', e.message);
+      }
     }
 
     // ── Activity log ────────────────────────────────────────────────────────
@@ -409,7 +423,7 @@ export async function POST(request) {
       shopifyCancelled ? '+ Shopify order cancelled (refund issued, restock skipped — done manually)' : null,
       shopifyAlreadyCancelledNote ? '+ Shopify side was already cancelled (sync cleanup)' : null,
       shopifyCancelError ? `Shopify cancel error: ${shopifyCancelError}` : null,
-      `Tag added: returned`,
+      `Tag added: returned${shopifyTagPushed ? ' (Shopify synced ✓)' : (shopifyTagError ? ` (Shopify push failed: ${shopifyTagError})` : '')}`,
       reason ? `Note: ${reason}` : null,
       skipped.length > 0 ? `${skipped.length} item(s) skipped` : null,
       okFromDelivered ? '(from delivered — force_status_revert override)' : null,
@@ -436,6 +450,8 @@ export async function POST(request) {
       shopify_order_cancelled: shopifyCancelled,
       shopify_already_cancelled: shopifyAlreadyCancelledNote,
       shopify_cancel_error: shopifyCancelError,
+      shopify_tag_pushed: shopifyTagPushed,
+      shopify_tag_error: shopifyTagError,
       stock_results: stockResults,
       skipped,
       duration_ms: Date.now() - startTime,
