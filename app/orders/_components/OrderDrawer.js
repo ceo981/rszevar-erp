@@ -691,9 +691,24 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 if (['whatsapp_confirmed', 'whatsapp confirmed', 'order_confirmed', 'order confirmed', 'confirmation pending', 'whatsapp_cancelled', 'whatsapp cancelled', 'no whatsapp'].includes(tag)) return false;
                 if (tag.startsWith('packing:')) return false; // already shown via assigned_to_name
                 return true;
-              }).map((tag, ti) => (
-                <span key={ti} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag}</span>
-              ))}
+              }).map((tag, ti) => {
+                // May 9 2026 — Prominent styling for 'returned' tag (RTO restock flow).
+                // Shows clearly that order was cancelled via return-to-office,
+                // not manual cancellation.
+                const isReturnedTag = String(tag).toLowerCase() === 'returned';
+                if (isReturnedTag) {
+                  return (
+                    <span key={ti}
+                      title="Order returned to office and restocked"
+                      style={{ color: '#f59e0b', background: '#f59e0b22', border: '1px solid #f59e0b66', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+                      ↩️ Returned
+                    </span>
+                  );
+                }
+                return (
+                  <span key={ti} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag}</span>
+                );
+              })}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
@@ -1259,11 +1274,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
 
                   {/* May 8 2026 — Force cancel option (perm: orders.cancel_force).
-                      Default: super_admin/admin only — but delegate-able via /roles.
-                      Allows cancelling RTO/dispatched/delivered orders for cleanup
-                      scenarios (e.g., orphan orders out-of-sync with Shopify, or
-                      admin discretion calls). Activity log captures this clearly
-                      so audit trail mein force override visible hai. */}
+                      Default: super_admin/admin only — but delegate-able via /roles. */}
                   {canCancelForce && (NO_CANCEL_FROM_UI.has(s)) && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
                       <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer' }} />
