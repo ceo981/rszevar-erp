@@ -25,6 +25,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { canTransition } from '@/lib/order-status';
 import { cancelShopifyOrder, addShopifyOrderNote } from '@/lib/shopify';
+import { checkPermissionByEmail } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,11 +42,35 @@ export async function POST(request) {
       performed_by,
       performed_by_email,
       sync_shopify,  // optional — default true
-      force,         // NEW — admin override for post-dispatch cancellations
+      force,         // post-dispatch override (gated by orders.cancel_force perm)
     } = await request.json();
 
     if (!order_id) {
       return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+    }
+
+    // ── Permission check (May 8 2026) ───────────────────────────────────────
+    // Cancel button itself requires orders.cancel_order permission.
+    // Default grants: super_admin, admin, manager, customer_support.
+    const cancelCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.cancel_order');
+    if (!cancelCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: cancelCheck.reason },
+        { status: 403 },
+      );
+    }
+
+    // Force flag requires the higher-tier orders.cancel_force permission.
+    // Default grants: super_admin, admin only (delegate-able via /roles).
+    const wantsForce = force === true;
+    if (wantsForce) {
+      const forceCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.cancel_force');
+      if (!forceCheck.allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Force cancel ke liye orders.cancel_force permission chahiye' },
+          { status: 403 },
+        );
+      }
     }
 
     const performer = performed_by || 'Staff';
@@ -64,8 +89,8 @@ export async function POST(request) {
     // ─── Escape hatch detection ───────────────────────────────────────────
     // Hatch 1: Shopify side already cancelled — sync orphan cleanup
     const shopifyAlreadyCancelled = !!order.shopify_raw?.cancelled_at;
-    // Hatch 2: explicit force flag (super_admin override from UI)
-    const isForceOverride = force === true;
+    // Hatch 2: explicit force flag (perm-gated above)
+    const isForceOverride = wantsForce;
     // If either is true, skip the post-dispatch protection
     const skipProtection = shopifyAlreadyCancelled || isForceOverride;
 
