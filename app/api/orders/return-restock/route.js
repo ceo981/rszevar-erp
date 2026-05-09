@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // Use case: Parcel courier ne RTO kiya (return to origin) aur physically
 // office wapas pohcha. Stock wapas inventory mein add karna hai aur order ko
-// terminal "returned" state mein move karna hai.
+// terminal "cancelled" state mein move karna hai with 'returned' tag.
 //
 // Pehle issue: staff cancel button click karte the (taa-ke Shopify cancel
 // flow auto-restock kar de), but cancel route RTO state se block hoti hai
@@ -20,7 +20,14 @@
 //         (her order_item ke variant_id se match, fallback SKU).
 //      b) Shopify: inventory_levels/set.json call (best-effort, log on fail).
 //      c) inventory_adjustments mein audit row (source='rto_restock').
-//   3. Order status: rto → returned (terminal, no further auto-progression).
+//   3. Order: status='cancelled', cancel_reason set, 'returned' tag added.
+//   4. Shopify cancel (with restock=false to avoid double-restock).
+//   5. Audit log: 'rto_restocked_and_cancelled' action.
+//
+// May 9 2026 — Workflow change:
+//   Pehle status='returned' tha (terminal). Ab status='cancelled' + 'returned'
+//   tag — taa-ke order Cancelled tab mein dikhe (visibility ke liye behtar)
+//   while preserving the WHY (return ki wajah se cancelled vs manual cancel).
 //   4. Activity log: rto_restocked action with item-level summary.
 //
 // Permission: super_admin/admin/manager only (server-side check).
@@ -29,6 +36,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { checkPermissionByEmail } from '@/lib/permissions';
+import { cancelShopifyOrder, addShopifyOrderNote } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -125,7 +133,7 @@ export async function POST(request) {
     // ── Fetch order + items ─────────────────────────────────────────────────
     const { data: order, error: orderErr } = await supabase
       .from('orders')
-      .select('id, order_number, status, shopify_order_id')
+      .select('id, order_number, status, shopify_order_id, tags, shopify_raw')
       .eq('id', order_id)
       .single();
 
@@ -318,18 +326,75 @@ export async function POST(request) {
       stockResults.push(result);
     }
 
-    // ── Update order status: rto → returned (terminal) ──────────────────────
+    // ── Update order: cancel + add 'returned' tag ──────────────────────────
+    // May 9 2026 — User wants this to be an actual cancellation (not just
+    // 'returned' status). Reasoning:
+    //   - Cancel state ka clearly mean hai "yeh order nahi gaya"
+    //   - 'returned' tag add karne se HOW it was cancelled visible rehta
+    //     (return ki wajah se vs manual cancel)
+    //   - Cancelled tab mein appear hoga, jo visibility ke liye behtar
+    //
+    // Tags: existing tags + 'returned' (idempotent — duplicate add nahi hoga)
+    const existingTags = Array.isArray(order.tags) ? order.tags : [];
+    const tagsLower = new Set(existingTags.map(t => String(t).toLowerCase()));
+    const updatedTags = tagsLower.has('returned')
+      ? existingTags
+      : [...existingTags, 'returned'];
+
+    const cancelReason = reason || `Returned to office — restock by ${performer}`;
+
     const { error: orderUpdErr } = await supabase
       .from('orders')
       .update({
-        status: 'returned',
+        status: 'cancelled',
+        cancelled_at: nowIso,
+        cancel_reason: cancelReason,
+        tags: updatedTags,
         updated_at: nowIso,
       })
       .eq('id', order_id);
 
     if (orderUpdErr) {
-      // Stock already restocked — order status update failure is non-fatal but flag it
-      console.error('[return-restock] order status update failed:', orderUpdErr.message);
+      // Stock already restocked — order update failure is non-fatal but flag it
+      console.error('[return-restock] order update failed:', orderUpdErr.message);
+    }
+
+    // ── Shopify cancel (best-effort, restock=false to avoid double-restock) ─
+    // We've already restocked manually with full audit trail above. Passing
+    // restock:false to Shopify so it doesn't ALSO restock (would double the
+    // inventory). Refund=true to mirror standard cancel route behavior.
+    let shopifyCancelled = false;
+    let shopifyAlreadyCancelledNote = false;
+    let shopifyCancelError = null;
+
+    const shopifyAlreadyCancelled = !!order.shopify_raw?.cancelled_at;
+
+    if (order.shopify_order_id) {
+      if (shopifyAlreadyCancelled) {
+        shopifyAlreadyCancelledNote = true;
+      } else {
+        try {
+          await cancelShopifyOrder(order.shopify_order_id, {
+            reason: 'other',
+            restock: false,  // Already restocked manually above — don't double up
+            refund: true,
+            notifyCustomer: false,
+            staffNote: `Return to office + restock by ${performer} (${restockCheck.role}): ${cancelReason}`,
+          });
+          shopifyCancelled = true;
+          try {
+            await addShopifyOrderNote(
+              order.shopify_order_id,
+              `RTO returned + restocked by ${performer}: ${cancelReason}`,
+            );
+          } catch (e) {
+            console.error('[return-restock] Shopify note error:', e.message);
+          }
+        } catch (e) {
+          shopifyCancelError = e.message;
+          console.error('[return-restock] Shopify cancel error:', e.message);
+        }
+      }
     }
 
     // ── Activity log ────────────────────────────────────────────────────────
@@ -338,9 +403,13 @@ export async function POST(request) {
     const shopifyFailCount = stockResults.filter(r => r.shopify_error).length;
 
     const summaryNotes = [
-      `RTO restock by ${performer} (${restockCheck.role})`,
-      `${totalRestocked} units across ${stockResults.length} product(s) returned to inventory`,
-      shouldSyncShopify ? `Shopify: ${shopifyOkCount} synced${shopifyFailCount ? `, ${shopifyFailCount} failed` : ''}` : '(Shopify sync skipped)',
+      `RTO returned + cancelled by ${performer} (${restockCheck.role})`,
+      `${totalRestocked} units across ${stockResults.length} product(s) restocked`,
+      shouldSyncShopify ? `Inventory: ${shopifyOkCount} synced${shopifyFailCount ? `, ${shopifyFailCount} failed` : ''}` : '(inventory Shopify sync skipped)',
+      shopifyCancelled ? '+ Shopify order cancelled (refund issued, restock skipped — done manually)' : null,
+      shopifyAlreadyCancelledNote ? '+ Shopify side was already cancelled (sync cleanup)' : null,
+      shopifyCancelError ? `Shopify cancel error: ${shopifyCancelError}` : null,
+      `Tag added: returned`,
       reason ? `Note: ${reason}` : null,
       skipped.length > 0 ? `${skipped.length} item(s) skipped` : null,
       okFromDelivered ? '(from delivered — force_status_revert override)' : null,
@@ -348,7 +417,7 @@ export async function POST(request) {
 
     await supabase.from('order_activity_log').insert({
       order_id,
-      action: 'rto_restocked',
+      action: 'rto_restocked_and_cancelled',
       notes: summaryNotes,
       performed_by: performer,
       performed_by_email: performed_by_email || null,
@@ -358,11 +427,15 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       from_status: fromStatus,
-      to_status: 'returned',
+      to_status: 'cancelled',
+      tags_added: ['returned'],
       total_units_restocked: totalRestocked,
       products_updated: stockResults.length,
-      shopify_synced_count: shopifyOkCount,
-      shopify_failed_count: shopifyFailCount,
+      shopify_inventory_synced_count: shopifyOkCount,
+      shopify_inventory_failed_count: shopifyFailCount,
+      shopify_order_cancelled: shopifyCancelled,
+      shopify_already_cancelled: shopifyAlreadyCancelledNote,
+      shopify_cancel_error: shopifyCancelError,
       stock_results: stockResults,
       skipped,
       duration_ms: Date.now() - startTime,
