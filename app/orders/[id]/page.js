@@ -1,428 +1,518 @@
+// ============================================================================
+// RS ZEVAR ERP — OrderDrawer (shared component)
+// Used by:
+//   - app/orders/page.js           → variant="drawer" (fixed slide-in)
+//   - app/orders/[id]/page.js      → variant="page"   (full-page view)
+// ============================================================================
+
 'use client';
 
-// ============================================================================
-// RS ZEVAR ERP — Single Order Page (Shopify-inspired full view)
-// Route: /orders/[id]
-// ----------------------------------------------------------------------------
-// Phase 1 (Apr 20 2026): Shopify-style UI enhancement
-//   - Header: [🔗 Shopify] [✏️ Edit] [🖨 Print ▾] [⋯ More ▾]
-//   - Items card: Shopify-style "compound" action button with status dropdown
-//   - Payment card: "Collect payment ▾" button with Mark-as-paid dropdown
-//   - All existing state, handlers, API calls preserved unchanged
-//   - Placeholders for: Mark as paid, Print PDFs, Duplicate, Archive (future phases)
-//
-// Design (unchanged):
-//   - Dark theme (ERP aesthetic) + Shopify-style 2-col card layout
-//   - Left:  Items | Status/Dispatch | Payment Summary | Timeline
-//   - Right: Notes | Customer | Shipping | Assignment | Tags | Metadata
-//   - Simple actions (confirm/cancel/status/comment/assign) inline
-//   - Complex actions (dispatch/edit) open OrderDrawer as overlay
-// ============================================================================
-
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
-import OrderDrawer, {
-  StatusBadge, PaymentBadge, fmt, timeAgo, ordinal,
-  gold, card, border, STATUS_CONFIG, NO_CANCEL_FROM_UI,
-} from '../_components/OrderDrawer';
-import EditCustomerModal from '../_components/EditCustomerModal';
-import EditShippingModal from '../_components/EditShippingModal';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
 
-// ─── Format helpers ───────────────────────────────────────────────────────
-function formatFullDate(iso) {
+// ─── Shared style constants (mirrored from orders/page.js) ───────────────
+export const gold   = '#c9a96e';
+export const card   = '#141414';
+export const border = '#222';
+
+// Statuses jahan normal cancel block hota hai (post-dispatch zone).
+// Frontend uses this to show "Force cancel (admin)" checkbox for super_admin
+// only when the order is in one of these states. Backend has same set —
+// duplicated here taa ke frontend bhi correct UI dikha sake bina extra
+// API call ke.
+export const NO_CANCEL_FROM_UI = new Set(['dispatched', 'delivered', 'rto', 'returned', 'refunded']);
+
+// ─── Shared helpers ──────────────────────────────────────────────────────
+export const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
+export const timeAgo = iso => {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleString('en-GB', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  }).replace(',', ' at');
-}
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
 
-function formatShortDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
-}
+// Ordinal: 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th"...
+export const ordinal = n => {
+  const v = Number(n);
+  if (!v || v < 1) return '';
+  const s = ['th', 'st', 'nd', 'rd'];
+  const r = v % 100;
+  return v + (s[(r - 20) % 10] || s[r] || s[0]);
+};
 
-// ─── Small UI atoms ───────────────────────────────────────────────────────
-function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowVisible = false, right = null, id = null }) {
+// ─── Status/Payment config + badges ──────────────────────────────────────
+export const STATUS_CONFIG = {
+  pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
+  confirmed:  { label: 'Confirmed',  color: '#3b82f6', bg: '#3b82f622' },
+  on_packing: { label: 'On Packing', color: '#f59e0b', bg: '#f59e0b22' },
+  processing: { label: 'Processing', color: gold,      bg: gold + '22' },
+  packed:     { label: 'Packed',     color: '#06b6d4', bg: '#06b6d422' },
+  dispatched: { label: 'Dispatched', color: '#a855f7', bg: '#a855f722' },
+  in_transit: { label: 'In Transit', color: '#8b5cf6', bg: '#8b5cf622' },
+  delivered:  { label: 'Delivered',  color: '#22c55e', bg: '#22c55e22' },
+  returned:   { label: 'Returned',   color: '#f59e0b', bg: '#f59e0b22' },
+  rto:        { label: 'RTO',        color: '#ef4444', bg: '#ef444422' },
+  cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
+  attempted:  { label: 'Attempted',  color: '#f97316', bg: '#f9731622' },
+  hold:       { label: 'Hold',       color: '#64748b', bg: '#64748b22' },
+};
+
+export const PAYMENT_CONFIG = {
+  unpaid:   { label: 'Unpaid',   color: '#f87171', bg: '#f8717122' },
+  paid:     { label: 'Paid',     color: '#22c55e', bg: '#22c55e22' },
+  refunded: { label: 'Refunded', color: '#fbbf24', bg: '#fbbf2422' },
+};
+
+export function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
   return (
-    <div id={id || undefined} style={{
-      background: card,
-      border: `1px solid ${border}`,
-      borderRadius: 10,
-      marginBottom: 16,
-      overflow: overflowVisible ? 'visible' : 'hidden',
-      position: 'relative',
-    }}>
-      {title && (
-        <div style={{
-          padding: '14px 20px',
-          borderBottom: `1px solid ${border}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(201,169,110,0.03)',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>{title}</div>
-          {right}
-        </div>
-      )}
-      <div style={{ padding: noPadBody ? 0 : pad }}>{children}</div>
-    </div>
+    <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+      {cfg.label}
+    </span>
   );
 }
 
-function Row({ label, value, mono, color }) {
+export function PaymentBadge({ payment_status }) {
+  const cfg = PAYMENT_CONFIG[payment_status] || PAYMENT_CONFIG.unpaid;
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
-      <span style={{ color: '#888' }}>{label}</span>
-      <span style={{
-        color: color || '#e5e5e5',
-        fontFamily: mono ? 'monospace' : 'inherit',
-        textAlign: 'right',
-        maxWidth: '60%',
-        wordBreak: 'break-word',
-      }}>{value ?? <span style={{ color: '#444' }}>—</span>}</span>
-    </div>
+    <span style={{ color: cfg.color, background: cfg.bg, padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+      {cfg.label}
+    </span>
   );
 }
 
-function HeaderBtn({ onClick, href, target, children, primary, title }) {
-  const style = {
-    background: primary ? gold : '#1a1a1a',
-    border: `1px solid ${primary ? gold : border}`,
-    color: primary ? '#000' : '#ccc',
-    borderRadius: 7,
-    padding: '7px 14px',
-    fontSize: 12,
-    fontWeight: primary ? 600 : 500,
-    cursor: 'pointer',
-    textDecoration: 'none',
-    fontFamily: 'inherit',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    whiteSpace: 'nowrap',
-  };
-  if (href) return <a href={href} target={target} rel="noopener noreferrer" style={style} title={title}>{children}</a>;
-  return <button onClick={onClick} style={style} title={title}>{children}</button>;
-}
-
-// ─── Dropdown menu item (shared styling for Print/More/Collect/Fulfill) ───
-function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: 'flex',
-        width: '100%',
-        textAlign: 'left',
-        gap: 10,
-        alignItems: 'flex-start',
-        background: 'transparent',
-        border: 'none',
-        color: disabled ? '#555' : danger ? '#ef4444' : '#ddd',
-        fontSize: 12,
-        padding: '8px 12px',
-        borderRadius: 5,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontFamily: 'inherit',
-        opacity: disabled ? 0.5 : 1,
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = '#1a1a1a'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-    >
-      {icon && <span style={{ fontSize: 14, flexShrink: 0, width: 16, textAlign: 'center' }}>{icon}</span>}
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{label}</div>
-        {sub && <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>{sub}</div>}
-      </span>
-    </button>
-  );
-}
-
-// ─── Main page ─────────────────────────────────────────────────────────────
-export default function SingleOrderPage() {
-  const params = useParams();
-  const router = useRouter();
-  const { profile, userEmail, activeUser, can } = useUser();
-  const performer = activeUser?.name || profile?.full_name || profile?.email || 'Staff';
-  const userRole = profile?.role || '';
-  const isCEO = userRole === 'super_admin' || userRole === 'admin';
+// ─── OrderDrawer (the main export) ───────────────────────────────────────
+export default function OrderDrawer({ order, onClose, onRefresh, performer, variant = 'drawer', defaultTab = 'actions' }) {
+  const isPage = variant === 'page';
+  const { profile, can } = useUser();
+  const userRole    = profile?.role || '';
+  const { userEmail } = useUser();
+  const isCEO       = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  const canConfirm = isCEO || isOpsManager;
-  const canPack    = isCEO || isDispatcher;
-  // May 2 2026 — Assign permission: CEO/manager can assign packer regardless of fulfill status
-  const canAssign  = isCEO || isOpsManager;
-  // May 6 2026 — Cancel Fulfillment uses granular DB-driven permission so
-  // Customer Support / Operations Manager can be granted via /roles page.
+  const canConfirm  = isCEO || isOpsManager;
+  const canPack     = isCEO || isDispatcher;
+  // May 6 2026 — granular DB-driven permission for cancel fulfillment.
+  // CEO/super_admin auto-passes via can(). Other roles need explicit grant
+  // from /roles page.
   const canCancelFulfillment = can('orders.cancel_fulfillment');
 
-  const id = params?.id;
-  const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [timeline, setTimeline] = useState([]);
-  const [packingStaff, setPackingStaff] = useState([]);
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [msg, setMsg] = useState(null);
-  const [actionBusy, setActionBusy] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  // Apr 2026 — In-place edit state for staff comments
-  const [editingId, setEditingId] = useState(null);     // id of comment being edited
-  const [editingText, setEditingText] = useState('');   // current edit textarea value
-  const [showCancelBox, setShowCancelBox] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  // Apr 2026 — Super-admin force cancel for post-dispatch overrides (RTO/dispatched/delivered cleanup)
-  const [forceCancel, setForceCancel] = useState(false);
-  // Apr 30 2026 — Review tab actions (WhatsApp-cancelled orders).
-  // 'confirm_cancel' => push cancellation to Shopify + clear review tags
-  // 'restore'        => bring back to confirmed + WA notify customer
-  const [reviewMode, setReviewMode] = useState(null);   // null | 'confirm_cancel' | 'restore'
-  const [reviewNote, setReviewNote] = useState('');
-  const [showStatusMenu, setShowStatusMenu] = useState(false);
+  // May 8 2026 — Granular cancel + restock + force permissions.
+  // Role-based hardcoded checks ki jaga DB-driven perms.
+  // CEO can grant these to any role via /roles page without code changes.
+  const canCancelOrder       = can('orders.cancel_order');
+  const canCancelForce       = can('orders.cancel_force');
+  const canReturnRestock     = can('orders.return_restock');
+  const canForceStatusRevert = can('orders.force_status_revert');
 
-  // Apr 27 2026 — Track which tab to open drawer on. 'customer' jab kebab
-  // menu se khule, 'actions' jab dispatch button etc. se khule.
-  const [drawerInitialTab, setDrawerInitialTab] = useState('actions');
-
-  // May 2026 — Shopify-style modal popups for customer/shipping edit (replaces
-  // the older flow that opened the drawer's Customer tab). The drawer was the
-  // only edit path when /api/orders/edit was broken — now restored, both flows
-  // (modal AND drawer-tab) save through the same endpoint.
-  const [showEditCustomer, setShowEditCustomer] = useState(false);
-  const [showEditShipping, setShowEditShipping] = useState(false);
-
-  // Phase 1 NEW: dropdown state for header/card menus (Print / More / Fulfill / Payment)
-  const [openMenu, setOpenMenu] = useState(null);
-
-  // Phase 2 NEW: confirmation box state for Mark as Paid (irreversible-ish, needs confirmation)
-  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
-  // Apr 30 2026 — Payment method picker. When user clicks a specific method
-  // (Cash / Bank Alfalah / Meezan / Easypaisa / JazzCash) we open this with
-  // the method preset. For digital methods, screenshot upload is enabled.
-  // null = no modal open. Object = { method: 'Cash'|..., requireProof: bool }.
-  const [paymentMethodModal, setPaymentMethodModal] = useState(null);
-  const [paymentProofFile, setPaymentProofFile] = useState(null);
-  const [paymentProofUrl, setPaymentProofUrl] = useState('');
-  const [paymentProofUploading, setPaymentProofUploading] = useState(false);
-  const [paymentMethodNote, setPaymentMethodNote] = useState('');
-
-  // Apr 2026 — Customer mini-history (last 3 orders by phone) for sidebar inline preview
-  const [customerHistory, setCustomerHistory] = useState([]);
-
-  // Apr 2026 — Manual Fulfill modal state.
-  // For orders where team books courier outside ERP (e.g. Kangaroo via Shopify
-  // app, Leopards via their own portal) OR walk-in/wholesale/pickup with no
-  // tracking. Adds tracking + courier + creates Shopify fulfillment.
-  const [showFulfillModal, setShowFulfillModal]   = useState(false);
-  const [fulfillTracking, setFulfillTracking]     = useState('');
-  const [fulfillCourier, setFulfillCourier]       = useState('');           // '' = auto-detect
-  const [fulfillNotify, setFulfillNotify]         = useState(true);
-  const [fulfillReason, setFulfillReason]         = useState('');
-  const [fulfillCourierManuallyEdited, setFulfillCourierManuallyEdited] = useState(false);
-
-  // ─── Data fetchers ──────────────────────────────────────────────────────
-  const loadOrder = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await fetch(`/api/orders/${id}`);
-      const d = await r.json();
-      if (d.success) setOrder(d.order);
-      else setError(d.error || 'Order load failed');
-    } catch (e) {
-      setError(e.message);
-    }
-    setLoading(false);
-  }, [id]);
-
-  const loadTimeline = useCallback(async () => {
-    if (!id) return;
-    try {
-      const r = await fetch(`/api/orders/comment?order_id=${id}`);
-      const d = await r.json();
-      setTimeline(d.log || []);
-    } catch {}
-  }, [id]);
-
-  const loadPackingStaff = useCallback(async () => {
-    try {
-      const r = await fetch('/api/orders/assign');
-      const d = await r.json();
-      setPackingStaff(d.staff || []);
-    } catch {}
+  // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
-  useEffect(() => { loadOrder(); }, [loadOrder]);
-  useEffect(() => { loadTimeline(); }, [loadTimeline]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [tab, setTab] = useState(defaultTab);
+  const [log, setLog] = useState([]);
+  const [localStatus, setLocalStatus] = useState(order.status);
 
-  // Apr 2026 — Listen for "openFulfillModal" custom event from drawer.
-  // Drawer dispatches this when user clicks "📋 Open fulfill modal" on the
-  // confirmed-status fulfill section. We open our existing modal here.
-  useEffect(() => {
-    const handler = (e) => {
-      // Only respond if the event matches THIS order id (drawer may live
-      // in a different page context with multiple orders).
-      if (!e?.detail || String(e.detail) === String(id)) {
-        setShowFulfillModal(true);
-      }
-    };
-    window.addEventListener('openFulfillModal', handler);
-    return () => window.removeEventListener('openFulfillModal', handler);
-  }, [id]);
-  useEffect(() => { loadPackingStaff(); }, [loadPackingStaff]);
-
-  // Apr 2026 — Fetch customer's last 4 orders by phone (for sidebar mini-history)
-  // Excludes current order. Only runs if customer_phone exists and customer_order_count > 1.
-  useEffect(() => {
-    if (!order?.customer_phone || (order.customer_order_count || 0) < 2) {
-      setCustomerHistory([]);
-      return;
+  // FIX: keep localStatus in sync with order prop after parent refresh.
+  // Previously useState(order.status) only ran on mount — status shown in drawer
+  // could go stale if parent re-fetched and passed new order prop.
+  useEffect(() => { setLocalStatus(order.status); }, [order.status]);
+  const [dispatchForm, setDispatchForm] = useState({ courier: 'PostEx', notes: '' });
+  const [showKangarooModal, setShowKangarooModal] = useState(false);
+  const [kangarooForm, setKangarooForm] = useState({
+    name: order.customer_name || '',
+    phone: order.customer_phone || '',
+    address: order.customer_address || '',
+    city: order.customer_city || 'Karachi',
+    amount: order.total_price || order.total_amount || '',
+    invoice: order.order_number || '',
+    notes: '',
+    ordertype: 'COD',
+  });
+  const [showLeopardsModal, setShowLeopardsModal] = useState(false);
+  const [leopardsForm, setLeopardsForm] = useState({
+    name: order.customer_name || '',
+    phone: order.customer_phone || '',
+    address: order.customer_address || '',
+    city: order.customer_city || 'Karachi',
+    amount: order.total_price || order.total_amount || '',
+    notes: '',
+    weight: 500,
+    pieces: 1,
+  });
+  const [cancelReason, setCancelReason] = useState('');
+  // Apr 2026 — Super-admin force cancel flag for post-dispatch overrides
+  // (RTO/dispatched/delivered cleanup scenarios)
+  const [forceCancel, setForceCancel] = useState(false);
+  // Apr 27 2026 — Removed `editMode` state. Customer info edit form ab
+  // hamesha Customer tab pe inline visible hai (toggle ki zaroorat nahi).
+  // editForm + saveEdit baqi hain — woh Customer tab ke inline form se use hote hain.
+  const [editForm, setEditForm] = useState({
+    customer_name: order.customer_name || '',
+    customer_phone: order.customer_phone || '',
+    customer_address: order.customer_address || '',
+    customer_city: order.customer_city || '',
+    notes: '',
+  });
+  const [confirmNotes, setConfirmNotes] = useState('');
+  const [packingStaff, setPackingStaff] = useState([]);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [currentAssignment, setCurrentAssignment] = useState(null);
+  // Items: DB order_items agar hain, warna shopify_raw se seedha.
+  // FIX Apr 2026 — Line-level discount display: har item enrich hota hai
+  // shopify_raw.line_items se match karke (SKU/title/id se). Ye has_line_discount,
+  // original_unit_price, effective_unit_price, line_discount deta hai jisse
+  // frontend strikethrough original price + highlighted discounted price dikha sake.
+  //
+  // FIX Apr 2026 (additional) — Filter out items removed via Shopify Order Edit.
+  // Removed items have `current_quantity: 0` lekin abhi bhi line_items array
+  // mein hote hain. Inko show karne se ERP mein removed earrings/items dikhte
+  // thay (jaise ZEVAR-118275). Filter dono jagah lagana zaroori hai:
+  //   - Fallback path mein (jab order_items empty ho) — direct rendering
+  //   - Discount enrichment lookup mein — taa ke active item ka raw match
+  //     hamesha milay (filter na karein toh active + removed dono entries
+  //     same SKU rakh sakti hain)
+  const isActiveRawLineItem = (it) => {
+    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
+      return it.current_quantity > 0;
     }
-    fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=4`)
+    return (it?.quantity || 0) > 0;
+  };
+  const buildItems = (ord) => {
+    const rawLineItems = (ord.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
+    const enrichWithDiscount = (item) => {
+      const raw = rawLineItems.find(r =>
+        (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+        (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+        (r.title && item.title && item.title.startsWith(r.title))
+      );
+      const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+      const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+      const qty = item.quantity || 1;
+      return {
+        ...item,
+        original_unit_price: rawPrice,
+        effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
+        line_discount: rawDiscount,
+        has_line_discount: rawDiscount > 0.01,
+      };
+    };
+
+    if (ord.order_items?.length > 0) {
+      return ord.order_items
+        .slice()
+        .sort((a, b) => (a.id || 0) - (b.id || 0))
+        .map(enrichWithDiscount);
+    }
+    // Fallback: shopify_raw.line_items (purane orders ke liye) — already filtered above
+    return rawLineItems.map(item => {
+      const effectiveQty = (item.current_quantity !== undefined && item.current_quantity !== null)
+        ? item.current_quantity
+        : (item.quantity || 1);
+      return {
+        title: item.title + (item.variant_title ? ` - ${item.variant_title}` : ''),
+        sku: item.sku || null,
+        quantity: effectiveQty,
+        unit_price: parseFloat(item.price) || 0,
+        total_price: (parseFloat(item.price) || 0) * effectiveQty,
+        image_url: item.image?.src || null,
+        shopify_line_item_id: String(item.id),
+      };
+    }).map(enrichWithDiscount);
+  };
+
+  // FIX Apr 2026 — Removed items history (Shopify-style):
+  // Shopify Order Edit ke baad jo items hata diye gaye, woh `line_items`
+  // array mein rehte hain `current_quantity: 0` ke saath. Yahan unko separate
+  // dim/strikethrough section mein dikhate hain — bilkul Shopify admin ki tarah.
+  const buildRemovedItems = (ord) => {
+    return (ord.shopify_raw?.line_items || [])
+      .filter(it => {
+        if ((it.quantity || 0) === 0) return false;
+        return it.current_quantity === 0;
+      })
+      .map(it => ({
+        title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
+        sku: it.sku || null,
+        original_quantity: it.quantity,
+        unit_price: parseFloat(it.price) || 0,
+        total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
+        image_url: it.image?.src || null,
+        shopify_line_item_id: String(it.id),
+      }));
+  };
+
+  const [orderItems, setOrderItems] = useState(() => buildItems(order));
+  const [removedItems] = useState(() => buildRemovedItems(order));
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [customerOrderCount, setCustomerOrderCount] = useState(null);
+
+  // Eager fetch: kitne orders is customer ke total — header badge ke liye
+  useEffect(() => {
+    if (!order.customer_phone) { setCustomerOrderCount(null); return; }
+    fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=1`)
+      .then(r => r.json())
+      .then(d => setCustomerOrderCount(d.total || 0))
+      .catch(() => {});
+  }, [order.customer_phone]);
+
+  const loadLog = useCallback(() => {
+    fetch(`/api/orders/comment?order_id=${order.id}`)
+      .then(r => r.json())
+      .then(d => setLog(d.log || []));
+  }, [order.id]);
+
+  useEffect(() => {
+    if (tab === 'timeline') loadLog();
+  }, [tab, loadLog]);
+
+  // Customer ki previous orders load karo (phone se)
+  useEffect(() => {
+    if (tab === 'customer' && order.customer_phone) {
+      setCustomerOrdersLoading(true);
+      fetch(`/api/orders?search=${encodeURIComponent(order.customer_phone)}&limit=20`)
+        .then(r => r.json())
+        .then(d => {
+          setCustomerOrders((d.orders || []).filter(o => o.id !== order.id));
+          setCustomerOrdersLoading(false);
+        })
+        .catch(() => setCustomerOrdersLoading(false));
+    }
+  }, [tab, order.customer_phone, order.id]);
+
+  const submitComment = async () => {
+    if (!commentText.trim() || submittingComment) return;
+    setSubmittingComment(true);
+    try {
+      const r = await fetch('/api/orders/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: order.id, comment: commentText, staff_name: performer, staff_email: userEmail }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setCommentText('');
+        loadLog();
+      }
+    } catch(e) { console.error(e); }
+    setSubmittingComment(false);
+  };
+
+  useEffect(() => {
+    // DB se fresh items fetch (images updated ho sakti hain)
+    // FIX May 2026 — Pehle setOrderItems(d.items) seedha overwrite kar deta tha,
+    // jisse buildItems ki discount enrichment (has_line_discount, original_unit_price,
+    // effective_unit_price, line_discount) gayab ho jati thi 1 second baad. Drawer
+    // mein strikethrough discount UI suddenly disappear ho jati thi. Ab API se aaye
+    // items ko bhi enrichWithDiscount se enrich karte hain shopify_raw matching ke through.
+    fetch(`/api/orders?action=items&order_id=${order.id}`)
       .then(r => r.json())
       .then(d => {
-        const others = (d.orders || []).filter(o => o.id !== order.id).slice(0, 3);
-        setCustomerHistory(others);
+        if (d.items?.length > 0) {
+          // Re-enrich with discount info from order's shopify_raw.line_items
+          const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
+          const enriched = d.items.map(item => {
+            const raw = rawLineItems.find(r =>
+              (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
+              (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
+              (r.title && item.title && item.title.startsWith(r.title))
+            );
+            const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
+            const rawPrice    = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
+            const qty = item.quantity || 1;
+            return {
+              ...item,
+              original_unit_price: rawPrice,
+              effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
+              line_discount: rawDiscount,
+              has_line_discount: rawDiscount > 0.01,
+            };
+          });
+          setOrderItems(enriched);
+        }
       })
-      .catch(() => setCustomerHistory([]));
-  }, [order?.customer_phone, order?.customer_order_count, order?.id]);
+      .catch(() => {});
+  }, [order.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close any open dropdown on outside click
   useEffect(() => {
-    if (!openMenu) return;
-    const close = () => setOpenMenu(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [openMenu]);
+    // Load packing staff
+    fetch('/api/orders/assign')
+      .then(r => r.json())
+      .then(d => setPackingStaff(d.employees || []));
+    // Load current assignment
+    fetch(`/api/orders/assign?order_id=${order.id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.assignment) {
+          setCurrentAssignment(d.assignment);
+          setAssignedTo(String(d.assignment.assigned_to));
+        }
+      });
+  }, [order.id]);
 
-  // ─── Tab title ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (order?.order_number) document.title = `${order.order_number} — RS ZEVAR ERP`;
-    else if (loading) document.title = 'Loading… — RS ZEVAR ERP';
-  }, [order, loading]);
-
-  // ─── Helpers ────────────────────────────────────────────────────────────
-  const flash = (type, text, ms = 4000) => {
-    setMsg({ type, text });
-    setTimeout(() => setMsg(null), ms);
-  };
-
-  const refreshAll = async () => {
-    await Promise.all([loadOrder(), loadTimeline()]);
-  };
-
-  // Toggle a menu (stopPropagation in click handler so doc-click doesn't close it immediately)
-  const toggleMenu = (name) => (e) => {
-    e.stopPropagation();
-    setOpenMenu(openMenu === name ? null : name);
-  };
-
-  // Phase 1 placeholder — features coming in later phases
-  const comingSoon = (featureName, phase = 2) => {
-    setOpenMenu(null);
-    flash('info', `${featureName} — Phase ${phase} mein add hoga`);
-  };
-
-  // ─── Inline actions ─────────────────────────────────────────────────────
-  const doAction = async (url, payload, successMsg) => {
-    setActionBusy(true);
+  const doAction = async (url, body, successMsg) => {
+    setLoading(true); setMsg('');
     try {
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, performed_by: performer, performed_by_email: userEmail }),
+        body: JSON.stringify({ ...body, performed_by: performer, performed_by_email: userEmail }),
       });
       const d = await r.json();
       if (d.success) {
-        flash('success', successMsg);
-        await refreshAll();
+        setMsg(successMsg + (d.warning ? ` ⚠ ${d.warning}` : '') + (d.tracking ? ` | Tracking: ${d.tracking}` : ''));
+        // Agar body mein status hai to instantly update karo
+        if (body.status) setLocalStatus(body.status);
+        onRefresh();
       } else {
-        flash('error', d.error || 'Action failed');
+        setMsg('❌ ' + d.error);
+      }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
+  };
+
+  const confirm = async () => {
+    setLoading(true); setMsg('');
+    try {
+      const r = await fetch('/api/orders/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          notes: confirmNotes,
+          performed_by: performer,
+          performed_by_email: userEmail,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setLocalStatus('confirmed');
+        setMsg('✅ Order confirmed!');
+        onRefresh();
+      } else {
+        setMsg('❌ ' + d.error);
+      }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
+  };
+  const dispatch = () => doAction('/api/orders/dispatch', { order_id: order.id, ...dispatchForm }, '✅ Dispatched!');
+
+  const bookLeopardsNow = async () => {
+    setLoading(true);
+    setMsg('');
+    // Get order items for special instructions
+    let itemsText = leopardsForm.notes || '';
+    if (!itemsText) {
+      try {
+        // FIX May 2026 — was calling /api/orders?id=X&include_items=true which
+        // is NOT a supported query — `id` and `include_items` params are ignored
+        // by the route. Correct endpoint is action=items&order_id=X.
+        const ir = await fetch(`/api/orders?action=items&order_id=${order.id}`);
+        const id = await ir.json();
+        if (id.items?.length) {
+          itemsText = id.items.map(i => `${i.title}${i.variant_title ? ` (${i.variant_title})` : ''} SKU:${i.sku || ''} x${i.quantity}`).join(', ');
+        }
+      } catch(e) {}
+    }
+    try {
+      const r = await fetch('/api/orders/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          courier: 'Leopards',
+          courier_notes: itemsText || 'Jewelry',
+          override_name: leopardsForm.name,
+          override_phone: leopardsForm.phone,
+          override_address: leopardsForm.address,
+          override_city: leopardsForm.city,
+          override_amount: leopardsForm.amount,
+          override_weight: leopardsForm.weight,
+          override_pieces: leopardsForm.pieces,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Leopards booked! Tracking: ${d.tracking || 'Pending'}`);
+        setShowLeopardsModal(false);
+        setTimeout(() => { onRefresh?.(); onClose(); }, 1500);
+      } else {
+        setMsg('❌ ' + (d.error || 'Booking failed'));
       }
     } catch (e) {
-      flash('error', e.message);
+      setMsg('❌ ' + e.message);
     }
-    setActionBusy(false);
+    setLoading(false);
   };
 
-  const confirmOrder = () => doAction('/api/orders/confirm', { order_id: id }, '✓ Order confirmed');
-
-  // Apr 30 2026 — Resolve a Review-tab order (WA-cancelled).
-  // action: 'confirm_cancel' | 'restore'. Closes the inline strip on success
-  // and refreshes — order will leave the Review tab.
-  const resolveReview = async (action) => {
-    const successMsg = action === 'confirm_cancel'
-      ? '✓ Cancellation confirmed — pushed to Shopify'
-      : '✓ Order restored — customer notified';
-    await doAction('/api/orders/review/resolve', {
-      order_id: id,
-      action,
-      notes: reviewNote.trim() || undefined,
-    }, successMsg);
-    setReviewMode(null);
-    setReviewNote('');
-  };
-
-  // Apr 2026 — Mark as Packed
-  // 1. Uses /api/orders/assign with action:'packed' (writes packing_log for HR Leaderboard credit).
-  //    Direct /api/orders/status call would skip packing_log. See app/api/orders/assign/route.js.
-  // 2. Frontend guard: order MUST have an assigned packer first. Without
-  //    assignment, packing_log can't attribute the credit. Backend route
-  //    also enforces this, but frontend gives a clearer error.
-  const markPacked = () => {
-    if (!order.assigned_to_name) {
-      flash('error', '⚠️ Pehle packer assign karo — right sidebar ke "Assigned to" card se select karo', 6000);
-      // UX boost — scroll the Assigned to card into view + brief gold pulse
-      // so user knows EXACTLY where to look (especially on small screens
-      // where the right sidebar is below the main content).
-      if (typeof document !== 'undefined') {
-        const el = document.getElementById('assigned-to-card');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          const orig = el.style.boxShadow;
-          el.style.transition = 'box-shadow 0.4s';
-          el.style.boxShadow = '0 0 0 3px rgba(201,169,110,0.6), 0 0 24px rgba(201,169,110,0.4)';
-          setTimeout(() => { el.style.boxShadow = orig; }, 2500);
-        }
+  const bookKangaroo = async () => {
+    setLoading(true);
+    setMsg('');
+    try {
+      const r = await fetch('/api/orders/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: order.id,
+          courier: 'Kangaroo',
+          kangaroo_ordertype: kangarooForm.ordertype || 'COD',
+          kangaroo_comment: kangarooForm.notes || '',
+          override_name: kangarooForm.name,
+          override_phone: kangarooForm.phone,
+          override_address: kangarooForm.address,
+          override_city: kangarooForm.city,
+          override_amount: kangarooForm.amount,
+        }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Kangaroo booked! Tracking: ${d.tracking || 'Pending'}`);
+        setShowKangarooModal(false);
+        setTimeout(() => { onRefresh?.(); onClose(); }, 1500);
+      } else {
+        setMsg('❌ ' + (d.error || 'Booking failed'));
       }
-      return;
+    } catch (e) {
+      setMsg('❌ ' + e.message);
     }
-    doAction(
-      '/api/orders/assign',
-      { order_id: id, action: 'packed', performed_by: performer, performed_by_email: userEmail },
-      '✓ Marked as Packed',
-    );
+    setLoading(false);
+  };
+  const cancel = () => doAction('/api/orders/cancel', { order_id: order.id, reason: cancelReason, force: forceCancel }, '✅ Order cancelled');
+
+  // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
+  // tracking removed, courier cleared, status reverted (dispatched → confirmed).
+  // Confirms with native dialog before calling — destructive action.
+  const cancelFulfillment = async () => {
+    const reason = window.prompt('Fulfillment cancel karne ki wajah likho:\n(Tracking + courier hat jayegi, status confirmed pe wapas chala jayega)');
+    if (reason === null) return; // user cancelled
+    doAction('/api/orders/cancel-fulfillment', { order_id: order.id, reason: reason || 'No reason' }, '✅ Fulfillment cancelled — tracking removed');
   };
 
-  // May 8 2026 — `force` parameter for super_admin terminal-state revert.
-  // Backend validates role server-side; client-side just plumbs the flag.
-  const setStatus = (s, opts = {}) => {
-    setShowStatusMenu(false);
-    const force = opts.force === true;
-    doAction('/api/orders/status', {
-      order_id: id,
-      status: s,
-      force,
-      performed_by: performer,
-      performed_by_email: userEmail,
-    }, force ? `⚡ Force revert → ${s}` : `✓ Status → ${s}`);
-  };
-
-  // May 8 2026 — Return to Office + Restock handler.
-  // RTO state mein order ke liye: parcel office wapas pohcha → stock wapas
-  // inventory mein add + status RTO → returned (terminal). Backend handles
-  // DB + Shopify sync + audit log.
+  // May 8 2026 — RTO parcel office wapas pohcha → restock + mark Returned.
+  // Yeh us workflow ko fill karta hai jo pehle missing tha:
+  //   RTO state mein order tha → staff cancel karna chahta tha taa-ke stock
+  //   wapas chala jaye, lekin cancel route RTO state se block hoti thi
+  //   ("RTO/Returned flow use karo" error). Returned flow UI mein tha hi nahi.
+  // Backend (/api/orders/return-restock):
+  //   - Sab order_items ka qty inventory mein wapas add karta (DB + Shopify)
+  //   - inventory_adjustments mein audit row source='rto_restock'
+  //   - status: rto → returned (terminal)
+  //   - Permission: super_admin/admin/manager only
   const returnAndRestock = async () => {
     const reason = window.prompt(
       'Parcel wapas office aagaya — confirm restock?\n\n' +
@@ -433,2294 +523,1117 @@ export default function SingleOrderPage() {
       'Note (optional, e.g. "courier returned 8 May"):',
     );
     if (reason === null) return; // user cancelled
-    await doAction(
+    doAction(
       '/api/orders/return-restock',
-      { order_id: id, reason: reason || `Returned to office — restock by ${performer}` },
-      '✓ Returned + restocked',
+      { order_id: order.id, reason: reason || `Returned to office — restock by ${performer}` },
+      '✅ Returned + restocked',
     );
   };
 
-  // May 8 2026 — Unconfirm: status confirmed/on_packing → pending.
-  // Mirrors OrderDrawer behavior. Paid orders blocked. Also unassigns packer.
-  const unconfirmOrder = async () => {
-    if (order.payment_status === 'paid' || order.payment_status === 'refunded') {
-      flash('error', `❌ Ye order "${order.payment_status}" hai — unconfirm nahi ho sakta`);
-      return;
-    }
-    if (!window.confirm('Order unconfirm karke wapas Pending mein bhejna hai?\n(Packer assignment bhi hat jayegi)')) return;
-    setActionBusy(true);
+  const saveEdit = async () => {
+    setLoading(true); setMsg('');
     try {
-      // First unassign packer (best effort — fail silently)
-      await fetch('/api/orders/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
-      });
-      // Then status revert
-      const r = await fetch('/api/orders/status', {
+      const r = await fetch('/api/orders/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: id, status: 'pending',
-          notes: 'Unconfirmed — wapas pending',
-          performed_by: performer, performed_by_email: userEmail,
-        }),
-      });
-      const d = await r.json();
-      if (d.success) { flash('success', '✓ Unconfirmed — wapas pending'); await refreshAll(); }
-      else flash('error', d.error || 'Unconfirm failed');
-    } catch (e) { flash('error', e.message); }
-    setActionBusy(false);
-  };
-
-  // May 8 2026 — Unassign packer: on_packing → confirmed (drops assignment + packing_log credit).
-  const unassignPacker = async () => {
-    if (!window.confirm('Packer assignment hatani hai?\n(Order on_packing se confirmed pe wapas chala jayega)')) return;
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
-      });
-      const d = await r.json();
-      if (d.success) { flash('success', '✓ Packer hata diya — status confirmed'); await refreshAll(); }
-      else flash('error', d.error || 'Unassign failed');
-    } catch (e) { flash('error', e.message); }
-    setActionBusy(false);
-  };
-
-  // Phase 2: Mark as Paid — ERP + Shopify sync (shows richer success/warning)
-  // Apr 30 2026 — Method-aware. Optional payment_method ('Cash' | 'Bank Alfalah' |
-  // 'Meezan Bank' | 'Easypaisa' | 'JazzCash' | 'Manual'), optional proof URL
-  // (Supabase storage public link), and optional staff note. Backwards-
-  // compatible — if no args passed, behaves like the old generic mark-paid.
-  const markAsPaid = async (opts = {}) => {
-    const { payment_method, payment_proof_url, note } = opts;
-    setShowPaidConfirm(false);
-    setOpenMenu(null);
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/mark-paid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: id,
-          payment_method,
-          payment_proof_url,
-          note,
+          order_id: order.id,
+          ...editForm,
           performed_by: performer,
           performed_by_email: userEmail,
         }),
       });
-      const d = await r.json();
-      if (d.success) {
-        const methodTag = payment_method ? ` (${payment_method})` : '';
-        const msgText = d.shopify_synced
-          ? (d.shopify_already_paid
-            ? `✓ Paid${methodTag} (Shopify already paid)`
-            : `✓ Paid${methodTag} — Shopify synced`)
-          : (d.warning
-            ? `⚠ Paid in ERP${methodTag} — Shopify sync failed: ${d.warning}`
-            : `✓ Paid${methodTag}`);
-        flash(d.shopify_synced || !d.warning ? 'success' : 'info', msgText, 6000);
-        await refreshAll();
-      } else {
-        flash('error', d.error || 'Mark as paid failed');
-      }
-    } catch (e) {
-      flash('error', e.message);
-    }
-    setActionBusy(false);
-  };
-
-  const cancelOrder = async () => {
-    if (!cancelReason.trim()) { flash('error', 'Reason zaroori hai'); return; }
-    await doAction('/api/orders/cancel', { order_id: id, reason: cancelReason, force: forceCancel }, '✓ Order cancelled');
-    setShowCancelBox(false);
-    setCancelReason('');
-    setForceCancel(false);
-  };
-
-  // Apr 2026 — Toggle order type tag (walkin / international / wholesale).
-  // Manual ERP-side toggling — pehle yeh tags rszevar.com platform se aate the,
-  // ab team yahin se manage karegi. Tag sirf informational hai — koi
-  // auto-action trigger nahi karta. Best-effort sync to rszevar.com platform.
-  const toggleOrderTypeTag = async (tag, newValue) => {
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/update-tags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_id: id,
-          tag,
-          value: newValue,
-          performed_by: performer,
-          performed_by_email: userEmail,
-        }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        const action = newValue ? 'added' : 'removed';
-        const platformNote = d.platform_synced === false ? ' (platform sync pending)' : '';
-        flash('success', `✓ ${d.label} ${action}${platformNote}`, 4000);
-        await refreshAll();
-      } else {
-        flash('error', d.error || 'Tag update failed', 5000);
-      }
-    } catch (e) {
-      flash('error', e.message, 5000);
-    }
-    setActionBusy(false);
-  };
-
-  // May 2 2026 — Convert order to credit (udhaar) — Step 6 of customer credits feature.
-  // Uses dedicated /convert-to-credit endpoint instead of toggleOrderTypeTag because:
-  //   1. This change ALSO affects status (auto-deliver if not terminal)
-  //   2. Has revert path that needs warnings if payments already allocated
-  //   3. Different audit trail entry (credit_converted vs tag change)
-  const toggleCreditOrder = async (newValue) => {
-    const isCurrentlyCredit = !!order.is_credit_order;
-    if (isCurrentlyCredit === newValue) return;  // no-op
-
-    let confirmMsg;
-    let url = `/api/orders/${id}/convert-to-credit`;
-    let reasonPrompt;
-
-    if (newValue) {
-      // Converting TO credit
-      const TERMINAL = ['delivered', 'cancelled', 'returned'];
-      const willAutoDeliver = !TERMINAL.includes(order.status);
-      confirmMsg = willAutoDeliver
-        ? `Order ko credit (udhaar) mark karna hai?\n\n` +
-          `Yeh hoga:\n` +
-          `• is_credit_order = true\n` +
-          `• Status auto: ${order.status} → delivered\n` +
-          `• Payment status unpaid rahega\n` +
-          `• Customer Credits dashboard mein dikhe ga\n\n` +
-          `Continue?`
-        : `Order ko credit (udhaar) mark karna hai?\n\nCustomer Credits dashboard mein dikhe ga.\nContinue?`;
-      reasonPrompt = 'Reason / note (optional):';
-    } else {
-      // Reverting from credit
-      url += '?revert=true';
-      confirmMsg =
-        `Credit mark hata dein?\n\n` +
-        `WARNING: Agar is order pe payments allocate hain, woh customer ke khaata mein rahengi.\n` +
-        `Pehle payments void karna behtar hai agar zaroori ho.\n\n` +
-        `Continue?`;
-      reasonPrompt = 'Revert reason:';
-    }
-
-    if (!window.confirm(confirmMsg)) return;
-    const reason = window.prompt(reasonPrompt, '');
-    if (reason === null) return;  // user cancelled
-
-    setActionBusy(true);
-    try {
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          performed_by: performer,
-          performed_by_email: userEmail,
-          reason: reason || undefined,
-        }),
-      });
-      const text = await r.text();
+      // Defensive parse — Vercel can return plain text on infra errors (413, 504).
       let d;
+      const text = await r.text();
       try { d = JSON.parse(text); }
-      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 100)}`); }
+      catch { throw new Error(`Server returned non-JSON: ${text.slice(0, 120)}`); }
 
       if (d.success) {
-        flash('success', d.message || (newValue ? '✓ Converted to credit order' : '✓ Reverted from credit'), 4000);
-        if (Array.isArray(d.warnings) && d.warnings.length > 0) {
-          // Show warnings as separate alerts after a slight delay (so flash is visible first)
-          setTimeout(() => alert('Warnings:\n\n' + d.warnings.join('\n\n')), 800);
-        }
-        await refreshAll();
-      } else {
-        flash('error', d.error || 'Credit toggle failed', 5000);
-      }
-    } catch (e) {
-      flash('error', e.message, 5000);
-    }
-    setActionBusy(false);
+        setMsg('✅ Customer info updated!' + (d.warning ? ` ⚠️ ${d.warning}` : '') + (d.shopify_synced ? ' Shopify sync ✓' : ''));
+        // Reset notes field after successful save
+        setEditForm(f => ({ ...f, notes: '' }));
+        onRefresh();
+      } else setMsg('❌ ' + (d.error || 'Save failed'));
+    } catch(e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
   };
+  const setStatus = (status) => doAction('/api/orders/status', { order_id: order.id, status }, `✅ Status → ${status}`);
 
-  // Apr 2026 — Cancel Shopify fulfillment from ERP. Reverses dispatch:
-  // tracking removed, courier cleared, status reverted (dispatched → confirmed).
-  const cancelFulfillment = async () => {
-    const reason = window.prompt('Fulfillment cancel karne ki wajah likho:\n(Tracking + courier hat jayegi, status confirmed pe wapas chala jayega)');
-    if (reason === null) return; // user cancelled
-    await doAction('/api/orders/cancel-fulfillment', { order_id: id, reason: reason || 'No reason' }, '✓ Fulfillment cancelled — tracking removed');
-  };
-
-  // Apr 2026 — Auto-detect courier from tracking number prefix.
-  // Mirrors lib/shopify.js#detectCourierFromTracking. Used in fulfill modal
-  // for live preview as user types.
-  //   "KI..." → Leopards
-  //   "KL..." → Kangaroo
-  //   else    → "" (user picks manually or leaves as Other)
-  const detectCourierFromTrackingClient = (tracking) => {
-    if (!tracking) return '';
-    const t = String(tracking).trim().toUpperCase();
-    if (t.startsWith('KI')) return 'Leopards';
-    if (t.startsWith('KL')) return 'Kangaroo';
-    return '';
-  };
-
-  // Effective courier: explicit edit > auto-detect from tracking > empty (=> "Other"/Pickup on backend)
-  const effectiveFulfillCourier = (() => {
-    if (fulfillCourierManuallyEdited && fulfillCourier) return fulfillCourier;
-    const auto = detectCourierFromTrackingClient(fulfillTracking);
-    if (auto) return auto;
-    return fulfillCourier; // user-picked or empty
-  })();
-
-  // Apr 2026 — Manual Fulfill submit handler. Calls /api/orders/manual-fulfill.
-  // Closes modal + refreshes data on success.
-  const submitManualFulfill = async () => {
-    setActionBusy(true);
+  const assignOrder = async () => {
+    if (!assignedTo) return;
+    setLoading(true); setMsg('');
     try {
-      const r = await fetch('/api/orders/manual-fulfill', {
+      // FIX May 6 2026 — 'packing_team' string ko parseInt nahi karna.
+      // Pehle: parseInt('packing_team') → NaN → JSON serialize → null → API
+      // "Valid employee select karo" reject karta tha.
+      // Ab: agar 'packing_team' hai to as-is bhejo, warna employee numeric ID.
+      const isTeam = assignedTo === 'packing_team';
+      const assignPayload = isTeam ? 'packing_team' : parseInt(assignedTo);
+
+      // FIX: explicit action field (was silently failing with "Unknown action")
+      // + performer attribution for audit log
+      const r = await fetch('/api/orders/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_id: id,
-          tracking_number: fulfillTracking.trim() || null,
-          courier: effectiveFulfillCourier || null,
-          notify_customer: fulfillNotify,
-          reason: fulfillReason.trim() || null,
+          order_id: order.id,
+          action: 'set_packer',
+          assigned_to: assignPayload,
           performed_by: performer,
           performed_by_email: userEmail,
         }),
       });
       const d = await r.json();
       if (d.success) {
-        const trackInfo = d.tracking_number
-          ? `Tracking: ${d.tracking_number} (${d.courier})`
-          : `Marked fulfilled (${d.courier} — no tracking)`;
-        const shopifyInfo = d.shopify_synced
-          ? ' — Shopify synced'
-          : (d.warning ? ` — Shopify warning: ${d.warning}` : '');
-        flash('success', `✓ ${trackInfo}${shopifyInfo}`, 6000);
-        // Reset modal state
-        setShowFulfillModal(false);
-        setFulfillTracking('');
-        setFulfillCourier('');
-        setFulfillCourierManuallyEdited(false);
-        setFulfillReason('');
-        setFulfillNotify(true);
-        await refreshAll();
-      } else {
-        flash('error', d.error || 'Manual fulfill failed', 6000);
-      }
-    } catch (e) {
-      flash('error', e.message, 6000);
-    }
-    setActionBusy(false);
+        const emp = isTeam ? null : packingStaff.find(e => String(e.id) === String(assignedTo));
+        setCurrentAssignment({
+          assigned_to: isTeam ? null : parseInt(assignedTo),
+          employee: emp,
+          notes: isTeam ? 'packing_team' : '',
+        });
+        // Only claim on_packing if backend actually promoted the status
+        if (d.status_promoted) setLocalStatus('on_packing');
+        setMsg(`✅ Assigned to ${isTeam ? 'Packing Team' : (emp?.name || 'packer')}!`);
+        onRefresh();
+      } else { setMsg('❌ ' + d.error); }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
   };
 
-
-  const addComment = async () => {
-    const txt = commentText.trim();
-    if (!txt) return;
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/comment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: id, comment: txt, staff_name: performer, staff_email: userEmail }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        setCommentText('');
-        await loadTimeline();
-        flash('success', '✓ Comment added');
-      } else {
-        flash('error', d.error || 'Comment failed');
-      }
-    } catch (e) {
-      flash('error', e.message);
-    }
-    setActionBusy(false);
-  };
-
-  // Apr 2026 — Edit own comment (in-place)
-  const startEditComment = (comment) => {
-    setEditingId(comment.id);
-    setEditingText(comment.notes || '');
-  };
-  const cancelEditComment = () => {
-    setEditingId(null);
-    setEditingText('');
-  };
-  const saveEditComment = async () => {
-    const txt = editingText.trim();
-    if (!txt || !editingId) return;
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/comment', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, comment: txt, staff_email: userEmail }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        cancelEditComment();
-        await loadTimeline();
-        flash('success', '✓ Comment updated');
-      } else {
-        flash('error', d.error || 'Edit failed');
-      }
-    } catch (e) {
-      flash('error', e.message);
-    }
-    setActionBusy(false);
-  };
-
-  // Apr 2026 — Delete own comment (with confirmation)
-  const deleteComment = async (commentId) => {
-    if (!commentId) return;
-    if (!window.confirm('Yeh comment delete kardenge?')) return;
-    setActionBusy(true);
-    try {
-      const r = await fetch('/api/orders/comment', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: commentId, staff_email: userEmail }),
-      });
-      const d = await r.json();
-      if (d.success) {
-        await loadTimeline();
-        flash('success', '✓ Comment deleted');
-      } else {
-        flash('error', d.error || 'Delete failed');
-      }
-    } catch (e) {
-      flash('error', e.message);
-    }
-    setActionBusy(false);
-  };
-
-  const assignTo = async (staffId) => {
-    setActionBusy(true);
+  const markPacked = async () => {
+    setLoading(true); setMsg('');
     try {
       const r = await fetch('/api/orders/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: id, assigned_to: staffId, performed_by: performer, performed_by_email: userEmail }),
+        body: JSON.stringify({ order_id: order.id, action: 'packed', performed_by: performer, performed_by_email: userEmail }),
       });
       const d = await r.json();
-      if (d.success) { flash('success', '✓ Assigned'); await refreshAll(); }
-      else flash('error', d.error || 'Assign failed');
-    } catch (e) { flash('error', e.message); }
-    setActionBusy(false);
+      if (d.success) {
+        setLocalStatus('packed');
+        setMsg(`✅ Marked as packed! ${d.items_packed} item(s) logged.`);
+        onRefresh();
+      } else if (d.packed_by_missing) {
+        setMsg('⚠️ Packed By set nahi — pehle mobile packing screen se packer add karo');
+      } else {
+        setMsg('❌ ' + d.error);
+      }
+    } catch (e) { setMsg('❌ ' + e.message); }
+    setLoading(false);
   };
 
-  // ─── Loading / error / not-found ────────────────────────────────────────
-  if (loading) {
-    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: 14 }}>⟳ Loading order…</div>;
-  }
-  if (error || !order) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
-        <div style={{ color: '#ef4444', fontSize: 14 }}>{error || 'Order not found'}</div>
-        <Link href="/orders" style={{ background: gold, color: '#000', padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-          ← Back to Orders
-        </Link>
-      </div>
-    );
-  }
+  const s = localStatus;
 
-  // ─── Derived data ───────────────────────────────────────────────────────
-  // Items: prefer DB order_items; fallback to shopify_raw.line_items for older
-  // orders where order_items rows weren't backfilled. Same pattern as the
-  // original OrderDrawer's buildItems helper.
-  //
-  // FIX Apr 2026 — Line-level discount display:
-  // Shopify line_items have `total_discount` (manual per-line discount).
-  // We enrich each item with `effective_unit_price` + `line_discount` by
-  // matching SKU/title from shopify_raw.line_items. Display shows strikethrough
-  // original price when there's a per-line discount (like Rs 1,450 → Rs 1,380).
-  //
-  // FIX Apr 2026 (additional) — Filter out items removed via Shopify Order Edit
-  // (current_quantity === 0). Removed items remain in line_items array for
-  // history but should not appear in ERP display.
-  const isActiveRawLineItem = (it) => {
-    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
-      return it.current_quantity > 0;
-    }
-    return (it?.quantity || 0) > 0;
-  };
-  const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
-  const enrichItemWithDiscount = (item) => {
-    // Try to match with raw Shopify line item by shopify_line_item_id, SKU, or title
-    const raw = rawLineItems.find(r =>
-      (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
-      (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
-      (r.title && item.title && item.title.startsWith(r.title))
-    );
-    const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
-    const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
-    const qty = item.quantity || 1;
-    const effectiveUnitPrice = qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice;
-    return {
-      ...item,
-      original_unit_price: rawPrice,
-      effective_unit_price: effectiveUnitPrice,
-      line_discount: rawDiscount,
-      has_line_discount: rawDiscount > 0.01,
-    };
-  };
-
-  const items = ((order.order_items?.length > 0)
-    ? order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
-    : rawLineItems.map(it => {
-        const effectiveQty = (it.current_quantity !== undefined && it.current_quantity !== null)
-          ? it.current_quantity
-          : (it.quantity || 0);
-        return {
-          title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
-          sku: it.sku || null,
-          quantity: effectiveQty,
-          unit_price: parseFloat(it.price) || 0,
-          total_price: (parseFloat(it.price) || 0) * effectiveQty,
-          image_url: null,
-          shopify_line_item_id: String(it.id),
-        };
-      })
-  ).map(enrichItemWithDiscount);
-
-  // FIX Apr 2026 — Removed items history (Shopify-style):
-  // Shopify Order Edit ke baad jo items remove hue, woh `line_items` array mein
-  // rehte hain `current_quantity: 0` ke saath. Yahan unko alag se dikha rahe hain
-  // taa ke packers/CS ko visible ho ke kya hata diya gaya tha aur kab.
-  const removedItems = (order.shopify_raw?.line_items || [])
-    .filter(it => {
-      // Original mein order tha (qty > 0), ab nahi hai (current_quantity 0)
-      if ((it.quantity || 0) === 0) return false;
-      return it.current_quantity === 0;
-    })
-    .map(it => ({
-      title: (it.title || '') + (it.variant_title ? ` - ${it.variant_title}` : ''),
-      sku: it.sku || null,
-      original_quantity: it.quantity,
-      unit_price: parseFloat(it.price) || 0,
-      total_price: (parseFloat(it.price) || 0) * (it.quantity || 0),
-      image_url: it.image?.src || null,
-      shopify_line_item_id: String(it.id),
-    }));
-
-  const subtotal = parseFloat(order.subtotal || 0);
-  const discount = parseFloat(order.discount || 0);
-  const shipping = parseFloat(order.shipping_fee || 0);
-  const total = parseFloat(order.total_amount || 0);
-
-  // FIX Apr 2026 — Discount code name extraction from shopify_raw.
-  // Shopify exposes discount codes via `discount_codes` (array) and
-  // `discount_applications` (array with title, type, value_type).
-  // We show the code name next to the discount line for context.
-  // Example: "Discount (RS5)" instead of just "Discount".
-  const discountCodes = order.shopify_raw?.discount_codes || [];
-  const discountApplications = order.shopify_raw?.discount_applications || [];
-  // Prefer discount_applications title (more descriptive), fall back to discount_codes code.
-  const discountLabel = (() => {
-    if (discountApplications.length > 0) {
-      const app = discountApplications[0];
-      if (app.code) return app.code;
-      if (app.title) return app.title;
-      if (app.type === 'manual') return 'Manual';
-      if (app.type === 'automatic') return 'Auto';
-    }
-    if (discountCodes.length > 0 && discountCodes[0].code) return discountCodes[0].code;
-    return null;
-  })();
-  const isPaid = order.payment_status === 'paid';
-  const isRefunded = order.payment_status === 'refunded';
-  const paidAmt = isPaid ? total : 0;
-  const balance = total - paidAmt;
-  const isCancelled = order.status === 'cancelled';
-  const isDelivered = order.status === 'delivered';
-  const isDispatched = !!order.tracking_number || ['dispatched', 'delivered'].includes(order.status);
-
+  // Order type badges
   const typeBadges = [];
-  if (order.is_wholesale)     typeBadges.push({ label: '🏢 Wholesale',     color: '#8b5cf6' });
-  if (order.is_international) typeBadges.push({ label: '🌍 International', color: '#22d3ee' });
-  if (order.is_walkin)        typeBadges.push({ label: '🚶 Walk-in',        color: '#f59e0b' });
-  const isWaCancelledReview = order.status === 'cancelled'
-    && Array.isArray(order.tags)
-    && order.tags.some(t => String(t).toLowerCase() === 'whatsapp_cancelled');
+  if (order.is_wholesale) typeBadges.push({ label: '🏢 Wholesale', color: '#8b5cf6' });
+  if (order.is_international) typeBadges.push({ label: '🌍 International', color: '#06b6d4' });
+  if (order.is_walkin) typeBadges.push({ label: '🚶 Walk-in', color: '#f59e0b' });
 
-  // ─── Primary action based on status (Apr 2026 flow refactor) ─────────────
-  // Office workflow: pending → confirmed → on_packing (after fulfill) → packed → dispatched
-  //   pending      : Confirm Order (manager/CSR call answered)
-  //   confirmed    : Add Tracking / Fulfill (slip nikalo, courier book — primary)
-  //   on_packing   : Mark as Packed (dispatcher confirms physical packing — packer must be assigned first)
-  //   packed       : Dispatch Order (parcel office se nikla)
-  //   attempted/hold: Confirm (back to confirmed — try again)
-  //
-  // Note: courier_status_raw chalti rahegi independently — yeh sab sirf
-  // OFFICE status hai. Booking/tracking metadata fulfill step pe save hoti hai.
-  let primaryAction = null;
-  if (order.status === 'pending' && canConfirm) {
-    primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
-  } else if (order.status === 'confirmed' && !order.shopify_fulfillment_id) {
-    primaryAction = { label: '📋 Add Tracking / Fulfill', onClick: () => setShowFulfillModal(true) };
-  } else if (order.status === 'on_packing') {
-    primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
-  } else if (order.status === 'packed') {
-    primaryAction = { label: '🚚 Dispatch Order', onClick: () => doAction('/api/orders/status', { order_id: id, status: 'dispatched' }, '✓ Dispatched') };
-  } else if (order.status === 'attempted' || order.status === 'hold') {
-    primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
-  } else if (order.status === 'confirmed' && order.shopify_fulfillment_id) {
-    // Edge case: confirmed + already-fulfilled (e.g. Shopify webhook delayed advance)
-    // Skip the fulfill step, jump straight to packing prompt.
-    primaryAction = { label: '📦 Mark as Packed', onClick: markPacked };
-  }
+  // Outer wrapper: `drawer` = fixed-position slide-in with backdrop (list page usage)
+  //                 `page`   = normal block-flow full-page (new-tab usage)
+  // Mobile pe drawer full-screen bana do — side panel mobile pe kaam nahi karti
+  const outerStyle = isPage
+    ? { minHeight: '100vh', background: '#0a0a0a', padding: isMobile ? '12px 8px' : '20px 16px' }
+    : { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' };
+  const panelStyle = isPage
+    ? { maxWidth: 900, margin: '0 auto', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column' }
+    : isMobile
+      ? { width: '100%', background: '#0f0f0f', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
+      : { width: 580, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' };
 
-  // May 8 2026 — Manual status dropdown filter:
-  // Pehle Object.keys(STATUS_CONFIG) se SAB statuses dropdown mein aate the.
-  // Issue: in_transit / returned / rto / refunded courier API ya payment file
-  // upload se automatically set hote hain. Inhe manually click karke set
-  // karna khatarnak hai — staff galti se rto pe daldete the. Phir order
-  // terminal lock mein stuck ho jata.
-  //
-  // Naya behavior:
-  //   - Default dropdown: sirf "office workflow" statuses (manually settable).
-  //   - delivered/rto pe dedicated CEO buttons OrderDrawer mein already hain.
-  //   - in_transit/returned/refunded sirf automation se aate.
-  //
-  // Force-revert mode (super_admin only, terminal state se):
-  //   - Agar order terminal state mein hai (rto/returned/refunded/delivered)
-  //     aur user CEO hai, dropdown mein "office workflow" statuses dikhao
-  //     +  marker "⚡ force revert" + setStatus call force:true ke saath.
-  //   - Cancelled state ko expressly exclude — uska apna reopen flow alag.
-  const SAFE_OFFICE_STATUSES = ['pending', 'confirmed', 'on_packing', 'processing', 'packed', 'dispatched', 'attempted', 'hold'];
-  const TERMINAL_REVERTABLE = ['rto', 'returned', 'refunded', 'delivered']; // cancelled excluded
-  const inTerminal = TERMINAL_REVERTABLE.includes(order.status);
-  const isForceMode = inTerminal && isCEO; // CEO override available
-  const statusOptions = SAFE_OFFICE_STATUSES.filter(s => s !== order.status);
-
-  // Fulfill dropdown items — secondary actions next to primary button
-  const fulfillSecondary = [
-    { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
-    { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
-    // Manual fulfill secondary entry — only shown when fulfill is NOT already
-    // the primary action. Useful for emergency fulfill from on_packing/packed
-    // (e.g. user reverted, needs to re-add tracking after cancel-fulfillment).
-    {
-      status: '__manual_fulfill__',
-      label: order.shopify_fulfillment_id ? 'Already fulfilled' : '📋 Add tracking / Fulfill',
-      icon:  '📋',
-      show: ['on_packing', 'packed'].includes(order.status) && !order.shopify_fulfillment_id && !isCancelled,
-      customAction: () => setShowFulfillModal(true),
-    },
-  ].filter(x => x.show);
-
-  // ─── Assignment availability ───────────────────────────────────────────
-  // Apr 2026 — Assignment is only valid AFTER fulfillment. Before that
-  // (pending/confirmed), the order is still in CSR/manager territory; the
-  // packer hasn't received it yet. Once fulfilled (status >= on_packing OR
-  // shopify_fulfillment_id present), assignment dropdown unlocks.
-  const assignmentUnlocked = (
-    ['on_packing', 'packed', 'dispatched', 'delivered'].includes(order.status) ||
-    !!order.shopify_fulfillment_id
-  );
-  const assignmentVisible = !isCancelled && order.status !== 'delivered' && order.status !== 'rto';
-
-  // Fulfilled/Unfulfilled header badge
-  const itemsHeaderLabel =
-      isDelivered  ? `Delivered (${items.length})`
-    : isDispatched ? `Fulfilled (${items.length})`
-    :                `Unfulfilled (${items.length})`;
-  const itemsHeaderColor =
-      isDelivered  ? { bg: 'rgba(34,197,94,0.15)', fg: '#22c55e', br: '#22c55e44' }
-    : isDispatched ? { bg: 'rgba(168,85,247,0.15)', fg: '#a855f7', br: '#a855f744' }
-    :                { bg: 'rgba(245,158,11,0.15)', fg: '#f59e0b', br: '#f59e0b44' };
-
-  // ─── Render ─────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: '#0a0a0a', minHeight: '100vh', color: '#e5e5e5' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px 40px' }}>
-
-        {/* ─── Header ─── */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 280 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <Link href="/orders" style={{ color: '#888', textDecoration: 'none', fontSize: 13 }}>
-                  ← Orders
-                </Link>
-                <span style={{ color: '#333' }}>/</span>
-                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>
-                  {order.order_number || `#${String(order.id).slice(0, 8)}`}
-                </h1>
-                <StatusBadge status={order.status} />
-                <PaymentBadge payment_status={order.payment_status} />
-                {typeBadges.map(b => (
-                  <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{b.label}</span>
-                ))}
-                {isWaCancelledReview && (
-                  <span title="Customer ne WhatsApp se cancel kiya — review zaroori"
-                    style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2455', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
-                    ⚠️ Review needed
-                  </span>
-                )}
-                {(order.customer_order_count || 0) > 1 && (
-                  <span title={`Total ${order.customer_order_count} orders from this customer`}
-                    style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2444', padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
-                    ⭐ {ordinal(order.customer_order_count)} order
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 6 }}>
-                {formatFullDate(order.created_at)}
-                {order.shopify_order_id && <span> · from Shopify</span>}
-              </div>
-            </div>
-
-            {/* Phase 1: Shopify-style action button row */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              {order.shopify_order_id && (
-                <HeaderBtn href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank">
-                  🔗 Shopify
-                </HeaderBtn>
+    <div style={outerStyle}>
+      {!isPage && !isMobile && <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />}
+      <div style={panelStyle}>
+        <div style={{
+          padding: isMobile ? '14px 14px' : '20px 24px',
+          borderBottom: `1px solid ${border}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 8,
+          position: isMobile && !isPage ? 'sticky' : 'static',
+          top: 0,
+          background: '#0f0f0f',
+          zIndex: 10,
+        }}>
+          {/* Mobile: back arrow instead of close */}
+          {isMobile && !isPage && (
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', color: gold, fontSize: 22, cursor: 'pointer', padding: '0 4px', lineHeight: 1, flexShrink: 0 }}
+              title="Wapas"
+            >←</button>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: isMobile ? 15 : 16, color: gold }}>{order.order_number || '#' + order.id}</div>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>{order.customer_name} · {order.customer_city}</span>
+              {customerOrderCount !== null && customerOrderCount > 1 && (
+                <span title={`Total ${customerOrderCount} orders from this customer`} style={{ color: '#fbbf24', background: '#fbbf2422', border: '1px solid #fbbf2444', padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, letterSpacing: 0.3 }}>
+                  ⭐ {ordinal(customerOrderCount)} order
+                </span>
               )}
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <StatusBadge status={order.status} />
+              {typeBadges.map(b => (
+                <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+                  {b.label}
+                </span>
+              ))}
+              {Array.isArray(order.tags) && order.tags.filter(t => {
+                const tag = String(t || '').toLowerCase();
+                // Hide: type tags (already shown as typeBadges) + redundant confirm/cancel state tags + system tags
+                if (['wholesale','international','walkin','kangaroo'].includes(tag)) return false;
+                if (['whatsapp_confirmed', 'whatsapp confirmed', 'order_confirmed', 'order confirmed', 'confirmation pending', 'whatsapp_cancelled', 'whatsapp cancelled', 'no whatsapp'].includes(tag)) return false;
+                if (tag.startsWith('packing:')) return false; // already shown via assigned_to_name
+                return true;
+              }).map((tag, ti) => (
+                <span key={ti} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+            {order.shopify_order_id && !isMobile && (
+              <a href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank" rel="noopener noreferrer"
+                style={{ background: 'none', border: `1px solid #333`, color: '#555', fontSize: 12, padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
+                🔗 Shopify
+              </a>
+            )}
+            {!isPage && !isMobile && (
+              <a href={`/orders/${order.id}`} target="_blank" rel="noopener noreferrer"
+                title="Naye tab mein kholo"
+                style={{ background: 'none', border: `1px solid #333`, color: '#888', fontSize: 13, padding: '4px 8px', borderRadius: 5, textDecoration: 'none', lineHeight: 1 }}>
+                ↗
+              </a>
+            )}
+            {!isPage && !isMobile && (
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            )}
+            {isPage && (
+              <a href="/orders"
+                style={{ background: '#1a1a1a', border: `1px solid #333`, color: '#888', fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none' }}>
+                ← Back to Orders
+              </a>
+            )}
+          </div>
+        </div>
 
-              {/* Edit — goes to Shopify-style line items edit page */}
-              <HeaderBtn onClick={() => router.push(`/orders/${id}/edit`)} title="Edit order line items (add/remove/qty/discount/shipping)">
-                ✏️ Edit
-              </HeaderBtn>
-
-              {/* Print dropdown */}
-              <div style={{ position: 'relative' }}>
-                <HeaderBtn onClick={toggleMenu('print')}>🖨 Print ▾</HeaderBtn>
-                {openMenu === 'print' && (
-                  <div
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                      background: '#0f0f0f', border: `1px solid ${border}`,
-                      borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-                    }}
-                  >
-                    <MenuItem icon="📋" label="Print packing slip" sub="For packing staff"
-                      onClick={() => { setOpenMenu(null); window.open(`/orders/${id}/print/packing-slip`, '_blank'); }} />
-                    <MenuItem icon="🧾" label="Print invoice" sub="For customer"
-                      onClick={() => { setOpenMenu(null); window.open(`/orders/${id}/print/invoice`, '_blank'); }} />
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}` }}>
+          {/* Dual Status Row */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, background: '#111', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
+              <StatusBadge status={order.status} />
+            </div>
+            {(() => {
+              const raw = order.courier_status_raw || '';
+              const rawLower = String(raw).toLowerCase();
+              // Detect exception/attention-needed states
+              const isException = !!raw && (
+                rawLower.includes('not available') ||
+                rawLower.includes('refus') ||
+                rawLower.includes('not delivered') ||
+                rawLower.includes('undelivered') ||
+                rawLower.includes('attempt') ||
+                rawLower.includes('exception') ||
+                rawLower.includes('hold') ||
+                rawLower.includes('return') ||
+                rawLower.includes('rto') ||
+                rawLower.includes('cancel')
+              );
+              const cardBorder = isException ? '#ef444466' : '#2a1a4a';
+              const tagColor   = isException ? '#ef4444'   : '#8b5cf6';
+              const tagBg      = isException ? '#ef444411' : '#8b5cf611';
+              const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
+              return (
+                <div style={{ flex: 1, background: '#111', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🚚 Courier Status</span>
+                    {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
                   </div>
+                  {raw
+                    ? <span style={{ color: tagColor, background: tagBg, border: `1px solid ${tagBorder}`, padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{raw}</span>
+                    : <span style={{ color: '#333', fontSize: 12 }}>Not dispatched yet</span>}
+                </div>
+              );
+            })()}
+          </div>
+          {/* Info Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[
+              ['COD Amount', fmt(order.total_amount)],
+              ['Phone', order.customer_phone ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span>{order.customer_phone}</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
+                  <a href={`tel:${order.customer_phone}`} title="Call customer" style={{ background: 'transparent', border: '1px solid #1e3a5f', color: '#3b82f6', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>📞</a>
+                  <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>💬</a>
+                </div>
+              ) : '—'],
+              ['Placed', timeAgo(order.created_at)],
+              ['Payment', order.payment_status || 'unpaid'],
+              ['Courier', order.dispatched_courier || '—'],
+              ['Tracking', order.tracking_number || '—'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>{k}</div>
+                <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+            <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>Address</span>
+                {order.customer_address && (
+                  <>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_address); }} title="Copy address" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 9, cursor: 'pointer', padding: '0 6px', borderRadius: 4, lineHeight: 1.6, fontFamily: 'inherit' }}>📋</button>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([order.customer_address, order.customer_city].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" title="Open in Google Maps" style={{ background: 'transparent', border: '1px solid #1f3a5a', color: '#60a5fa', fontSize: 9, textDecoration: 'none', padding: '0 6px', borderRadius: 4, lineHeight: 1.6 }}>🗺️</a>
+                  </>
                 )}
               </div>
-
-              {/* More actions dropdown (placeholders — future phases) */}
-              <div style={{ position: 'relative' }}>
-                <HeaderBtn onClick={toggleMenu('more')}>⋯ More ▾</HeaderBtn>
-                {openMenu === 'more' && (
-                  <div
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                      background: '#0f0f0f', border: `1px solid ${border}`,
-                      borderRadius: 8, padding: 5, minWidth: 220, zIndex: 50,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-                    }}
-                  >
-                    <MenuItem icon="📋" label="Duplicate order" onClick={() => comingSoon('Duplicate order', 5)} />
-                    <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
-                    <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
-                    <div style={{ height: 1, background: border, margin: '4px 0' }} />
-                   <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
-                    <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
-                    <MenuItem icon="🦘" label="Book at Kangaroo" onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
-                  </div>
-                )}
-              </div>
+              <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>{order.customer_address || '—'}</div>
             </div>
           </div>
         </div>
 
-        {/* Status message */}
-        {msg && (
-          <div style={{
-            padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16,
-            background: msg.type === 'success' ? 'rgba(74,222,128,0.12)'
-                      : msg.type === 'info'    ? 'rgba(201,169,110,0.12)'
-                      : 'rgba(248,113,113,0.12)',
-            border: `1px solid ${msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171'}`,
-            color:  msg.type === 'success' ? '#4ade80' : msg.type === 'info' ? gold : '#f87171',
-          }}>{msg.text}</div>
-        )}
-
-        {/* May 2 2026 — Partial payment banner. Sirf credit orders pe dikhe ga
-            jo partial pay ho chuke hain. Customer khaata page ka link bhi deta hai. */}
-        {order.is_credit_order && order.payment_status === 'partial' && order.customer_phone && (
-          <div style={{
-            background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
-            borderRadius: 10, padding: '12px 16px', marginBottom: 16,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            gap: 12, flexWrap: 'wrap',
-          }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#f59e0b' }}>
-                ⚠ Partially paid · Rs {(order.paid_amount || 0).toLocaleString('en-PK')} of Rs {(order.total_amount || 0).toLocaleString('en-PK')}
-              </div>
-              <div style={{ fontSize: 11, color: 'rgba(245,158,11,0.85)', marginTop: 3 }}>
-                Balance: Rs {Math.max(0, (order.total_amount || 0) - (order.paid_amount || 0)).toLocaleString('en-PK')} · Customer Credits mein track ho raha hai
-              </div>
+        {/* Order Items */}
+        {orderItems.length > 0 && (
+          <div style={{ padding: '14px 24px', borderBottom: `1px solid ${border}` }}>
+            <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>📦 Order Items ({orderItems.length})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {orderItems.map((item, i) => (
+                <div key={i}
+                  onClick={() => {
+                    if (!item.sku) return;
+                    onClose();
+                    setTimeout(() => {
+                      // Direct navigation to product detail page if product_id resolved.
+                      // Browser Back from product page returns to this order.
+                      if (item.product_id) {
+                        window.location.href = `/inventory/${item.product_id}`;
+                      } else {
+                        // Fallback: SKU not found in products table → search
+                        window.dispatchEvent(new CustomEvent('openInventorySku', { detail: item.sku }));
+                      }
+                    }, 300);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#1a1a1a', borderRadius: 9, padding: '10px 12px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#252525'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
+                  title={item.sku ? 'Click to view product page' : ''}
+                >
+                  {item.image_url ? (
+                    <img src={item.image_url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 7, flexShrink: 0, border: '1px solid #333' }} />
+                  ) : (
+                    <div style={{ width: 60, height: 60, borderRadius: 7, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>💍</div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: '#fff', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                    {item.sku && <div style={{ fontSize: 11, color: '#c9a96e99', marginTop: 3 }}>SKU: {item.sku} {item.sku ? '↗' : ''}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 15, color: '#c9a96e', fontWeight: 700 }}>x{item.quantity}</div>
+                    {/* Line-level discount strikethrough — jab manual per-line
+                        discount hai (e.g., Rs 1,450 → Rs 1,380), dono prices
+                        dikhte hain Shopify admin ki tarah. */}
+                    {item.has_line_discount ? (
+                      <>
+                        <div style={{ fontSize: 11, color: '#666', marginTop: 2, textDecoration: 'line-through' }}>
+                          Rs {Number(item.original_unit_price).toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
+                          Rs {Number(item.effective_unit_price).toLocaleString()}
+                        </div>
+                      </>
+                    ) : (
+                      item.unit_price && <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>Rs {Number(item.unit_price).toLocaleString()}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-            <a href={`/credits/${encodeURIComponent(order.customer_phone)}`}
-              style={{
-                background: '#f59e0b', color: '#000',
-                border: 'none', borderRadius: 7,
-                padding: '7px 14px', fontSize: 12, fontWeight: 600,
-                textDecoration: 'none', whiteSpace: 'nowrap',
-              }}>View khaata →</a>
+
+            {/* FIX Apr 2026 — Removed items section (Shopify-style edit history).
+                Order Edit ke baad jo items hata diye gaye, woh yahan dim/strikethrough
+                style mein dikhte hain. Operationally important: packers ko clear
+                visible ho ke kya original mein tha aur kya ab nahi hai. */}
+            {removedItems.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, fontWeight: 600 }}>
+                  ⊗ Removed from order ({removedItems.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {removedItems.map((item, i) => (
+                    <div key={`removed-${i}`} style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      background: 'rgba(239,68,68,0.04)',
+                      border: '1px dashed rgba(239,68,68,0.25)',
+                      borderRadius: 9,
+                      padding: '10px 12px',
+                      opacity: 0.75,
+                    }}>
+                      {item.image_url ? (
+                        <img src={item.image_url} alt="" style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 7, flexShrink: 0, filter: 'grayscale(0.7)' }} />
+                      ) : (
+                        <div style={{ width: 50, height: 50, borderRadius: 7, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, opacity: 0.5 }}>📦</div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: '#aaa', fontWeight: 600, textDecoration: 'line-through', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.title}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                          <span style={{
+                            fontSize: 8.5,
+                            color: '#ef4444',
+                            background: 'rgba(239,68,68,0.15)',
+                            padding: '2px 6px',
+                            borderRadius: 3,
+                            fontWeight: 700,
+                            letterSpacing: 0.5,
+                          }}>
+                            REMOVED
+                          </span>
+                          {item.sku && (
+                            <span style={{ fontSize: 10, color: '#666' }}>
+                              SKU: {item.sku}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0, color: '#777' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, textDecoration: 'line-through' }}>
+                          x{item.original_quantity}
+                        </div>
+                        <div style={{ fontSize: 11, marginTop: 2, textDecoration: 'line-through' }}>
+                          Rs {Number(item.unit_price).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ─── 2-Column Grid ─── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
+        <div style={{ display: 'flex', borderBottom: `1px solid ${border}` }}>
+          {['actions', 'timeline', 'customer'].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{
+              flex: 1, padding: '12px', background: 'none', border: 'none',
+              color: tab === t ? gold : '#555', fontWeight: tab === t ? 600 : 400,
+              fontSize: 12, cursor: 'pointer', borderBottom: tab === t ? `2px solid ${gold}` : '2px solid transparent',
+              fontFamily: 'inherit',
+            }}>{t === 'actions' ? '⚡ Actions' : t === 'timeline' ? '📋 Timeline' : '👤 Customer'}</button>
+          ))}
+        </div>
 
-          {/* ═══ LEFT COLUMN ═══ */}
-          <div>
+        <div style={{ padding: '20px 24px', flex: 1 }}>
+          {tab === 'actions' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            {/* Items card — Shopify-style fulfilled/unfulfilled badge */}
-            <Card
-              title={
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{
-                    background: itemsHeaderColor.bg,
-                    color:      itemsHeaderColor.fg,
-                    border: `1px solid ${itemsHeaderColor.br}`,
-                    padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                  }}>
-                    {itemsHeaderLabel}
-                  </span>
-                  <span style={{ background: '#1a1a1a', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: '#888' }}>
-                    📍 OFFICE
-                  </span>
-                </div>
-              }
-              noPadBody
-              overflowVisible
-            >
-              <div>
-                {items.length === 0 && (
-                  <div style={{ padding: 30, textAlign: 'center', color: '#555', fontSize: 13 }}>
-                    No items in this order
-                  </div>
-                )}
-                {items.map((item, idx) => (
-                  <div key={item.id || idx} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 14,
-                    padding: '14px 20px',
-                    borderBottom: idx < items.length - 1 ? `1px solid ${border}` : 'none',
-                  }}>
-                    <div style={{
-                      width: 52, height: 52, borderRadius: 8,
-                      background: '#1a1a1a', border: `1px solid ${border}`,
-                      overflow: 'hidden', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      {item.image_url
-                        ? <img src={item.image_url} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <span style={{ color: '#444', fontSize: 22 }}>📦</span>
-                      }
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Link
-                        href={item.product_id ? `/inventory/${item.product_id}` : (item.sku ? `/inventory?search=${encodeURIComponent(item.sku)}` : '#')}
-                        style={{ color: '#fff', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}
-                      >
-                        {item.title || 'Untitled'}
-                      </Link>
-                      {item.sku && (
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 3, fontFamily: 'monospace' }}>
-                          SKU: {item.sku}
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {/* Line-level discount strikethrough — shows original price
-                          struck through + effective price, matching Shopify admin UI.
-                          Example: Rs 1,450 (strikethrough) Rs 1,380 × 1 */}
-                      {item.has_line_discount ? (
-                        <>
-                          <div style={{ fontSize: 13, color: '#ccc' }}>
-                            <span style={{ textDecoration: 'line-through', color: '#666', marginRight: 6 }}>
-                              {fmt(item.original_unit_price)}
-                            </span>
-                            <span style={{ color: '#22c55e', fontWeight: 600 }}>
-                              {fmt(item.effective_unit_price)}
-                            </span>
-                            {' '}× {item.quantity}
-                          </div>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
-                            {fmt(item.effective_unit_price * item.quantity)}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#22c55e', marginTop: 2 }}>
-                            Saved {fmt(item.line_discount)}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div style={{ fontSize: 13, color: '#ccc' }}>
-                            {fmt(item.unit_price)} × {item.quantity}
-                          </div>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
-                            {fmt(item.total_price || (item.unit_price * item.quantity))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
+              {/* Apr 27 2026 — "✏️ Edit Order (Address / Details)" button hata diya.
+                  Customer/address editing ab Customer tab pe inline form se hoti hai.
+                  Line items / products editing /orders/[id]/edit page se hoti hai. */}
 
-                {/* FIX Apr 2026 — Removed items history (Shopify-style).
-                    Shopify Order Edit ke baad jo items hata diye gaye, woh
-                    yahan dim/strikethrough style mein dikhte hain — bilkul
-                    Shopify admin ki tarah. Operationally important: packers
-                    ko clear visible ho ke kya hata hai. */}
-                {removedItems.length > 0 && (
-                  <>
-                    <div style={{
-                      padding: '10px 20px 6px 20px',
-                      borderTop: `1px solid ${border}`,
-                      fontSize: 11,
-                      color: '#888',
-                      textTransform: 'uppercase',
-                      letterSpacing: 1,
-                      background: 'rgba(239,68,68,0.04)',
-                    }}>
-                      Removed from order ({removedItems.length})
-                    </div>
-                    {removedItems.map((item, idx) => (
-                      <div key={`removed-${idx}`} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 14,
-                        padding: '14px 20px',
-                        borderTop: idx === 0 ? 'none' : `1px solid ${border}`,
-                        background: 'rgba(239,68,68,0.02)',
-                        opacity: 0.7,
-                      }}>
-                        <div style={{
-                          width: 52, height: 52, borderRadius: 8,
-                          background: '#1a1a1a', border: `1px solid ${border}`,
-                          overflow: 'hidden', flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {item.image_url
-                            ? <img src={item.image_url} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(0.7)' }} />
-                            : <span style={{ color: '#444', fontSize: 22 }}>📦</span>
-                          }
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, color: '#bbb', textDecoration: 'line-through', wordBreak: 'break-word' }}>
-                            {item.title || 'Untitled'}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
-                            <span style={{
-                              fontSize: 9,
-                              color: '#ef4444',
-                              background: 'rgba(239,68,68,0.12)',
-                              padding: '2px 7px',
-                              borderRadius: 3,
-                              fontWeight: 700,
-                              letterSpacing: 0.5,
-                            }}>
-                              REMOVED
-                            </span>
-                            {item.sku && (
-                              <span style={{ fontSize: 11, color: '#666', fontFamily: 'monospace' }}>
-                                SKU: {item.sku}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap', color: '#777' }}>
-                          <div style={{ fontSize: 13, textDecoration: 'line-through' }}>
-                            {fmt(item.unit_price)} × {item.original_quantity}
-                          </div>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2, textDecoration: 'line-through' }}>
-                            {fmt(item.total_price)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
+              {/* ══════════════════════════════════════════════ */}
+              {/* SHARJEEL (manager) + CEO — Confirm, Assign, Hold, Attempted */}
+              {/* ══════════════════════════════════════════════ */}
 
-                {/* Primary action strip — Shopify-style compound button */}
-                {primaryAction && !isCancelled && (
-                  <div style={{ padding: '14px 20px', borderTop: `1px solid ${border}`, background: 'rgba(201,169,110,0.03)', display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
-                    <div style={{ display: 'inline-flex', position: 'relative' }}>
-                      <button
-                        onClick={primaryAction.onClick}
-                        disabled={actionBusy}
-                        style={{
-                          background: '#1a1a1a',
-                          border: `1px solid ${gold}`,
-                          borderRight: fulfillSecondary.length > 0 ? 'none' : `1px solid ${gold}`,
-                          color: gold,
-                          borderRadius: fulfillSecondary.length > 0 ? '7px 0 0 7px' : 7,
-                          padding: '9px 20px',
-                          fontSize: 13,
-                          fontWeight: 600,
-                          cursor: actionBusy ? 'not-allowed' : 'pointer',
-                          fontFamily: 'inherit',
-                          opacity: actionBusy ? 0.5 : 1,
-                        }}>
-                        {actionBusy ? '⟳ Working…' : primaryAction.label}
-                      </button>
-                      {fulfillSecondary.length > 0 && (
-                        <>
-                          <button
-                            onClick={toggleMenu('fulfill')}
-                            disabled={actionBusy}
-                            style={{
-                              background: '#1a1a1a',
-                              border: `1px solid ${gold}`,
-                              color: gold,
-                              borderRadius: '0 7px 7px 0',
-                              padding: '9px 10px',
-                              fontSize: 13,
-                              fontWeight: 600,
-                              cursor: actionBusy ? 'not-allowed' : 'pointer',
-                              fontFamily: 'inherit',
-                              opacity: actionBusy ? 0.5 : 1,
-                              borderLeft: '1px solid rgba(0,0,0,0.3)',
-                            }}>
-                            ▾
-                          </button>
-                          {openMenu === 'fulfill' && (
-                            <div
-                              onClick={e => e.stopPropagation()}
-                              style={{
-                                position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                                background: '#0f0f0f', border: `1px solid ${border}`,
-                                borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
-                                boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-                              }}
-                            >
-                              {fulfillSecondary.map(opt => (
-                                <MenuItem
-                                  key={opt.status}
-                                  icon={opt.icon}
-                                  label={opt.label}
-                                  onClick={() => {
-                                    setOpenMenu(null);
-                                    if (opt.customAction) {
-                                      opt.customAction();
-                                    } else {
-                                      setStatus(opt.status);
-                                    }
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Apr 30 2026 — Review action strip.
-                    WhatsApp-cancelled orders sit in 'cancelled' status with the
-                    'whatsapp_cancelled' tag, but Shopify side is still ACTIVE
-                    (intentional — manual review before destruction). Staff has
-                    two paths: confirm the cancellation (push to Shopify) or
-                    restore (back to confirmed + WA notify customer). */}
-                {isWaCancelledReview && (
-                  <div style={{ borderTop: `1px solid ${border}`, background: 'rgba(251,191,36,0.05)' }}>
-                    <div style={{ padding: '14px 20px' }}>
-                      <div style={{ fontSize: 13, color: '#fbbf24', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                        ⚠️ Customer ne WhatsApp se cancel kiya — review zaroori
-                      </div>
-                      <div style={{ fontSize: 11, color: '#999', marginBottom: 12, lineHeight: 1.5 }}>
-                        ERP mein cancel ho chuka hai but Shopify pe abhi active hai. Dono mein se ek decide karo:
-                      </div>
-
-                      {/* Action buttons row — only when no expand is open */}
-                      {reviewMode === null && (
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                          <button
-                            onClick={() => { setReviewMode('restore'); setReviewNote(''); }}
-                            disabled={actionBusy}
-                            style={{ background: '#1a1a1a', border: '1px solid #22c55e', color: '#22c55e', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                            ↩️ Restore order
-                          </button>
-                          <button
-                            onClick={() => { setReviewMode('confirm_cancel'); setReviewNote(''); }}
-                            disabled={actionBusy}
-                            style={{ background: '#1a1a1a', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                            ✓ Confirm cancellation
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Restore expand */}
-                      {reviewMode === 'restore' && (
-                        <div style={{ padding: 12, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
-                          <div style={{ fontSize: 12, color: '#22c55e', marginBottom: 6, fontWeight: 600 }}>↩️ Restore order to confirmed?</div>
-                          <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
-                            Status confirmed pe wapas, Shopify tag swap (whatsapp_cancelled hatega, whatsapp_confirmed lagega), aur customer ko WhatsApp pe automatic message jayega: "Aapka order reactivate ho gaya hai".
-                          </div>
-                          <textarea
-                            value={reviewNote}
-                            onChange={e => setReviewNote(e.target.value)}
-                            rows={2}
-                            placeholder="Reason / note (optional) — e.g. customer ne phone pe wapas confirm kiya"
-                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
-                          />
-                          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-                            <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
-                              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Back
-                            </button>
-                            <button onClick={() => resolveReview('restore')} disabled={actionBusy}
-                              style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                              {actionBusy ? 'Restoring…' : '↩️ Restore + notify customer'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Confirm-cancel expand */}
-                      {reviewMode === 'confirm_cancel' && (
-                        <div style={{ padding: 12, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8 }}>
-                          <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 6, fontWeight: 600 }}>✕ Confirm WhatsApp cancellation?</div>
-                          <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
-                            Shopify pe order cancel push hoga (refund + restock auto). Review tags hat jayenge. Yeh order Cancelled tab mein chala jayega — irreversible step normally.
-                          </div>
-                          <textarea
-                            value={reviewNote}
-                            onChange={e => setReviewNote(e.target.value)}
-                            rows={2}
-                            placeholder="Reason / note (optional)"
-                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
-                          />
-                          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-                            <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
-                              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Back
-                            </button>
-                            <button onClick={() => resolveReview('confirm_cancel')} disabled={actionBusy}
-                              style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                              {actionBusy ? 'Cancelling…' : '✓ Confirm cancel + push to Shopify'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            {/* Status & Dispatch info — unchanged */}
-            <Card title="Status & Dispatch" overflowVisible>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
-                  <StatusBadge status={order.status} />
-                  {order.confirmed_at && (
-                    <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
-                      Confirmed {timeAgo(order.confirmed_at)}
-                    </div>
-                  )}
-                </div>
-                {(() => {
-                  const raw = order.courier_status_raw || '';
-                  const rawLower = String(raw).toLowerCase();
-                  // Detect exception/attention-needed states
-                  const isException = !!raw && (
-                    rawLower.includes('not available') ||
-                    rawLower.includes('refus') ||
-                    rawLower.includes('not delivered') ||
-                    rawLower.includes('undelivered') ||
-                    rawLower.includes('attempt') ||
-                    rawLower.includes('exception') ||
-                    rawLower.includes('hold') ||
-                    rawLower.includes('return') ||
-                    rawLower.includes('rto') ||
-                    rawLower.includes('cancel')
-                  );
-                  const cardBorder = isException ? '#ef444466' : '#2a1a4a';
-                  const tagColor   = isException ? '#ef4444'   : '#8b5cf6';
-                  const tagBg      = isException ? '#ef444411' : '#8b5cf611';
-                  const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
-                  return (
-                    <div style={{ background: '#0f0f0f', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '12px 14px' }}>
-                      <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>🚚 Courier Status</span>
-                        {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
-                      </div>
-                      {raw
-                        ? <span style={{ color: tagColor, background: tagBg, border: `1px solid ${tagBorder}`, padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{raw}</span>
-                        : <span style={{ color: '#444', fontSize: 12 }}>Not dispatched yet</span>}
-                      {order.courier_last_synced_at && (
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 6 }}>
-                          Last sync {timeAgo(order.courier_last_synced_at)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {order.dispatched_courier && (
-                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
-                  <Row label="Courier" value={order.dispatched_courier} />
-                  <Row
-                    label="Tracking #"
-                    value={order.tracking_number
-                      ? (order.courier_tracking_url
-                        ? <a href={order.courier_tracking_url} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'none', fontFamily: 'monospace' }}>{order.tracking_number} ↗</a>
-                        : <span style={{ fontFamily: 'monospace' }}>{order.tracking_number}</span>)
-                      : null}
-                  />
-                  <Row label="Dispatched at" value={formatShortDate(order.dispatched_at)} />
-                  {order.courier_slip_url && (
-                    <Row label="Slip" value={<a href={order.courier_slip_url} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'none' }}>📄 Print slip ↗</a>} />
-                  )}
-                  {order.delivered_at && <Row label="Delivered at" value={formatShortDate(order.delivered_at)} color="#22c55e" />}
+              {/* Confirm Order — pending/processing orders */}
+              {canConfirm && (s === 'pending' || s === 'processing') && (
+                <div style={{ background: card, border: `1px solid #3b82f644`, borderRadius: 10, padding: '16px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
+                  <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
+                    placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+                  <button onClick={confirm} disabled={loading}
+                    style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                    {loading ? '...' : '✅ Confirm Order'}
+                  </button>
                 </div>
               )}
 
-              {/* Inline secondary actions — preserved exactly */}
-              {!isCancelled && (
-                <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {/* Apr 27 2026 — "✏️ Edit customer info" button moved to
-                      Customer card sidebar (Shopify-style "..." menu).
-                      See Customer card below. */}
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      onClick={() => setShowStatusMenu(v => !v)}
-                      style={{
-                        background: isForceMode ? '#1a0000' : '#1a1a1a',
-                        border: `1px solid ${isForceMode ? '#660000' : border}`,
-                        color: isForceMode ? '#ef4444' : '#ccc',
-                        borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                      }}>
-                      {isForceMode ? '⚡ Force revert (admin)' : '🔄 Change status'} ▾
-                    </button>
-                    {showStatusMenu && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 200, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
-                        {isForceMode && (
-                          <div style={{ fontSize: 10, color: '#ef4444', padding: '4px 8px 8px', borderBottom: `1px solid ${border}`, marginBottom: 4, lineHeight: 1.4 }}>
-                            ⚡ Terminal state ({order.status}) override.<br/>
-                            Tracking + assignments preserve rahenge.
-                          </div>
-                        )}
-                        {statusOptions.map(s => (
-                          <button
-                            key={s}
-                            onClick={() => setStatus(s, { force: isForceMode })}
-                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 12, padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <StatusBadge status={s} />
-                          </button>
-                        ))}
-                      </div>
+              {/* Reassign Packer — confirmed/on_packing orders */}
+              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+                <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
+                    👤 Packer Assignment
+                    {currentAssignment?.employee && (
+                      <span style={{ fontSize: 11, color: '#22c55e', marginLeft: 8, fontWeight: 400 }}>
+                        ✓ {currentAssignment.employee.name}
+                      </span>
+                    )}
+                    {/* Show "Packing Team" badge when notes='packing_team' (May 2 2026 fix) */}
+                    {!currentAssignment?.employee && currentAssignment?.notes === 'packing_team' && (
+                      <span style={{ fontSize: 11, color: '#3b82f6', marginLeft: 8, fontWeight: 600 }}>
+                        ✓ 👥 Packing Team
+                      </span>
                     )}
                   </div>
-                  {!isDelivered && (
-                    <button
-                      onClick={() => setShowCancelBox(v => !v)}
-                      style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      ✕ Cancel order
-                    </button>
-                  )}
+                  <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                    <option value="">— Select Packer —</option>
+                    <option value="packing_team">👥 Whole Packing Team (shared credit)</option>
+                    {packingStaff.map(e => (
+                      <option key={e.id} value={e.id}>{e.name} ({e.role})</option>
+                    ))}
+                  </select>
+                  <button onClick={assignOrder} disabled={loading || !assignedTo}
+                    style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
+                    {currentAssignment ? '🔄 Re-Assign Packer' : '✅ Assign Packer'}
+                  </button>
+                </div>
+              )}
 
-                  {/* Apr 2026 — Cancel Fulfillment button.
-                      Visible jab order pe tracking/fulfillment hai. Tracking
-                      + courier clear ho jate, dispatched → confirmed wapas.
-                      Shopify pe bhi cancel hoti (ya already cancelled toh skip).
-                      May 6 2026 — uses granular permission orders.cancel_fulfillment.
-                      Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
-                  {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
+              {/* Unconfirm + Unassign — confirmed/on_packing pe CEO/Manager ke liye */}
+              {canConfirm && (s === 'confirmed' || s === 'on_packing') && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={async () => {
+                      // Paid order unconfirm nahi ho sakta
+                      if (order.payment_status === 'paid' || order.payment_status === 'refunded') {
+                        setMsg(`❌ Ye order "${order.payment_status}" hai — unconfirm nahi ho sakta`);
+                        return;
+                      }
+                      setLoading(true); setMsg('');
+                      try {
+                        // Unassign packer
+                        await fetch('/api/orders/assign', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ order_id: order.id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+                        });
+                        // Wapas pending
+                        const r = await fetch('/api/orders/status', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ order_id: order.id, status: 'pending', notes: 'Unconfirmed — wapas pending', performed_by: performer, performed_by_email: userEmail }),
+                        });
+                        const d = await r.json();
+                        if (d.success) { setLocalStatus('pending'); setCurrentAssignment(null); setMsg('✅ Order unconfirmed — wapas pending'); onRefresh(); }
+                        else setMsg('❌ ' + d.error);
+                      } catch(e) { setMsg('❌ ' + e.message); }
+                      setLoading(false);
+                    }}
+                    disabled={loading}
+                    style={{ flex: 1, background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    ↩️ Unconfirm
+                  </button>
+                  {s === 'on_packing' && (
                     <button
-                      onClick={cancelFulfillment}
-                      disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                      🔄 Cancel fulfillment
-                    </button>
-                  )}
-
-                  {/* May 8 2026 — Return to Office + Restock.
-                      Visible jab order RTO state mein hai (parcel courier ne wapas
-                      bheja aur physically office aaya). Permission: CEO/manager.
-                      Stock auto-restore + status RTO → returned (terminal). */}
-                  {(isCEO || isOpsManager) && order.status === 'rto' && (
-                    <button
-                      onClick={returnAndRestock}
-                      disabled={actionBusy}
-                      style={{ background: '#0a1f0a', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 7, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                      📦 Return to office + Restock
-                    </button>
-                  )}
-
-                  {/* May 8 2026 — Unconfirm: status confirmed/on_packing → pending.
-                      Mirror of OrderDrawer button. Paid orders blocked server-side. */}
-                  {(isCEO || isOpsManager) && (order.status === 'confirmed' || order.status === 'on_packing') && (
-                    <button
-                      onClick={unconfirmOrder}
-                      disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                      ↩️ Unconfirm
-                    </button>
-                  )}
-
-                  {/* May 8 2026 — Unassign packer: on_packing → confirmed.
-                      Useful jab packer ko hatana ho without losing fulfillment. */}
-                  {(isCEO || isOpsManager) && order.status === 'on_packing' && (
-                    <button
-                      onClick={unassignPacker}
-                      disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                      👤 Unassign packer
+                      onClick={async () => {
+                        setLoading(true); setMsg('');
+                        try {
+                          const r = await fetch('/api/orders/assign', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ order_id: order.id, action: 'unassign', performed_by: performer, performed_by_email: userEmail }),
+                          });
+                          const d = await r.json();
+                          if (d.success) { setLocalStatus('confirmed'); setCurrentAssignment(null); setMsg('✅ Packer hata diya — status confirmed'); onRefresh(); }
+                          else setMsg('❌ ' + d.error);
+                        } catch(e) { setMsg('❌ ' + e.message); }
+                        setLoading(false);
+                      }}
+                      disabled={loading}
+                      style={{ flex: 1, background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      👤 Unassign
                     </button>
                   )}
                 </div>
               )}
 
-              {showCancelBox && (
-                <div style={{ marginTop: 12, padding: 14, background: '#1a0000', border: '1px solid #660000', borderRadius: 8 }}>
-                  <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Cancel reason (required)</div>
-                  <textarea
-                    value={cancelReason}
-                    onChange={e => setCancelReason(e.target.value)}
-                    rows={2}
-                    placeholder="Kyun cancel kar rahe ho..."
-                    style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
-                  />
+              {/* Attempted — Sharjeel/CEO only */}
+              {canConfirm && (s === 'pending' || s === 'confirmed' || s === 'on_packing' || s === 'hold') && (
+                <button onClick={() => setStatus('attempted')} disabled={loading}
+                  style={{ background: '#f9731622', border: '1px solid #f9731644', color: '#f97316', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  📞 Attempted (Call Nahi Utha)
+                </button>
+              )}
 
-                  {/* Apr 2026 — Force cancel checkbox for super_admin only,
-                      visible only when order is in post-dispatch state */}
-                  {isCEO && NO_CANCEL_FROM_UI.has(order.status) && (
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer', marginTop: 3 }} />
+              {/* Hold — Sharjeel/CEO only */}
+              {canConfirm && (s === 'pending' || s === 'confirmed' || s === 'on_packing' || s === 'attempted') && (
+                <button onClick={() => setStatus('hold')} disabled={loading}
+                  style={{ background: '#64748b22', border: '1px solid #64748b44', color: '#64748b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ⏸ Put on Hold
+                </button>
+              )}
+
+              {/* Resume — Sharjeel/CEO only */}
+              {canConfirm && (s === 'hold' || s === 'attempted') && (
+                <button onClick={() => setStatus('confirmed')} disabled={loading}
+                  style={{ background: '#3b82f622', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ▶️ Resume Order (Wapas Confirmed)
+                </button>
+              )}
+
+              {/* ══════════════════════════════════════════════ */}
+              {/* ADIL (dispatcher) + CEO — Packed + Dispatched */}
+              {/* ══════════════════════════════════════════════ */}
+
+              {/* Apr 2026 — Manual Fulfill button for confirmed status.
+                  Mirrors the order page primary action. Used when:
+                    - Team booked courier in Shopify but webhook hasn't fired yet
+                    - Walk-in / wholesale orders without tracking
+                    - Kangaroo manual booking outside ERP
+                  Status goes confirmed → on_packing. After this, packer can be
+                  assigned + Mark as Packed becomes available.
+                  CSR (canConfirm) bhi see karega — same as primary on /orders/[id]. */}
+              {(canPack || canConfirm) && s === 'confirmed' && !order.shopify_fulfillment_id && (
+                <div style={{ background: card, border: `1px solid #c9a96e44`, borderRadius: 10, padding: '14px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#c9a96e', marginBottom: 8 }}>📋 Add Tracking / Fulfill</div>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.4 }}>
+                    Slip nikal chuki hai? Tracking + courier add karo, status on packing chala jayega — phir packer assign hoga.
+                  </div>
+                  <button
+                    onClick={() => {
+                      // Close drawer first so order page modal isn't behind it,
+                      // then ask the page to open the fulfill modal.
+                      onClose();
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('openFulfillModal', { detail: order.id }));
+                      }, 250);
+                    }}
+                    disabled={loading}
+                    style={{ background: '#c9a96e22', border: '1px solid #c9a96e66', color: '#c9a96e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}
+                  >
+                    📋 Open fulfill modal
+                  </button>
+                </div>
+              )}
+
+              {/* Mark as Packed — Adil/CEO, on_packing status pe */}
+              {/* FIX: Pehle 'confirmed' pe bhi show hota tha, par backend mein  */}
+              {/* canTransition guard confirmed → packed block karta hai.        */}
+              {/* Confirmed pe pehle packer assign karo → status on_packing     */}
+              {/* → phir Mark as Packed.                                         */}
+              {canPack && s === 'on_packing' && (
+                <div style={{ background: card, border: `1px solid #06b6d433`, borderRadius: 10, padding: '16px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#06b6d4', marginBottom: 10 }}>📦 Mark as Packed</div>
+
+                  {/* Show current packed_by if set */}
+                  {currentAssignment?.employee ? (
+                    <div style={{ background: '#0a1a0a', border: '1px solid #22c55e33', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                      <span style={{ color: '#555' }}>Packed by: </span>
+                      <span style={{ color: '#22c55e', fontWeight: 700 }}>{currentAssignment.employee.name}</span>
+                    </div>
+                  ) : currentAssignment?.notes === 'packing_team' ? (
+                    <div style={{ background: '#0a0a1a', border: '1px solid #3b82f633', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                      <span style={{ color: '#555' }}>Packed by: </span>
+                      <span style={{ color: '#3b82f6', fontWeight: 700 }}>👥 Packing Team</span>
+                    </div>
+                  ) : (
+                    <div style={{ background: '#1a0a0a', border: '1px solid #ef444433', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12, color: '#ef4444' }}>
+                      ⚠️ Packed By abhi set nahi — packing screen se add karo pehle
+                    </div>
+                  )}
+
+                  <button onClick={markPacked} disabled={loading}
+                    style={{ background: '#06b6d422', border: '1px solid #06b6d444', color: '#06b6d4', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                    📦 Mark as Packed
+                  </button>
+                </div>
+              )}
+
+              {/* Dispatch section — Adil/CEO, packed status pe */}
+              {/* FIX: Primary button = Mark as Dispatched (Shopify pe book ho chuka, */}
+              {/* tracking aa chuki orders/fulfilled webhook se). Kangaroo/Leopards    */}
+              {/* secondary — sirf jab Shopify pe book NAHI hua (rare case).           */}
+              {/* Pehle wala issue: secondary modals direct hi dispatch flow the —     */}
+              {/* Shopify-booked orders pe click karne se DOUBLE BOOKING ho jaati.     */}
+              {canPack && s === 'packed' && (
+                <div style={{ background: card, border: '1px solid #a855f744', borderRadius: 10, padding: '14px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#a855f7', marginBottom: 10 }}>🚚 Dispatch Order</div>
+
+                  {/* Primary: Shopify pe already book ho chuka, sirf status flip */}
+                  <button onClick={() => setStatus('dispatched')} disabled={loading}
+                    style={{ background: '#a855f722', border: '1px solid #a855f744', color: '#a855f7', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%', marginBottom: 10 }}>
+                    ✅ Mark as Dispatched
+                  </button>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 10, textAlign: 'center', lineHeight: 1.4 }}>
+                    Shopify pe already book ho chuka? Ye click karo.
+                  </div>
+
+                  {/* Apr 2026 — Book at courier via Shopify (temporary bridge).
+                      Staff ko Shopify Orders page access band karne ke baad,
+                      yahan se directly Shopify courier app khol sakte hain
+                      (naya tab) jisme order data prefilled aata hai. Booking
+                      complete karne ke baad wapas ERP me "Mark as Dispatched"
+                      click karna hai. */}
+                  <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, color: '#555', marginBottom: 6, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      — Book on Shopify (new tab) —
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => openCourierBooking('postex', order.shopify_order_id)} disabled={loading}
+                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🚚 PostEx
+                      </button>
+                      <button onClick={() => openCourierBooking('leopards', order.shopify_order_id)} disabled={loading}
+                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🚚 Leopards
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 6, textAlign: 'center', lineHeight: 1.4 }}>
+                      Shopify courier app khulega → book karke wapas aao → Mark as Dispatched
+                    </div>
+                  </div>
+
+                  {/* Secondary: ERP direct booking (Shopify pe book nahi hua) */}
+                  <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
+                    <div style={{ fontSize: 10, color: '#555', marginBottom: 6, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      — OR ERP se directly book —
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => setShowKangarooModal(true)} disabled={loading}
+                        style={{ flex: 1, background: '#f59e0b22', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🦘 Kangaroo
+                      </button>
+                      <button onClick={() => setShowLeopardsModal(true)} disabled={loading}
+                        style={{ flex: 1, background: '#e87d4422', border: '1px solid #e87d4444', color: '#e87d44', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        🐆 Leopards
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#666', marginTop: 6, textAlign: 'center', lineHeight: 1.4 }}>
+                      ⚠️ Sirf tab jab Shopify pe book NAHI hua — warna double booking ho jayegi
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ══════════════════════════════════════════════ */}
+              {/* CEO ONLY — Delivered / RTO manual override */}
+              {/* ══════════════════════════════════════════════ */}
+
+              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'attempted') && (
+                <button onClick={() => setStatus('delivered')} disabled={loading}
+                  style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ✅ Mark as Delivered (manual)
+                </button>
+              )}
+
+              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
+                <button onClick={() => setStatus('rto')} disabled={loading}
+                  style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  ↩️ Mark as RTO (manual)
+                </button>
+              )}
+
+              {/* May 8 2026 — Return to Office + Restock.
+                  Visible jab order RTO state mein hai (parcel courier ne wapas
+                  bheja aur physically office aaya). Ye button:
+                    - Saara stock wapas inventory mein add karta (DB + Shopify)
+                    - Order status RTO → Returned (terminal)
+                    - inventory_adjustments mein audit log
+                  Permission: orders.return_restock (default super_admin/admin/manager,
+                  delegate-able via /roles page). Cancel route ki jaga ye use karo
+                  RTO orders ke liye (cancel route RTO state se block hoti hai). */}
+              {canReturnRestock && s === 'rto' && (
+                <button onClick={returnAndRestock} disabled={loading}
+                  style={{ background: '#22c55e22', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  📦 Return to Office + Restock
+                </button>
+              )}
+
+              {/* Apr 2026 — Cancel Fulfillment (Shopify-style).
+                  Visible jab order pe tracking/fulfillment hai — useful jab
+                  staff ne accidentally galat courier book kar diya, ya order
+                  edit hua aur dobara book karna hai. Tracking + courier clear
+                  ho jate, status dispatched → confirmed wapas, Shopify side
+                  bhi cancel hoti hai (ya already cancelled hai toh skip).
+                  May 6 2026 — Now uses granular permission orders.cancel_fulfillment.
+                  Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
+              {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
+                <button onClick={cancelFulfillment} disabled={loading}
+                  style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  🔄 Cancel Fulfillment (remove tracking)
+                </button>
+              )}
+
+              {canCancelOrder && s !== 'cancelled' && s !== 'delivered' && (
+                <div style={{ background: card, border: '1px solid #330000', borderRadius: 10, padding: '16px' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
+                  <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
+                    placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+
+                  {/* May 8 2026 — Force cancel option (perm: orders.cancel_force).
+                      Default: super_admin/admin only — but delegate-able via /roles.
+                      Allows cancelling RTO/dispatched/delivered orders for cleanup
+                      scenarios (e.g., orphan orders out-of-sync with Shopify, or
+                      admin discretion calls). Activity log captures this clearly
+                      so audit trail mein force override visible hai. */}
+                  {canCancelForce && (NO_CANCEL_FROM_UI.has(s)) && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer' }} />
                       <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4 }}>
                         <strong>Force cancel (admin override)</strong><br/>
                         <span style={{ color: '#999', fontSize: 10 }}>
-                          Status '{order.status}' se cancel hoga. Yeh cleanup scenarios ke liye hai (out-of-sync orders, etc.)
+                          Status '{s}' se cancel hoga. RTO/dispatch ke liye normal flow allowed nahi — yeh sirf cleanup ke liye hai.
                         </span>
                       </span>
                     </label>
                   )}
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-                    <button onClick={() => { setShowCancelBox(false); setCancelReason(''); setForceCancel(false); }}
-                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Back
-                    </button>
-                    <button onClick={cancelOrder} disabled={actionBusy || !cancelReason.trim()}
-                      style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: (actionBusy || !cancelReason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !cancelReason.trim()) ? 0.5 : 1 }}>
-                      {actionBusy ? 'Cancelling…' : (forceCancel ? '⚡ Force cancel' : 'Confirm cancel')}
-                    </button>
-                  </div>
+                  <button onClick={cancel} disabled={loading} style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%', fontFamily: 'inherit' }}>
+                    {forceCancel ? '⚡ Force Cancel Order' : 'Cancel Order'}
+                  </button>
                 </div>
               )}
-            </Card>
 
-            {/* Payment Summary — Shopify-style with Collect payment button */}
-            <Card
-              title={
-                <span style={{
-                  background: isPaid ? 'rgba(34,197,94,0.15)' : isRefunded ? 'rgba(156,163,175,0.15)' : 'rgba(245,158,11,0.15)',
-                  color: isPaid ? '#22c55e' : isRefunded ? '#9ca3af' : '#f59e0b',
-                  border: `1px solid ${isPaid ? '#22c55e44' : isRefunded ? '#9ca3af44' : '#f59e0b44'}`,
-                  padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                }}>
-                  {isPaid ? '✓ Paid' : isRefunded ? 'Refunded' : 'Payment pending'}
-                </span>
-              }
-              overflowVisible
-            >
-              {/* FIX Apr 30 2026 — Subtotal items count Shopify se match kare.
-                  Pehle items.length use hota tha (distinct line items count) —
-                  Shopify total QUANTITY dikhata hai (sum of qty across lines).
-                  Multi-quantity items ki wajah se 61 vs 63 ka mismatch ho raha
-                  tha. Ab dono aligned hain. */}
-              {(() => {
-                const totalQty = items.reduce((s, it) => s + (parseInt(it.quantity) || 0), 0);
-                return (
-                  <Row label={`Subtotal (${totalQty} item${totalQty !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
-                );
-              })()}
-              {discount > 0 && (
-                <Row
-                  label={
-                    <span>
-                      Discount
-                      {discountLabel && (
-                        <span style={{
-                          marginLeft: 8,
-                          fontSize: 10,
-                          padding: '2px 7px',
-                          borderRadius: 4,
-                          background: 'rgba(34,197,94,0.12)',
-                          color: '#22c55e',
-                          fontFamily: 'monospace',
-                          fontWeight: 600,
-                          letterSpacing: 0.5,
-                        }}>
-                          {discountLabel}
-                        </span>
-                      )}
-                    </span>
-                  }
-                  value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>}
+              {msg && (
+                <div style={{ padding: '10px 14px', background: msg.startsWith('✅') ? '#001a0a' : '#1a0000', borderRadius: 8, border: `1px solid ${msg.startsWith('✅') ? '#003300' : '#330000'}`, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>
+                  {msg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'timeline' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* Comment Input */}
+              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Staff Note / Comment</div>
+                <textarea
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
+                  placeholder="Koi note likhein... (Ctrl+Enter to post)"
+                  rows={3}
+                  style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
                 />
-              )}
-              <Row label="Shipping" value={fmt(shipping)} />
-              <div style={{ borderTop: `1px solid ${border}`, margin: '8px 0', paddingTop: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
-                  <span style={{ color: '#fff' }}>Total</span>
-                  <span style={{ color: '#fff' }}>{fmt(total)}</span>
-                </div>
-              </div>
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}` }}>
-                <Row label="Paid" value={<span style={{ color: paidAmt > 0 ? '#22c55e' : '#e5e5e5' }}>{fmt(paidAmt)}</span>} />
-                <Row label="Balance" value={<span style={{ color: balance > 0 ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>{fmt(balance)}</span>} />
-              </div>
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, fontSize: 11, color: '#666' }}>
-                Payment method: <span style={{ color: '#888' }}>{order.payment_method || 'COD'}</span>
-              </div>
-
-              {/* Collect payment button — only when unpaid and not cancelled */}
-              {!isPaid && !isRefunded && !isCancelled && balance > 0 && (
-                <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'flex-end', position: 'relative' }}>
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      onClick={toggleMenu('payment')}
-                      style={{
-                        background: '#1a1a1a',
-                        border: `1px solid ${gold}`,
-                        color: gold,
-                        borderRadius: 7,
-                        padding: '8px 18px',
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                      }}>
-                      💰 Collect payment ▾
-                    </button>
-                    {openMenu === 'payment' && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                          position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                          background: '#0f0f0f', border: `1px solid ${border}`,
-                          borderRadius: 8, padding: 5, minWidth: 240, zIndex: 50,
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-                        }}
-                      >
-                        {/* Apr 30 2026 — Multi-method payment picker.
-                            Bank/wallet options request screenshot proof.
-                            "Cash" + "Manual" go straight to confirmation.
-                            All flow through same /api/orders/mark-paid endpoint
-                            with an optional payment_method tag for reporting.
-                            Courier auto-paid (Leopards/auto-settle) does NOT
-                            pass payment_method, so it stays as 'COD' — these
-                            two paths don't conflict. */}
-                        <MenuItem icon="🏦" label="Bank Alfalah" sub="Screenshot upload"
-                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Bank Alfalah', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
-                        <MenuItem icon="🏦" label="Meezan Bank" sub="Screenshot upload"
-                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Meezan Bank', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
-                        <MenuItem icon="💳" label="Easypaisa" sub="Screenshot upload"
-                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Easypaisa', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
-                        <MenuItem icon="💳" label="JazzCash" sub="Screenshot upload"
-                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'JazzCash', requireProof: true }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
-                        <MenuItem icon="💵" label="Cash" sub="In-hand collection"
-                          onClick={() => { setOpenMenu(null); setPaymentMethodModal({ method: 'Cash', requireProof: false }); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }} />
-                        <div style={{ height: 1, background: border, margin: '4px 0' }} />
-                        <MenuItem icon="✓" label="Manual paid" sub="Generic — no method tag"
-                          onClick={() => { setOpenMenu(null); setShowPaidConfirm(true); }} />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Apr 30 2026 — Payment method modal (per-method confirm).
-                  Opens when user picks Cash / Bank Alfalah / Meezan / Easypaisa /
-                  JazzCash from the Collect payment dropdown. Bank + wallet
-                  methods require a screenshot upload (auto-uploads on file
-                  select). Cash skips the upload step. Final confirm calls the
-                  mark-paid endpoint with the payment_method tag and (if
-                  uploaded) proof URL — both get embedded in the activity log
-                  Timeline. */}
-              {paymentMethodModal && !isPaid && !isCancelled && (
-                <div style={{ marginTop: 14, padding: 14, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 13, color: '#4ade80', marginBottom: 6, fontWeight: 600 }}>
-                    💰 {paymentMethodModal.method} — confirm payment
-                  </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
-                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> {paymentMethodModal.method} ke through paid mark hoga.
-                    {order.shopify_order_id ? ' Shopify pe bhi "Paid" sync hogi.' : ' (Manual order — sirf ERP).'}
-                  </div>
-
-                  {paymentMethodModal.requireProof && (
-                    <div style={{ marginBottom: 10 }}>
-                      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Screenshot proof (JPG/PNG/PDF, max 10MB)</div>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
-                        onChange={async (e) => {
-                          const f = e.target.files?.[0];
-                          if (!f) return;
-                          setPaymentProofFile(f);
-                          setPaymentProofUploading(true);
-                          try {
-                            const fd = new FormData();
-                            fd.append('file', f);
-                            fd.append('order_number', order.order_number || '');
-                            const r = await fetch('/api/orders/payment-proof', { method: 'POST', body: fd });
-                            const d = await r.json();
-                            if (d.success) {
-                              setPaymentProofUrl(d.url);
-                              flash('success', '✓ Proof uploaded');
-                            } else {
-                              flash('error', d.error || 'Upload failed');
-                              setPaymentProofFile(null);
-                            }
-                          } catch (err) {
-                            flash('error', err.message);
-                            setPaymentProofFile(null);
-                          }
-                          setPaymentProofUploading(false);
-                        }}
-                        style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit' }}
-                      />
-                      {paymentProofUploading && (
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>⟳ Uploading…</div>
-                      )}
-                      {paymentProofUrl && !paymentProofUploading && (
-                        <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          ✓ Uploaded —
-                          <a href={paymentProofUrl} target="_blank" rel="noopener noreferrer" style={{ color: gold, textDecoration: 'underline' }}>
-                            view
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Note (optional) — e.g. transaction id</div>
-                    <input
-                      type="text"
-                      value={paymentMethodNote}
-                      onChange={e => setPaymentMethodNote(e.target.value)}
-                      placeholder="TXN-1234567 / Reference"
-                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxSizing: 'border-box', fontFamily: 'inherit' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => { setPaymentMethodModal(null); setPaymentProofFile(null); setPaymentProofUrl(''); setPaymentMethodNote(''); }}
-                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Cancel
-                    </button>
-                    <button
-                      onClick={async () => {
-                        // Defence: digital methods need proof. Cash doesn't.
-                        if (paymentMethodModal.requireProof && !paymentProofUrl) {
-                          flash('error', 'Pehle screenshot upload karo'); return;
-                        }
-                        await markAsPaid({
-                          payment_method: paymentMethodModal.method,
-                          payment_proof_url: paymentProofUrl || undefined,
-                          note: paymentMethodNote.trim() || undefined,
-                        });
-                        setPaymentMethodModal(null);
-                        setPaymentProofFile(null);
-                        setPaymentProofUrl('');
-                        setPaymentMethodNote('');
-                      }}
-                      disabled={actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)}
-                      style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: (actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || paymentProofUploading || (paymentMethodModal.requireProof && !paymentProofUrl)) ? 0.5 : 1 }}>
-                      {actionBusy ? 'Marking…' : `✓ Confirm ${paymentMethodModal.method} paid`}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Phase 2: Mark as Paid confirmation box */}
-              {showPaidConfirm && !isPaid && !isCancelled && (
-                <div style={{ marginTop: 14, padding: 14, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 13, color: '#4ade80', marginBottom: 6, fontWeight: 600 }}>
-                    ✓ Confirm: Mark as Paid
-                  </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
-                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> paid mark ho jaayega.
-                    {order.shopify_order_id
-                      ? ' Shopify pe bhi "Paid" dikhane lagega.'
-                      : ' (Manual order — sirf ERP mein mark hoga)'}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button onClick={() => setShowPaidConfirm(false)}
-                      style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Cancel
-                    </button>
-                    <button onClick={markAsPaid} disabled={actionBusy}
-                      style={{ background: '#22c55e', border: '1px solid #22c55e', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                      {actionBusy ? 'Marking…' : '✓ Yes, mark as paid'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </Card>
-
-            {/* Timeline — unchanged */}
-            <Card title={`Timeline (${(isCEO ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
-              {/* Comment input */}
-              <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: gold + '22', color: gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-                    {(performer[0] || '?').toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <textarea
-                      value={commentText}
-                      onChange={e => setCommentText(e.target.value)}
-                      placeholder="Leave a comment… (internal note)"
-                      rows={2}
-                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
-                    />
-                    {commentText.trim() && (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                        <button onClick={addComment} disabled={actionBusy}
-                          style={{ background: gold, border: 'none', color: '#000', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
-                          {actionBusy ? '...' : 'Post'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: '#444' }}>Post karne wale: <span style={{ color: gold }}>{performer || 'Staff'}</span></span>
+                  <button
+                    onClick={submitComment}
+                    disabled={!commentText.trim() || submittingComment}
+                    style={{ background: commentText.trim() ? gold : '#1a1a1a', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
+                  >
+                    {submittingComment ? 'Posting...' : '📨 Post'}
+                  </button>
                 </div>
               </div>
 
-              {/* Log */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {(() => {
-                  // Apr 2026 — Hide webhook + system noise for staff.
-                  // Super_admin (CEO/admin) sees everything for audit purposes.
-                  const visibleTimeline = isCEO ? timeline : timeline.filter(l => {
-                    const a = String(l.action || '');
-                    if (a.startsWith('webhook:')) return false;
-                    if (a.startsWith('protocol_violation:')) return false;
-                    if (a === 'shopify_order_edited_webhook') return false;
-                    if (a === 'courier_reclassified') return false;
-                    return true;
-                  });
+              {/* Timeline Entries — super_admin sees all, staff hides webhook/system noise */}
+              {(() => {
+                const visibleLog = isCEO ? log : log.filter(l => {
+                  const a = String(l.action || '');
+                  if (a.startsWith('webhook:')) return false;
+                  if (a.startsWith('protocol_violation:')) return false;
+                  if (a === 'shopify_order_edited_webhook') return false;
+                  if (a === 'courier_reclassified') return false;
+                  return true;
+                });
+                return (<>
+              {visibleLog.length === 0 && (
+                <div style={{ color: '#333', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+                  Koi activity nahi abhi tak
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {visibleLog.map((l, i) => {
+                  const isComment = l.action === 'staff_comment';
+                  const dateStr = l.performed_at
+                    ? new Date(l.performed_at).toLocaleString('en-PK', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+                    : '';
+                  const by = l.performed_by && l.performed_by !== 'Staff' ? l.performed_by : null;
+                  const byEmail = l.performed_by_email || null;
 
-                  if (visibleTimeline.length === 0) {
-                    return <div style={{ textAlign: 'center', color: '#555', fontSize: 12, padding: 20 }}>No activity yet</div>;
-                  }
-
-                  return visibleTimeline.map(l => {
-                    const isComment = l.action === 'staff_comment';
-                    // Owner = jis user ne yeh comment likhi (apne email se match)
-                    const isOwnComment = isComment && l.performed_by_email && l.performed_by_email === userEmail;
-                    const isEditing = editingId === l.id;
-                    const wasEdited = !!l.edited_at;
-
-                    const actionColor = l.action?.startsWith('protocol_violation') ? '#f87171'
-                      : l.action === 'confirmed' ? '#3b82f6'
-                      : l.action === 'dispatched' ? '#a855f7'
-                      : l.action === 'delivered' ? '#22c55e'
-                      : l.action === 'cancelled' ? '#ef4444'
-                      : gold;
-
+                  if (isComment) {
                     return (
-                      <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : '#0f0f0f', border: `1px solid ${border}`, borderRadius: 7 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', color: actionColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>
-                          {isComment ? '💬' : '•'}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {/* Header row: action label + edit/delete (own comments only) */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <div style={{ fontSize: 12, color: actionColor, fontWeight: 600 }}>
-                              {(l.action || '').replace(/_/g, ' ')}
-                              {wasEdited && (
-                                <span style={{ marginLeft: 6, fontSize: 10, color: '#888', fontWeight: 400, fontStyle: 'italic' }}>
-                                  (edited)
-                                </span>
-                              )}
-                            </div>
-                            {isOwnComment && !isEditing && (
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button
-                                  onClick={() => startEditComment(l)}
-                                  disabled={actionBusy}
-                                  title="Edit"
-                                  style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.color = gold; }}
-                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
-                                  ✏️
-                                </button>
-                                <button
-                                  onClick={() => deleteComment(l.id)}
-                                  disabled={actionBusy}
-                                  title="Delete"
-                                  style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a0000'; e.currentTarget.style.color = '#ef4444'; }}
-                                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
-                                  🗑
-                                </button>
-                              </div>
-                            )}
+                      <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginTop: 2 }}>💬</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ background: '#0f1f35', border: '1px solid #1e3a5f', borderRadius: '0 10px 10px 10px', padding: '10px 14px' }}>
+                            <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
                           </div>
-
-                          {/* Body: textarea (edit mode) ya plain text */}
-                          {isEditing ? (
-                            <div style={{ marginTop: 6 }}>
-                              <textarea
-                                value={editingText}
-                                onChange={e => setEditingText(e.target.value)}
-                                rows={2}
-                                style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
-                              />
-                              <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
-                                <button onClick={cancelEditComment} disabled={actionBusy}
-                                  style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 5, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
-                                  Cancel
-                                </button>
-                                <button onClick={saveEditComment} disabled={actionBusy || !editingText.trim()}
-                                  style={{ background: gold, border: 'none', color: '#000', borderRadius: 5, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: (actionBusy || !editingText.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !editingText.trim()) ? 0.5 : 1 }}>
-                                  {actionBusy ? '...' : 'Save'}
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            l.notes && <div style={{ fontSize: 13, color: '#ccc', marginTop: 3, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{l.notes}</div>
-                          )}
-
-                          <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
-                            {l.performed_by || 'System'} · {formatShortDate(l.performed_at)}
+                          <div style={{ fontSize: 10, color: '#3a4a5a', marginTop: 4, paddingLeft: 2 }}>
+                            {by && <span style={{ color: gold, fontWeight: 600 }}>{by}</span>}
+                            {byEmail && <span style={{ color: '#555', fontSize: 10 }}> ({byEmail})</span>}
+                            {by && ' · '}{dateStr}
                           </div>
                         </div>
                       </div>
                     );
-                  });
-                })()}
-              </div>
-            </Card>
-          </div>
+                  }
 
-          {/* ═══ RIGHT SIDEBAR ═══ (sticky on desktop) */}
-          <div style={{ position: 'sticky', top: 16, alignSelf: 'start', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
+                  // Activity entry styling
+                  const actionLabel = (l.action || '').replace(/_/g, ' ');
+                  const actionColors = {
+                    'confirmed': '#3b82f6',
+                    'assigned': '#f59e0b',
+                    'packed': '#06b6d4',
+                    'status changed to delivered': '#22c55e',
+                    'status changed to cancelled': '#ef4444',
+                    'status changed to dispatched': '#a855f7',
+                    'status changed to confirmed': '#3b82f6',
+                    'status changed to returned': '#f59e0b',
+                    'status changed to rto': '#ef4444',
+                    'status changed to attempted': '#f97316',
+                    'status changed to hold': '#64748b',
+                    'status changed to packed': '#06b6d4',
+                    // May 8 2026 — Return + restock action
+                    'rto restocked': '#22c55e',
+                  };
+                  const actionColor = actionColors[actionLabel] || gold;
+                  const actionEmojis = {
+                    'confirmed': '✅',
+                    'assigned': '👤',
+                    'packed': '📦',
+                    'status changed to delivered': '🎉',
+                    'status changed to cancelled': '❌',
+                    'status changed to dispatched': '🚚',
+                    'status changed to attempted': '📞',
+                    'status changed to hold': '⏸',
+                    'status changed to rto': '↩️',
+                    'status changed to packed': '📦',
+                    // May 8 2026 — Return + restock action
+                    'rto restocked': '📦',
+                  };
+                  const emoji = actionEmojis[actionLabel] || '🔹';
 
-            {/* Notes (confirmation_notes) */}
-            <Card title="Notes">
-              {order.confirmation_notes
-                ? <div style={{ fontSize: 13, color: '#ccc', whiteSpace: 'pre-wrap' }}>{order.confirmation_notes}</div>
-                : <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No notes from customer</div>}
-            </Card>
-
-            {/* Customer */}
-            {/* Apr 27 2026 — Shopify-style "..." kebab menu in Customer Card.
-                Replaces the inline "Edit customer info" button that used to
-                sit in the secondary actions row. Click "..." to get options
-                that all open the existing edit drawer. */}
-            <Card title="Customer" overflowVisible right={
-              !isCancelled && (
-                <div style={{ position: 'relative' }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === 'customer-edit' ? null : 'customer-edit'); }}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#888',
-                      fontSize: 18,
-                      cursor: 'pointer',
-                      padding: '2px 8px',
-                      borderRadius: 5,
-                      lineHeight: 1,
-                      fontFamily: 'inherit',
-                    }}
-                    title="Customer actions"
-                    onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >⋯</button>
-                  {openMenu === 'customer-edit' && (
-                    <>
-                      {/* Backdrop to close on outside click */}
-                      <div
-                        onClick={() => setOpenMenu(null)}
-                        style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-                      />
-                      <div style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 4px)',
-                        right: 0,
-                        background: '#0f0f0f',
-                        border: `1px solid ${border}`,
-                        borderRadius: 8,
-                        padding: 4,
-                        minWidth: 220,
-                        zIndex: 50,
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                      }}>
-                        <button
-                          onClick={() => { setOpenMenu(null); setShowEditCustomer(true); }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          ✏️ Edit contact information
-                        </button>
-                        <button
-                          onClick={() => { setOpenMenu(null); setShowEditShipping(true); }}
-                          style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                          📍 Edit shipping address
-                        </button>
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
+                      <div style={{ width: 32, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', border: `1px solid ${actionColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{emoji}</div>
+                        {i < visibleLog.length - 1 && <div style={{ width: 1, height: 18, background: '#1f1f1f', marginTop: 3 }} />}
                       </div>
-                    </>
-                  )}
-                </div>
-              )
-            }>
-              <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
-              {order.customer_order_count > 0 && (
-                <Link href={`/orders?search=${encodeURIComponent(order.customer_phone || '')}`}
-                  style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 6 }}>
-                  {order.customer_order_count === 1 ? '1st order' : `${order.customer_order_count} orders total`} →
-                </Link>
-              )}
-              {customerHistory.length > 0 && (
-                <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${border}` }}>
-                  <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recent orders</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {customerHistory.map(co => {
-                      const cfg = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
-                      return (
-                        <Link key={co.id} href={`/orders/${co.id}`}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 6, textDecoration: 'none', fontSize: 11 }}>
-                          <span style={{ color: gold, fontFamily: 'monospace', fontWeight: 600 }}>{co.order_number}</span>
-                          <span style={{ color: cfg.color, fontSize: 10 }}>{cfg.label}</span>
-                          <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{timeAgo(co.created_at)}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </Card>
-
-            {/* Contact */}
-            <Card title="Contact information">
-              {order.customer_phone ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <a href={`tel:${order.customer_phone}`} style={{ fontSize: 13, color: gold, textDecoration: 'none' }}>
-                    {order.customer_phone}
-                  </a>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
-                  <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4 }}>💬 WhatsApp</a>
-                </div>
-              ) : <div style={{ fontSize: 12, color: '#555' }}>No phone</div>}
-              <div style={{ fontSize: 12, color: '#555', marginTop: 8 }}>No email provided</div>
-            </Card>
-
-            {/* Shipping address */}
-            <Card title="Shipping address">
-              <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.55 }}>
-                <div style={{ color: '#fff', fontWeight: 500 }}>{order.customer_name || '—'}</div>
-                {order.customer_address && <div>{order.customer_address}</div>}
-                {order.customer_city && <div>{order.customer_city}</div>}
-                <div>Pakistan</div>
-                {order.customer_phone && <div style={{ marginTop: 4 }}>{order.customer_phone}</div>}
-              </div>
-              {order.customer_address && (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-                  <a
-                    href={`https://maps.google.com/?q=${encodeURIComponent(`${order.customer_address}, ${order.customer_city || ''}`)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize: 12, color: gold, textDecoration: 'none' }}
-                  >
-                    🗺️ View on map ↗
-                  </a>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText([order.customer_address, order.customer_city].filter(Boolean).join(', ')); }} title="Copy full address"
-                    style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 11, cursor: 'pointer', padding: '3px 8px', borderRadius: 4, fontFamily: 'inherit' }}>
-                    📋 Copy
-                  </button>
-                </div>
-              )}
-            </Card>
-
-            {/* Billing address (Shopify-style — same as shipping for COD) */}
-            <Card title="Billing address">
-              <div style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>Same as shipping address</div>
-            </Card>
-
-            {/* Assignment — Apr 2026: only available after fulfillment.
-                Pre-fulfill (pending/confirmed): show hint, hide dropdown.
-                Post-fulfill (on_packing/packed): show dropdown.
-                Dispatched onwards: just show name, no change. */}
-            {assignmentVisible && (
-              <Card title="Assigned to" id="assigned-to-card">
-                {/* May 2 2026 — Show "Packing Team" badge when assigned via team mode */}
-                {order.assigned_via_team ? (
-                  <div style={{ fontSize: 13, color: '#3b82f6', fontWeight: 700, marginBottom: 10 }}>
-                    👥 Packing Team
-                    <span style={{ fontSize: 10, color: '#666', fontWeight: 400, display: 'block', marginTop: 2 }}>(shared credit — sab packing staff)</span>
-                  </div>
-                ) : order.assigned_to_name ? (
-                  <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600, marginBottom: 10 }}>
-                    👤 {order.assigned_to_name}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: '#555', marginBottom: 10, fontStyle: 'italic' }}>Not assigned yet</div>
-                )}
-                {/* Permission-gated unlock (May 2 2026) — CEO/manager with orders.assign perm
-                    can override status check and assign anytime (matches drawer behavior). */}
-                {!assignmentUnlocked && !canAssign ? (
-                  // Pre-fulfill non-privileged: explain why dropdown is hidden
-                  <div style={{
-                    fontSize: 11, color: '#888', background: '#0f0f0f',
-                    border: `1px dashed ${border}`, borderRadius: 6,
-                    padding: '8px 10px', lineHeight: 1.5,
-                  }}>
-                    🔒 Assignment {order.status === 'pending' ? 'Confirm' : 'Fulfill'} ke baad available hogi.
-                    {order.status === 'confirmed' && (
-                      <div style={{ marginTop: 4, color: '#666' }}>
-                        Pehle &quot;📋 Add Tracking / Fulfill&quot; click karo (top mein), phir packer assign hoga.
+                      <div style={{ flex: 1, paddingBottom: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ fontSize: 12, color: actionColor, fontWeight: 600, textTransform: 'capitalize' }}>{actionLabel}</div>
+                          <div style={{ fontSize: 10, color: '#333', flexShrink: 0, marginLeft: 8 }}>{dateStr}</div>
+                        </div>
+                        {l.notes && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{l.notes}</div>}
+                        {(by || byEmail) && <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>by <span style={{ color: gold }}>{by || byEmail}</span>{by && byEmail && <span style={{ color: '#444' }}> · {byEmail}</span>}</div>}
                       </div>
-                    )}
-                  </div>
-                ) : packingStaff.length > 0 && !['dispatched', 'delivered', 'rto'].includes(order.status) && (
-                  // Post-fulfill (or perm-overridden): show dropdown
-                  <select
-                    value=""
-                    onChange={e => { if (e.target.value) assignTo(e.target.value); }}
-                    disabled={actionBusy}
-                    style={{ width: '100%', background: '#0f0f0f', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
-                  >
-                    <option value="">Change / assign…</option>
-                    <option value="packing_team">👥 Whole Packing Team (shared credit)</option>
-                    {packingStaff.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                )}
-              </Card>
-            )}
-
-            {/* Apr 2026 — Order Type tags (walk-in / international / wholesale).
-                Yeh tags sirf INFORMATIONAL hain — kisi auto-action ko trigger
-                nahi karte. Manual toggle. Mirror to rszevar.com platform side
-                bhi automatically hota hai (best-effort). */}
-            {!isCancelled && (
-              <Card title="Order Type">
-                <div style={{ fontSize: 11, color: '#666', marginBottom: 10, lineHeight: 1.4 }}>
-                  Customer ya order ke type ka label. Sirf informational — koi auto-action nahi.
-                </div>
-
-                {/* Walk-in toggle */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🚶 Walk-in</div>
-                    <div style={{ fontSize: 10, color: '#666' }}>Customer shop pe aaya / pickup</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_walkin}
-                    onChange={e => toggleOrderTypeTag('walkin', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#f59e0b', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
-                  />
-                </div>
-
-                {/* International toggle */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🌍 International</div>
-                    <div style={{ fontSize: 10, color: '#666' }}>Pakistan ke bahar ka order</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_international}
-                    onChange={e => toggleOrderTypeTag('international', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#22d3ee', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
-                  />
-                </div>
-
-                {/* Wholesale toggle */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🏢 Wholesale</div>
-                    <div style={{ fontSize: 10, color: '#666' }}>Bulk / re-sale buyer</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_wholesale}
-                    onChange={e => toggleOrderTypeTag('wholesale', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#8b5cf6', width: 16, height: 16, cursor: actionBusy ? 'wait' : 'pointer' }}
-                  />
-                </div>
-              </Card>
-            )}
-
-            {/* May 2 2026 — Credit / Udhaar toggle (Step 6 of customer credits).
-                Yeh DEDICATED card hai (Order Type card se alag) kyunki yeh
-                informational nahi hai — actually status change karta hai
-                (auto-deliver) aur Customer Credits dashboard mein dikhata hai.
-                Visual treatment gold accent ke saath taake clearly different lage. */}
-            {!isCancelled && (
-              <Card title="📒 Credit / Udhaar">
-                <div style={{
-                  fontSize: 11, color: '#666', marginBottom: 10, lineHeight: 1.5,
-                }}>
-                  Trusted customer jo udhaar pe maal le raha hai. Order delivered mark hoga real-time, payment Customer Credits mein track hogi.
-                </div>
-
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '8px 10px',
-                  background: order.is_credit_order ? 'rgba(201,169,110,0.08)' : 'transparent',
-                  border: `1px solid ${order.is_credit_order ? 'rgba(201,169,110,0.3)' : border}`,
-                  borderRadius: 6,
-                }}>
-                  <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>
-                      {order.is_credit_order ? '✓ Credit order' : 'Mark as credit order'}
                     </div>
-                    <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
-                      {order.is_credit_order
-                        ? 'Customer Credits dashboard mein active hai'
-                        : 'On click: status auto-delivered, payment unpaid rahega'}
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_credit_order}
-                    onChange={e => toggleCreditOrder(e.target.checked)}
-                    disabled={actionBusy}
-                    style={{
-                      accentColor: '#c9a96e',
-                      width: 16, height: 16,
-                      cursor: actionBusy ? 'wait' : 'pointer',
-                    }}
-                  />
-                </div>
-
-                {order.is_credit_order && order.customer_phone && (
-                  <a href={`/credits/${encodeURIComponent(order.customer_phone)}`}
-                    style={{
-                      display: 'block', marginTop: 10,
-                      padding: '6px 10px', textAlign: 'center',
-                      background: 'transparent', border: '1px solid rgba(201,169,110,0.3)',
-                      borderRadius: 6, color: '#c9a96e',
-                      fontSize: 11, fontWeight: 500, textDecoration: 'none',
-                    }}>
-                    View khaata →
-                  </a>
-                )}
-              </Card>
-            )}
-
-            {/* Tags */}
-            <Card title="Tags">
-              {(() => {
-                const visibleTags = Array.isArray(order.tags) ? order.tags.filter(t => {
-                  const tag = String(t || '').toLowerCase();
-                  // Hide: type tags (already shown as typeBadges in header) + redundant confirm/cancel state tags + system tags
-                  if (['wholesale','international','walkin','kangaroo'].includes(tag)) return false;
-                  if (['whatsapp_confirmed', 'whatsapp confirmed', 'order_confirmed', 'order confirmed', 'confirmation pending', 'whatsapp_cancelled', 'whatsapp cancelled', 'no whatsapp'].includes(tag)) return false;
-                  if (tag.startsWith('packing:')) return false; // already shown via assigned_to_name
-                  return true;
-                }) : [];
-                return visibleTags.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {visibleTags.map((tag, i) => (
-                      <span key={i} style={{ color: '#9ca3af', background: '#1f1f2e', border: '1px solid #2a2a44', padding: '3px 8px', borderRadius: 4, fontSize: 11 }}>
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: '#555', fontStyle: 'italic' }}>No tags</div>
-                );
+                  );
+                })}
+              </div>
+                </>);
               })()}
-            </Card>
+            </div>
+          )}
 
-            {/* Metadata */}
-            <Card title="Order info">
-              <Row label="Created" value={formatShortDate(order.created_at)} />
-              {order.confirmed_at && <Row label="Confirmed" value={formatShortDate(order.confirmed_at)} color="#3b82f6" />}
-              {order.dispatched_at && <Row label="Dispatched" value={formatShortDate(order.dispatched_at)} color="#a855f7" />}
-              {order.delivered_at && <Row label="Delivered" value={formatShortDate(order.delivered_at)} color="#22c55e" />}
-              {order.paid_at && <Row label="Paid" value={formatShortDate(order.paid_at)} color="#22c55e" />}
-              {order.rto_at && <Row label="RTO" value={formatShortDate(order.rto_at)} color="#ef4444" />}
-              {order.cancelled_at && <Row label="Cancelled" value={formatShortDate(order.cancelled_at)} color="#ef4444" />}
-              <Row label="Updated" value={formatShortDate(order.updated_at)} />
-              {order.shopify_order_id && <Row label="Shopify ID" value={order.shopify_order_id} mono />}
-              {order.shopify_synced_at && <Row label="Last synced" value={timeAgo(order.shopify_synced_at)} />}
-              <Row label="Order type" value={order.is_wholesale ? 'Wholesale' : order.is_international ? 'International' : order.is_walkin ? 'Walk-in' : 'Retail'} />
-            </Card>
-          </div>
+          {tab === 'customer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Apr 27 2026 — Customer Info Edit (always-editable inline form).
+                  Pehle yahan read-only card tha aur edit ke liye Actions tab pe
+                  alag toggle button tha. Ab Shopify-style: form direct yahan
+                  hai, kebab menu se aate hi user can edit. */}
+              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>👤 Edit Customer Info</span>
+                  <span style={{ fontSize: 9, color: '#444', textTransform: 'none', letterSpacing: 0 }}>Save Shopify pe bhi sync hota hai</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  {[
+                    ['Customer Name', 'customer_name'],
+                    ['Phone', 'customer_phone'],
+                    ['City', 'customer_city'],
+                  ].map(([lbl, key]) => (
+                    <div key={key} style={{ gridColumn: key === 'customer_name' ? 'span 2' : 'auto' }}>
+                      <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>{lbl}</div>
+                      <input value={editForm[key]} onChange={e => setEditForm(f => ({...f, [key]: e.target.value}))}
+                        style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Shipping Address</div>
+                  <textarea value={editForm.customer_address} onChange={e => setEditForm(f => ({...f, customer_address: e.target.value}))}
+                    rows={2}
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Edit Reason (audit log mein save hoga)</div>
+                  <input value={editForm.notes} onChange={e => setEditForm(f => ({...f, notes: e.target.value}))}
+                    placeholder="e.g. Customer ne address change kaha"
+                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
+                </div>
+                <button onClick={saveEdit} disabled={loading}
+                  style={{ width: '100%', background: '#f59e0b', color: '#000', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: loading ? 0.5 : 1 }}>
+                  {loading ? '⟳ Saving...' : '💾 Save + Sync to Shopify'}
+                </button>
+                {/* Tags display below the form */}
+                {order.tags && Array.isArray(order.tags) && order.tags.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${border}` }}>
+                    <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>Tags</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {order.tags.map((tag, ti) => (
+                        <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Previous Orders */}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                  🛒 Purane Orders {!customerOrdersLoading && customerOrders.length > 0 && `(${customerOrders.length})`}
+                </div>
+                {customerOrdersLoading && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 20 }}>Loading...</div>}
+                {!customerOrdersLoading && customerOrders.length === 0 && (
+                  <div style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: 20 }}>Koi purana order nahi mila</div>
+                )}
+                {!customerOrdersLoading && customerOrders.map(co => {
+                  const coStatus = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
+                  const coDate = co.created_at ? new Date(co.created_at).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: '2-digit' }) : '';
+                  return (
+                    <div
+                      key={co.id}
+                      onClick={() => { onClose(); setTimeout(() => window.dispatchEvent(new CustomEvent('openOrder', { detail: co })), 200); }}
+                      style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 9, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = gold + '66'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = border}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: gold }}>{co.order_number || '#' + co.id}</div>
+                        <span style={{ color: coStatus.color, background: coStatus.bg, padding: '2px 8px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{coStatus.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                        <div style={{ fontSize: 12, color: '#666' }}>{coDate}</div>
+                        <div style={{ fontSize: 12, color: '#c9a96e99', fontWeight: 600 }}>Rs {Number(co.total_amount || 0).toLocaleString()}</div>
+                      </div>
+                      {co.tracking_number && <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>🚚 {co.dispatched_courier || ''} · {co.tracking_number}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Drawer overlay — opens on Edit/Dispatch button click */}
-      {showDrawer && (
-        <OrderDrawer
-          order={order}
-          onClose={() => setShowDrawer(false)}
-          onRefresh={refreshAll}
-          performer={performer}
-          variant="drawer"
-          defaultTab={drawerInitialTab}
-        />
-      )}
-
-      {/* May 2026 — Shopify-style modal popups. Replace the older flow that
-          opened OrderDrawer's Customer tab. Both contact + shipping use the
-          same /api/orders/edit endpoint (restored from broken state). */}
-      {showEditCustomer && order && (
-        <EditCustomerModal
-          order={order}
-          performer={performer}
-          userEmail={userEmail}
-          onClose={() => setShowEditCustomer(false)}
-          onSaved={() => { setShowEditCustomer(false); refreshAll(); }}
-        />
-      )}
-      {showEditShipping && order && (
-        <EditShippingModal
-          order={order}
-          performer={performer}
-          userEmail={userEmail}
-          onClose={() => setShowEditShipping(false)}
-          onSaved={() => { setShowEditShipping(false); refreshAll(); }}
-        />
-      )}
-
-      {/* Apr 2026 — Manual Fulfill modal: opened from Fulfill dropdown when status='packed'.
-          Used when courier was booked OUTSIDE ERP (Kangaroo via Shopify app, Leopards via portal)
-          OR when there's no tracking (walk-in / wholesale / pickup). */}
-      {showFulfillModal && (
-        <div
-          onClick={() => !actionBusy && setShowFulfillModal(false)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-            zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 20,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#141414', border: '1px solid #2a2a2a', borderRadius: 12,
-              padding: 24, width: '100%', maxWidth: 520,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <h3 style={{
-                fontFamily: "'Cormorant Garamond', serif",
-                fontSize: 20, color: '#c9a96e', margin: 0, fontWeight: 600,
-              }}>
-                📋 Add Tracking / Mark Fulfilled
-              </h3>
-              <button
-                onClick={() => setShowFulfillModal(false)}
-                disabled={actionBusy}
-                style={{
-                  background: 'transparent', border: 'none', color: '#666',
-                  cursor: 'pointer', fontSize: 18, padding: 4,
-                }}
-              >×</button>
+      {/* ── Kangaroo Booking Modal ── */}
+      {showKangarooModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#111', border: '1px solid #f59e0b44', borderRadius: 14, padding: 28, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>🦘 Book via Kangaroo</div>
+              <button onClick={() => setShowKangarooModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
 
-            <div style={{ fontSize: 12, color: '#888', marginBottom: 16, lineHeight: 1.5 }}>
-              Order: <strong style={{ color: '#e5e5e5' }}>{order.order_number}</strong> · Total: <strong style={{ color: '#e5e5e5' }}>Rs {Number(total).toLocaleString('en-PK')}</strong>
-              <div style={{ marginTop: 6, fontSize: 11, color: '#666' }}>
-                Yeh option courier outside ERP book hua ho (Kangaroo Shopify app / Leopards portal),
-                ya walk-in / wholesale / pickup bina tracking ke fulfill karna ho — uske liye hai.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Order Type</div>
+                <select value={kangarooForm.ordertype} onChange={e => setKangarooForm(f => ({...f, ordertype: e.target.value}))}
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+                  <option value="COD">COD</option>
+                  <option value="Replacement">Replacement</option>
+                  <option value="Voucher">Voucher</option>
+                  <option value="Cash Refund">Cash Refund</option>
+                </select>
               </div>
-            </div>
-
-            {/* Tracking input */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                Tracking Number <span style={{ color: '#666', fontWeight: 400 }}>(optional — leave empty for no-tracking fulfill)</span>
-              </label>
-              <input
-                type="text"
-                value={fulfillTracking}
-                onChange={e => setFulfillTracking(e.target.value)}
-                placeholder="e.g. KI3601012345 or KL27001234567"
-                disabled={actionBusy}
-                style={{
-                  width: '100%', padding: '9px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
-                  fontFamily: 'monospace', outline: 'none',
-                }}
-                autoFocus
-              />
-              {fulfillTracking && detectCourierFromTrackingClient(fulfillTracking) && !fulfillCourierManuallyEdited && (
-                <div style={{ fontSize: 11, color: '#22c55e', marginTop: 4 }}>
-                  ✓ Detected: <strong>{detectCourierFromTrackingClient(fulfillTracking)}</strong>
+              {[
+                ['Customer Name', 'name', 'text', 'Customer ka naam'],
+                ['Phone', 'phone', 'text', '03xx-xxxxxxx'],
+                ['City', 'city', 'text', 'Karachi'],
+                ['COD Amount (Rs.)', 'amount', 'number', '0'],
+                ['Invoice / Order #', 'invoice', 'text', order.order_number || ''],
+              ].map(([label, key, type, placeholder]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
+                  <input type={type} value={kangarooForm[key]} onChange={e => setKangarooForm(f => ({...f, [key]: e.target.value}))}
+                    placeholder={placeholder}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
                 </div>
-              )}
-            </div>
-
-            {/* Courier dropdown */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                Courier
-                {!fulfillCourierManuallyEdited && detectCourierFromTrackingClient(fulfillTracking) && (
-                  <span style={{ color: '#666', fontWeight: 400 }}> (auto-detected — change if wrong)</span>
-                )}
-              </label>
-              <select
-                value={effectiveFulfillCourier || ''}
-                onChange={e => {
-                  setFulfillCourier(e.target.value);
-                  setFulfillCourierManuallyEdited(true);
-                }}
-                disabled={actionBusy}
-                style={{
-                  width: '100%', padding: '9px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
-                  fontFamily: 'inherit', outline: 'none',
-                }}
-              >
-                <option value="">— Auto / Not set —</option>
-                <option value="Leopards">Leopards (KI...)</option>
-                <option value="Kangaroo">Kangaroo (KL...)</option>
-                <option value="PostEx">PostEx</option>
-                <option value="TCS">TCS</option>
-                <option value="M&P">M&amp;P</option>
-                <option value="Other">Other</option>
-                <option value="Pickup">Pickup / Walk-in (no courier)</option>
-              </select>
-            </div>
-
-            {/* Notify customer checkbox — only meaningful with tracking */}
-            <div style={{ marginBottom: 14, opacity: fulfillTracking.trim() ? 1 : 0.5 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#ccc', cursor: fulfillTracking.trim() ? 'pointer' : 'not-allowed' }}>
-                <input
-                  type="checkbox"
-                  checked={fulfillNotify}
-                  onChange={e => setFulfillNotify(e.target.checked)}
-                  disabled={actionBusy || !fulfillTracking.trim()}
-                  style={{ accentColor: '#c9a96e' }}
-                />
-                Customer ko shipping email bhejo
-                {!fulfillTracking.trim() && <span style={{ color: '#666', fontSize: 11 }}>(needs tracking)</span>}
-              </label>
-            </div>
-
-            {/* Apr 2026 — Order type quick-toggle inside fulfill modal.
-                Convenience: agar fulfill karte waqt yaad aaye ke yeh walk-in /
-                wholesale / international hai, yahin se mark kar sakte ho —
-                sidebar par jana zaroori nahi. Backend update-tags endpoint
-                par jata hai. */}
-            <div style={{ marginBottom: 14, padding: '10px 12px', background: '#0a0a0a', border: '1px solid #1f1f1f', borderRadius: 6 }}>
-              <div style={{ fontSize: 10, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Order Type (optional)
+              ))}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
+                <textarea value={kangarooForm.address} onChange={e => setKangarooForm(f => ({...f, address: e.target.value}))}
+                  rows={2} placeholder="Customer ka address"
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
               </div>
-              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_walkin}
-                    onChange={e => toggleOrderTypeTag('walkin', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#f59e0b' }}
-                  />
-                  🚶 Walk-in
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_international}
-                    onChange={e => toggleOrderTypeTag('international', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#22d3ee' }}
-                  />
-                  🌍 International
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#ccc', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!order.is_wholesale}
-                    onChange={e => toggleOrderTypeTag('wholesale', e.target.checked)}
-                    disabled={actionBusy}
-                    style={{ accentColor: '#8b5cf6' }}
-                  />
-                  🏢 Wholesale
-                </label>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (optional)</div>
+                <input value={kangarooForm.notes} onChange={e => setKangarooForm(f => ({...f, notes: e.target.value}))}
+                  placeholder="e.g. Earrings Set, handle with care..."
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+
+              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+                ⚠️ Submit karne se: Kangaroo pe booking hogi → ERP mein dispatched mark hoga → Shopify fulfill hoga tracking ke saath
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={bookKangaroo} disabled={loading}
+                  style={{ flex: 1, background: '#f59e0b', color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {loading ? '⏳ Booking...' : '🦘 Confirm & Book'}
+                </button>
+                <button onClick={() => setShowKangarooModal(false)}
+                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Reason (optional, audit log) */}
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 6, fontWeight: 500 }}>
-                Note <span style={{ color: '#666', fontWeight: 400 }}>(optional — for audit log)</span>
-              </label>
-              <input
-                type="text"
-                value={fulfillReason}
-                onChange={e => setFulfillReason(e.target.value)}
-                placeholder="e.g. Booked Kangaroo manually, Wholesale pickup, Walk-in handover..."
-                disabled={actionBusy}
-                style={{
-                  width: '100%', padding: '8px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 12,
-                  fontFamily: 'inherit', outline: 'none',
-                }}
-              />
+      {/* ── Leopards Booking Modal ── */}
+      {showLeopardsModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#111', border: '1px solid #e87d4444', borderRadius: 14, padding: 28, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#e87d44' }}>🐆 Book via Leopards</div>
+              <button onClick={() => setShowLeopardsModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
-
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowFulfillModal(false)}
-                disabled={actionBusy}
-                style={{
-                  padding: '9px 16px', background: 'transparent',
-                  border: '1px solid #333', borderRadius: 6,
-                  color: '#aaa', fontSize: 12, cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >Cancel</button>
-              <button
-                onClick={submitManualFulfill}
-                disabled={actionBusy}
-                style={{
-                  padding: '9px 18px', background: '#c9a96e',
-                  border: '1px solid #c9a96e', borderRadius: 6,
-                  color: '#080808', fontSize: 12, cursor: 'pointer',
-                  fontWeight: 600, fontFamily: 'inherit',
-                  opacity: actionBusy ? 0.6 : 1,
-                }}
-              >
-                {actionBusy ? 'Submitting…' : (fulfillTracking.trim() ? '✓ Add Tracking & Fulfill' : '✓ Mark as Fulfilled')}
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                ['Customer Name', 'name', 'text'],
+                ['Phone', 'phone', 'text'],
+                ['City', 'city', 'text'],
+                ['COD Amount (Rs.)', 'amount', 'number'],
+              ].map(([label, key, type]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
+                  <input type={type} value={leopardsForm[key]} onChange={e => setLeopardsForm(f => ({...f, [key]: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+              ))}
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
+                <textarea value={leopardsForm.address} onChange={e => setLeopardsForm(f => ({...f, address: e.target.value}))}
+                  rows={2} style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Weight (grams)</div>
+                  <input type="number" value={leopardsForm.weight} onChange={e => setLeopardsForm(f => ({...f, weight: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Pieces</div>
+                  <input type="number" value={leopardsForm.pieces} onChange={e => setLeopardsForm(f => ({...f, pieces: e.target.value}))}
+                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (auto order items se bharega)</div>
+                <input value={leopardsForm.notes} onChange={e => setLeopardsForm(f => ({...f, notes: e.target.value}))}
+                  placeholder="Leave empty for auto order items..."
+                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+                ⚠️ Submit karne se: Leopards pe booking hogi → ERP dispatched → Shopify fulfilled
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={bookLeopardsNow} disabled={loading}
+                  style={{ flex: 1, background: '#e87d44', color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {loading ? '⏳ Booking...' : '🐆 Confirm & Book'}
+                </button>
+                <button onClick={() => setShowLeopardsModal(false)}
+                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
