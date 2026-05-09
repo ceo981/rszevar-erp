@@ -28,6 +28,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { checkPermissionByEmail } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,13 +73,6 @@ async function getShopifyLocationId() {
   return _cachedLocId;
 }
 
-// ─── Server-side role gate ────────────────────────────────────────────────
-async function getRole(supabase, email) {
-  if (!email) return null;
-  const { data } = await supabase.from('profiles').select('role').eq('email', email).maybeSingle();
-  return data?.role || null;
-}
-
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -93,22 +87,36 @@ export async function POST(request) {
       performed_by,
       performed_by_email,
       sync_shopify_stock,      // optional, default true
-      allow_from_delivered,    // optional CEO-only flag for refund/return scenarios
+      allow_from_delivered,    // optional flag for refund/return from delivered
+                               // (requires orders.force_status_revert permission)
     } = body;
 
     if (!order_id) {
       return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
     }
 
-    // ── Role check ──────────────────────────────────────────────────────────
-    const role = await getRole(supabase, performed_by_email);
-    const isCEO = role === 'super_admin' || role === 'admin';
-    const isManager = role === 'manager';
-    if (!isCEO && !isManager) {
+    // ── Permission check (May 8 2026) ───────────────────────────────────────
+    // Replaced hardcoded role gate with delegate-able permission check.
+    // Default grants: super_admin, admin, manager. CEO can grant to other
+    // roles via /roles page (e.g. CSR for parcel handling).
+    const restockCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.return_restock');
+    if (!restockCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: 'Sirf super_admin/admin/manager restock kar sakte hain' },
+        { success: false, error: restockCheck.reason },
         { status: 403 },
       );
+    }
+
+    // For delivered → returned (refund/return scenario), need a stronger perm.
+    // Default: super_admin/admin only.
+    if (allow_from_delivered === true) {
+      const forceCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.force_status_revert');
+      if (!forceCheck.allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Delivered se restock karne ke liye orders.force_status_revert permission chahiye' },
+          { status: 403 },
+        );
+      }
     }
 
     const performer = performed_by || 'Staff';
@@ -125,15 +133,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    // Status validation: rto allowed always; delivered only with CEO opt-in flag
+    // Status validation: rto allowed always; delivered only with explicit flag (perm-gated above)
     const fromStatus = order.status;
     const okFromRto       = fromStatus === 'rto';
-    const okFromDelivered = fromStatus === 'delivered' && allow_from_delivered === true && isCEO;
+    const okFromDelivered = fromStatus === 'delivered' && allow_from_delivered === true;
     if (!okFromRto && !okFromDelivered) {
       return NextResponse.json({
         success: false,
         error: `Restock sirf RTO state se ho sakta hai (current: ${fromStatus}). ` +
-               `Delivered orders ke liye allow_from_delivered=true with super_admin.`,
+               `Delivered orders ke liye allow_from_delivered=true bhejo (force_status_revert perm required).`,
       }, { status: 400 });
     }
 
@@ -330,12 +338,12 @@ export async function POST(request) {
     const shopifyFailCount = stockResults.filter(r => r.shopify_error).length;
 
     const summaryNotes = [
-      `RTO restock by ${performer}`,
+      `RTO restock by ${performer} (${restockCheck.role})`,
       `${totalRestocked} units across ${stockResults.length} product(s) returned to inventory`,
       shouldSyncShopify ? `Shopify: ${shopifyOkCount} synced${shopifyFailCount ? `, ${shopifyFailCount} failed` : ''}` : '(Shopify sync skipped)',
       reason ? `Note: ${reason}` : null,
       skipped.length > 0 ? `${skipped.length} item(s) skipped` : null,
-      okFromDelivered ? '(from delivered — CEO override)' : null,
+      okFromDelivered ? '(from delivered — force_status_revert override)' : null,
     ].filter(Boolean).join(' | ');
 
     await supabase.from('order_activity_log').insert({
