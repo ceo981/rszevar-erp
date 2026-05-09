@@ -27,6 +27,10 @@
 //       mila tha agar delivery hi galat thi).
 //   Role check: SERVER-SIDE — sirf super_admin/admin allowed. Client agar
 //   force bheje aur user CEO nahi to 403.
+// May 8 2026 — Permission-based force flag (was: hardcoded super_admin/admin).
+//   Permission: orders.force_status_revert (delegate-able via /roles page).
+//   Default grants: super_admin, admin only — but CEO can grant to manager/CSR
+//   if needed for operational autonomy.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -39,6 +43,7 @@ import {
   applyStatusRevertSideEffects,
 } from '@/lib/order-status';
 import { markShopifyOrderAsPaid } from '@/lib/shopify';
+import { checkPermissionByEmail } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,14 +60,6 @@ export const dynamic = 'force-dynamic';
 const BLOCKED_VIA_STATUS_ROUTE = new Set([
   'cancelled',  // use /api/orders/cancel  — handles Shopify cancel + cancel_reason
 ]);
-
-// Server-side role check helper for `force` mode (super_admin/admin only).
-async function isCEORole(supabase, email) {
-  if (!email) return false;
-  const { data } = await supabase.from('profiles').select('role').eq('email', email).maybeSingle();
-  const r = data?.role;
-  return r === 'super_admin' || r === 'admin';
-}
 
 export async function POST(request) {
   const supabase = createServerClient();
@@ -92,13 +89,16 @@ export async function POST(request) {
       );
     }
 
-    // Server-side gate for force mode — super_admin/admin only.
+    // Permission gate for force mode (May 8 2026).
+    // Force flag bypasses canTransition guard, so it needs an explicit
+    // permission grant. Default: super_admin/admin only. CEO can grant to
+    // manager/CSR/other roles via /roles page without code changes.
     const wantsForce = force === true;
     if (wantsForce) {
-      const allowed = await isCEORole(supabase, performed_by_email);
-      if (!allowed) {
+      const forceCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.force_status_revert');
+      if (!forceCheck.allowed) {
         return NextResponse.json(
-          { success: false, error: 'Force revert sirf super_admin/admin kar sakte hain' },
+          { success: false, error: 'Force revert ke liye orders.force_status_revert permission chahiye' },
           { status: 403 },
         );
       }
@@ -267,7 +267,7 @@ export async function POST(request) {
     const baseAction = `status_changed_to_${status}`;
     const finalAction = wantsForce ? `${baseAction}_forced` : baseAction;
     const baseNote = notes || `${order.status} → ${status}`;
-    const forcePrefix = wantsForce ? '⚡ FORCE REVERT (admin override) — ' : '';
+    const forcePrefix = wantsForce ? '⚡ FORCE REVERT (perm: orders.force_status_revert) — ' : '';
 
     await supabase.from('order_activity_log').insert({
       order_id,
