@@ -167,8 +167,6 @@ export default function SingleOrderPage() {
   const canCancelFulfillment = can('orders.cancel_fulfillment');
 
   // May 8 2026 — Granular cancel + restock + force permissions.
-  // Role-based hardcoded checks ki jaga DB-driven perms.
-  // CEO can grant these to any role via /roles page without code changes.
   const canCancelOrder       = can('orders.cancel_order');
   const canCancelForce       = can('orders.cancel_force');
   const canReturnRestock     = can('orders.return_restock');
@@ -1067,6 +1065,17 @@ export default function SingleOrderPage() {
                   {order.order_number || `#${String(order.id).slice(0, 8)}`}
                 </h1>
                 <StatusBadge status={order.status} />
+                {/* May 9 2026 — Prominent "Returned" badge when order was cancelled
+                    via RTO return-restock flow. Shows alongside the Cancelled
+                    status so user can immediately see HOW it was cancelled
+                    (return ki wajah se, na ke manual cancel se). Tag is added
+                    by /api/orders/return-restock route. */}
+                {Array.isArray(order.tags) && order.tags.some(t => String(t).toLowerCase() === 'returned') && (
+                  <span title="Order returned to office and restocked"
+                    style={{ color: '#f59e0b', background: '#f59e0b22', border: '1px solid #f59e0b66', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
+                    ↩️ Returned
+                  </span>
+                )}
                 <PaymentBadge payment_status={order.payment_status} />
                 {typeBadges.map(b => (
                   <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{b.label}</span>
@@ -1667,8 +1676,7 @@ export default function SingleOrderPage() {
 
                   {/* May 8 2026 — Return to Office + Restock.
                       Permission: orders.return_restock (default super_admin/admin/manager,
-                      delegate-able via /roles page).
-                      Stock auto-restore + status RTO → returned (terminal). */}
+                      delegate-able via /roles page). */}
                   {canReturnRestock && order.status === 'rto' && (
                     <button
                       onClick={returnAndRestock}
@@ -1714,8 +1722,7 @@ export default function SingleOrderPage() {
                   />
 
                   {/* May 8 2026 — Force cancel gated by orders.cancel_force perm
-                      (default: super_admin/admin only, delegate-able via /roles).
-                      Visible only when order is in post-dispatch state. */}
+                      (default: super_admin/admin only, delegate-able via /roles). */}
                   {canCancelForce && NO_CANCEL_FROM_UI.has(order.status) && (
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
                       <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer', marginTop: 3 }} />
