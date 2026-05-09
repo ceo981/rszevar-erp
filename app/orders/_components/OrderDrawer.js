@@ -102,6 +102,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   // from /roles page.
   const canCancelFulfillment = can('orders.cancel_fulfillment');
 
+  // May 8 2026 — Granular cancel + restock + force permissions.
+  // Role-based hardcoded checks ki jaga DB-driven perms.
+  // CEO can grant these to any role via /roles page without code changes.
+  const canCancelOrder       = can('orders.cancel_order');
+  const canCancelForce       = can('orders.cancel_force');
+  const canReturnRestock     = can('orders.return_restock');
+  const canForceStatusRevert = can('orders.force_status_revert');
+
   // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -1219,9 +1227,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     - Saara stock wapas inventory mein add karta (DB + Shopify)
                     - Order status RTO → Returned (terminal)
                     - inventory_adjustments mein audit log
-                  Permission: CEO ya manager. Cancel route ki jaga ye use karo
+                  Permission: orders.return_restock (default super_admin/admin/manager,
+                  delegate-able via /roles page). Cancel route ki jaga ye use karo
                   RTO orders ke liye (cancel route RTO state se block hoti hai). */}
-              {(isCEO || isOpsManager) && s === 'rto' && (
+              {canReturnRestock && s === 'rto' && (
                 <button onClick={returnAndRestock} disabled={loading}
                   style={{ background: '#22c55e22', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   📦 Return to Office + Restock
@@ -1243,18 +1252,19 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 </button>
               )}
 
-              {s !== 'cancelled' && s !== 'delivered' && (
+              {canCancelOrder && s !== 'cancelled' && s !== 'delivered' && (
                 <div style={{ background: card, border: '1px solid #330000', borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
                   <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
                     placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
 
-                  {/* Apr 2026 — Force cancel option for super_admin only.
-                      Allows cancelling RTO/dispatched/delivered orders for
-                      cleanup scenarios (e.g., orphan orders out-of-sync with
-                      Shopify, or admin discretion calls). Activity log captures
-                      this clearly so audit trail mein force override visible hai. */}
-                  {isCEO && (NO_CANCEL_FROM_UI.has(s)) && (
+                  {/* May 8 2026 — Force cancel option (perm: orders.cancel_force).
+                      Default: super_admin/admin only — but delegate-able via /roles.
+                      Allows cancelling RTO/dispatched/delivered orders for cleanup
+                      scenarios (e.g., orphan orders out-of-sync with Shopify, or
+                      admin discretion calls). Activity log captures this clearly
+                      so audit trail mein force override visible hai. */}
+                  {canCancelForce && (NO_CANCEL_FROM_UI.has(s)) && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
                       <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer' }} />
                       <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.4 }}>
