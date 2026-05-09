@@ -158,10 +158,13 @@ export default function SingleOrderPage() {
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  const canConfirm = isCEO || isOpsManager;
-  const canPack    = isCEO || isDispatcher;
-  // May 2 2026 — Assign permission: CEO/manager can assign packer regardless of fulfill status
-  const canAssign  = isCEO || isOpsManager;
+  // May 9 2026 — DB-driven permissions (was hardcoded role checks).
+  // Earlier `canConfirm = isCEO || isOpsManager` ki wajah se CSR ko grant
+  // dene ke baawajood Confirm Order button nahi dikhta tha — ab properly
+  // /roles page se grant karne pe immediate effect.
+  const canConfirm = can('orders.confirm');
+  const canPack    = can('orders.dispatch');
+  const canAssign  = can('orders.assign');
   // May 6 2026 — Cancel Fulfillment uses granular DB-driven permission so
   // Customer Support / Operations Manager can be granted via /roles page.
   const canCancelFulfillment = can('orders.cancel_fulfillment');
@@ -1067,9 +1070,7 @@ export default function SingleOrderPage() {
                 <StatusBadge status={order.status} />
                 {/* May 9 2026 — Prominent "Returned" badge when order was cancelled
                     via RTO return-restock flow. Shows alongside the Cancelled
-                    status so user can immediately see HOW it was cancelled
-                    (return ki wajah se, na ke manual cancel se). Tag is added
-                    by /api/orders/return-restock route. */}
+                    status so user can immediately see HOW it was cancelled. */}
                 {Array.isArray(order.tags) && order.tags.some(t => String(t).toLowerCase() === 'returned') && (
                   <span title="Order returned to office and restocked"
                     style={{ color: '#f59e0b', background: '#f59e0b22', border: '1px solid #f59e0b66', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
@@ -1663,8 +1664,7 @@ export default function SingleOrderPage() {
                       Visible jab order pe tracking/fulfillment hai. Tracking
                       + courier clear ho jate, dispatched → confirmed wapas.
                       Shopify pe bhi cancel hoti (ya already cancelled toh skip).
-                      May 6 2026 — uses granular permission orders.cancel_fulfillment.
-                      Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
+                      May 6 2026 — uses granular permission orders.cancel_fulfillment. */}
                   {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
                     <button
                       onClick={cancelFulfillment}
@@ -1686,9 +1686,10 @@ export default function SingleOrderPage() {
                     </button>
                   )}
 
-                  {/* May 8 2026 — Unconfirm: status confirmed/on_packing → pending.
-                      Mirror of OrderDrawer button. Paid orders blocked server-side. */}
-                  {(isCEO || isOpsManager) && (order.status === 'confirmed' || order.status === 'on_packing') && (
+                  {/* May 9 2026 — Unconfirm: confirmed/on_packing → pending.
+                      Same perm as confirm (orders.confirm) — anyone who can confirm
+                      can unconfirm too. Paid orders blocked server-side. */}
+                  {canConfirm && (order.status === 'confirmed' || order.status === 'on_packing') && (
                     <button
                       onClick={unconfirmOrder}
                       disabled={actionBusy}
@@ -1697,9 +1698,9 @@ export default function SingleOrderPage() {
                     </button>
                   )}
 
-                  {/* May 8 2026 — Unassign packer: on_packing → confirmed.
-                      Useful jab packer ko hatana ho without losing fulfillment. */}
-                  {(isCEO || isOpsManager) && order.status === 'on_packing' && (
+                  {/* May 9 2026 — Unassign packer: on_packing → confirmed.
+                      Same perm as assign (orders.assign). */}
+                  {canAssign && order.status === 'on_packing' && (
                     <button
                       onClick={unassignPacker}
                       disabled={actionBusy}
