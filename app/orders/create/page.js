@@ -20,6 +20,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
+import { formatWeight } from '../../../lib/order-line-items';
 
 const gold   = '#c9a96e';
 const border = '#222';
@@ -487,6 +488,16 @@ export default function CreateOrderPage() {
     : 0;
   const total = Math.max(0, subtotal - orderDiscountAmt + (parseFloat(shippingAmt) || 0));
 
+  // May 2026 — Total order weight (grams) for shipping rate aid.
+  // Sourced from each item's variant `grams` (captured when added via product
+  // picker). Manual items contribute 0 since no weight is captured for them.
+  // Displayed in the Payment summary — gold-accented for international tags
+  // since that's the primary motivating use case (UDEX rate slab selection).
+  const totalWeightGrams = items.reduce(
+    (s, it) => s + (parseFloat(it.grams) || 0) * (parseInt(it.quantity) || 0),
+    0,
+  );
+
   // Apr 30 2026 — Browser tab close / refresh warning when there's unsaved work.
   // Pehle galti se tab close ya browser back ho jaata to saara order data
   // gum ho jaata. Ab agar items add ho gaye hain ya customer attach kar
@@ -561,6 +572,11 @@ export default function CreateOrderPage() {
             image_url: ni.image_url,
             quantity: 1,
             unit_price: ni.selling_price || 0,
+            // May 2026 — Per-variant weight (grams) carried through so the
+            // totals card can sum order weight for international shipping
+            // rate decisions. Falls back to 0 if variant has no weight set
+            // in inventory (admin should fix in the inventory editor).
+            grams: parseFloat(ni.grams) || 0,
             use_custom_price: false,
             discount: null,
           });
@@ -849,6 +865,40 @@ export default function CreateOrderPage() {
                 </button>
                 <span style={{ color: '#bbb' }}>{orderDiscount ? `− ${fmt(orderDiscountAmt)}` : 'Rs 0'}</span>
               </div>
+              {/* May 2026 — Weight row. Sums per-variant grams × qty. Hides
+                  itself if all items are manual / weightless (no need to clutter
+                  domestic walk-ins where weight is irrelevant). International
+                  tag triggers gold accent + INTL badge so the rate-slab cue is
+                  obvious before submitting. */}
+              {totalWeightGrams > 0 && (() => {
+                const isIntl = String(tags || '').toLowerCase().includes('international');
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#888' }}>
+                      Weight
+                      {isIntl && (
+                        <span style={{
+                          fontSize: 9,
+                          padding: '1px 6px',
+                          borderRadius: 3,
+                          background: 'rgba(34,211,238,0.12)',
+                          color: '#22d3ee',
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          letterSpacing: 0.5,
+                        }}>INTL</span>
+                      )}
+                    </span>
+                    <span style={{
+                      color: isIntl ? gold : '#bbb',
+                      fontFamily: 'monospace',
+                      fontWeight: isIntl ? 600 : 400,
+                    }}>
+                      {formatWeight(totalWeightGrams)}
+                    </span>
+                  </div>
+                );
+              })()}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
