@@ -158,22 +158,16 @@ export default function SingleOrderPage() {
   const isCEO = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  // May 9 2026 — DB-driven permissions (was hardcoded role checks).
-  // Earlier `canConfirm = isCEO || isOpsManager` ki wajah se CSR ko grant
-  // dene ke baawajood Confirm Order button nahi dikhta tha — ab properly
-  // /roles page se grant karne pe immediate effect.
-  const canConfirm = can('orders.confirm');
-  const canPack    = can('orders.dispatch');
-  const canAssign  = can('orders.assign');
-  // May 6 2026 — Cancel Fulfillment uses granular DB-driven permission so
-  // Customer Support / Operations Manager can be granted via /roles page.
-  const canCancelFulfillment = can('orders.cancel_fulfillment');
-
-  // May 8 2026 — Granular cancel + restock + force permissions.
+  // May 9 2026 — DB-driven permissions everywhere.
+  const canConfirm           = can('orders.confirm');
+  const canPack              = can('orders.dispatch');
+  const canAssign            = can('orders.assign');
   const canCancelOrder       = can('orders.cancel_order');
   const canCancelForce       = can('orders.cancel_force');
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
   const canReturnRestock     = can('orders.return_restock');
   const canForceStatusRevert = can('orders.force_status_revert');
+  const canViewFullAudit     = can('orders.protocol_audit');
 
   const id = params?.id;
   const [order, setOrder] = useState(null);
@@ -1068,9 +1062,7 @@ export default function SingleOrderPage() {
                   {order.order_number || `#${String(order.id).slice(0, 8)}`}
                 </h1>
                 <StatusBadge status={order.status} />
-                {/* May 9 2026 — Prominent "Returned" badge when order was cancelled
-                    via RTO return-restock flow. Shows alongside the Cancelled
-                    status so user can immediately see HOW it was cancelled. */}
+                {/* May 9 2026 — Prominent "Returned" badge when cancelled via RTO restock flow. */}
                 {Array.isArray(order.tags) && order.tags.some(t => String(t).toLowerCase() === 'returned') && (
                   <span title="Order returned to office and restocked"
                     style={{ color: '#f59e0b', background: '#f59e0b22', border: '1px solid #f59e0b66', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>
@@ -1664,7 +1656,7 @@ export default function SingleOrderPage() {
                       Visible jab order pe tracking/fulfillment hai. Tracking
                       + courier clear ho jate, dispatched → confirmed wapas.
                       Shopify pe bhi cancel hoti (ya already cancelled toh skip).
-                      May 6 2026 — uses granular permission orders.cancel_fulfillment. */}
+                      Permission: orders.cancel_fulfillment. */}
                   {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && order.status !== 'cancelled' && (
                     <button
                       onClick={cancelFulfillment}
@@ -1686,9 +1678,7 @@ export default function SingleOrderPage() {
                     </button>
                   )}
 
-                  {/* May 9 2026 — Unconfirm: confirmed/on_packing → pending.
-                      Same perm as confirm (orders.confirm) — anyone who can confirm
-                      can unconfirm too. Paid orders blocked server-side. */}
+                  {/* May 9 2026 — Unconfirm: same perm as confirm. */}
                   {canConfirm && (order.status === 'confirmed' || order.status === 'on_packing') && (
                     <button
                       onClick={unconfirmOrder}
@@ -1698,8 +1688,7 @@ export default function SingleOrderPage() {
                     </button>
                   )}
 
-                  {/* May 9 2026 — Unassign packer: on_packing → confirmed.
-                      Same perm as assign (orders.assign). */}
+                  {/* May 9 2026 — Unassign packer: same perm as assign. */}
                   {canAssign && order.status === 'on_packing' && (
                     <button
                       onClick={unassignPacker}
@@ -1722,8 +1711,7 @@ export default function SingleOrderPage() {
                     style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                   />
 
-                  {/* May 8 2026 — Force cancel gated by orders.cancel_force perm
-                      (default: super_admin/admin only, delegate-able via /roles). */}
+                  {/* May 8 2026 — Force cancel = perm orders.cancel_force. */}
                   {canCancelForce && NO_CANCEL_FROM_UI.has(order.status) && (
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
                       <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer', marginTop: 3 }} />
@@ -2003,7 +1991,7 @@ export default function SingleOrderPage() {
             </Card>
 
             {/* Timeline — unchanged */}
-            <Card title={`Timeline (${(isCEO ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
+            <Card title={`Timeline (${(canViewFullAudit ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
               {/* Comment input */}
               <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -2035,7 +2023,7 @@ export default function SingleOrderPage() {
                 {(() => {
                   // Apr 2026 — Hide webhook + system noise for staff.
                   // Super_admin (CEO/admin) sees everything for audit purposes.
-                  const visibleTimeline = isCEO ? timeline : timeline.filter(l => {
+                  const visibleTimeline = canViewFullAudit ? timeline : timeline.filter(l => {
                     const a = String(l.action || '');
                     if (a.startsWith('webhook:')) return false;
                     if (a.startsWith('protocol_violation:')) return false;
