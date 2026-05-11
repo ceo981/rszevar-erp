@@ -34,6 +34,8 @@ import {
   isActiveRawLineItem,
   enrichItemWithDiscount,
   computeGrossSubtotal,
+  computeOrderWeightGrams,
+  formatWeight,
 } from '../../../lib/order-line-items';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
@@ -919,6 +921,12 @@ export default function SingleOrderPage() {
     ? computeGrossSubtotal(items)
     : (subtotal + discount);
 
+  // May 2026 — Total order weight from Shopify line_items.grams.
+  // Helpful for international orders (UDEX rate slab pick) and also for
+  // domestic dispatch override (Leopards/PostEx booking weight). 0 grams
+  // when shopify_raw absent (walk-in/manual orders) — display will show '—'.
+  const orderWeightGrams = computeOrderWeightGrams(rawLineItems);
+
   // FIX Apr 2026 — Discount code name extraction from shopify_raw.
   // Shopify exposes discount codes via `discount_codes` (array) and
   // `discount_applications` (array with title, type, value_type).
@@ -1788,6 +1796,42 @@ export default function SingleOrderPage() {
                   value={<span style={{ color: '#f87171' }}>-{fmt(discount)}</span>}
                 />
               )}
+              {/* May 2026 — Weight row (from shopify_raw.line_items.grams).
+                  International orders me at-a-glance UDEX rate slab decide
+                  karne ke liye, aur domestic me Leopards/PostEx weight
+                  override ke reference ke liye. International orders ke liye
+                  gold-accented so it stands out. '—' shows when shopify_raw
+                  absent (walk-in/manual) ya jab variants pe weight set na ho. */}
+              <Row
+                label={
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span>Weight</span>
+                    {order.is_international && (
+                      <span style={{
+                        fontSize: 9,
+                        padding: '1px 6px',
+                        borderRadius: 3,
+                        background: 'rgba(34,211,238,0.12)',
+                        color: '#22d3ee',
+                        fontFamily: 'monospace',
+                        fontWeight: 600,
+                        letterSpacing: 0.5,
+                      }}>
+                        INTL
+                      </span>
+                    )}
+                  </span>
+                }
+                value={
+                  <span style={{
+                    color: order.is_international ? gold : '#aaa',
+                    fontFamily: 'monospace',
+                    fontWeight: order.is_international ? 600 : 400,
+                  }}>
+                    {formatWeight(orderWeightGrams)}
+                  </span>
+                }
+              />
               <Row label="Shipping" value={fmt(shipping)} />
               <div style={{ borderTop: `1px solid ${border}`, margin: '8px 0', paddingTop: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
