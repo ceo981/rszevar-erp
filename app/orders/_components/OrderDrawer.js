@@ -95,24 +95,18 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   const isCEO       = userRole === 'super_admin' || userRole === 'admin';
   const isOpsManager = userRole === 'manager';
   const isDispatcher = userRole === 'dispatcher';
-  // May 9 2026 — DB-driven permissions (was hardcoded role checks).
-  // Earlier `canConfirm = isCEO || isOpsManager` ki wajah se CSR ko grant
-  // dene ke baawajood Confirm Order button nahi dikhta tha — ab properly
-  // /roles page se grant karne pe immediate effect.
-  const canConfirm  = can('orders.confirm');
-  const canPack     = can('orders.dispatch');
-  const canAssign   = can('orders.assign');
-  // May 6 2026 — granular DB-driven permission for cancel fulfillment.
-  // CEO/super_admin auto-passes via can(). Other roles need explicit grant
-  // from /roles page.
-  const canCancelFulfillment = can('orders.cancel_fulfillment');
-
-  // May 8 2026 — Granular cancel + restock + force permissions.
-  // CEO can grant these to any role via /roles page without code changes.
+  // May 9 2026 — DB-driven permissions everywhere (was hardcoded role checks).
+  // Goal: CEO controls everything from /roles page — no code change needed
+  // to grant/revoke action ability per role.
+  const canConfirm           = can('orders.confirm');
+  const canPack              = can('orders.dispatch');
+  const canAssign            = can('orders.assign');
   const canCancelOrder       = can('orders.cancel_order');
   const canCancelForce       = can('orders.cancel_force');
+  const canCancelFulfillment = can('orders.cancel_fulfillment');
   const canReturnRestock     = can('orders.return_restock');
   const canForceStatusRevert = can('orders.force_status_revert');
+  const canViewFullAudit     = can('orders.protocol_audit');
 
   // ─── Mobile detection — drawer ko full-screen bana do mobile pe ───────
   const [isMobile, setIsMobile] = useState(false);
@@ -973,9 +967,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {/* Reassign Packer — confirmed/on_packing orders */}
-              {/* May 9 2026 — uses canAssign (orders.assign perm) instead of canConfirm,
-                  semantically correct. CEO can grant orders.assign separately to
-                  packing supervisors / dispatchers without giving them confirm rights. */}
+              {/* May 9 2026 — uses canAssign (orders.assign perm) instead of canConfirm. */}
               {canAssign && (s === 'confirmed' || s === 'on_packing') && (
                 <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#f59e0b', marginBottom: 10 }}>
@@ -1227,14 +1219,18 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               {/* CEO ONLY — Delivered / RTO manual override */}
               {/* ══════════════════════════════════════════════ */}
 
-              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'attempted') && (
+              {/* May 9 2026 — perm-gated (was isCEO only).
+                  Mark Delivered manual override = canForceStatusRevert
+                  (admin-discretion call, terminal status set). */}
+              {canForceStatusRevert && (s === 'dispatched' || s === 'packed' || s === 'attempted') && (
                 <button onClick={() => setStatus('delivered')} disabled={loading}
                   style={{ background: '#22c55e22', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   ✅ Mark as Delivered (manual)
                 </button>
               )}
 
-              {isCEO && (s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
+              {/* May 9 2026 — perm-gated. Mark RTO manual = canForceStatusRevert. */}
+              {canForceStatusRevert && (s === 'dispatched' || s === 'packed' || s === 'delivered' || s === 'attempted') && (
                 <button onClick={() => setStatus('rto')} disabled={loading}
                   style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   ↩️ Mark as RTO (manual)
@@ -1242,13 +1238,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {/* May 8 2026 — Return to Office + Restock.
-                  Visible jab order RTO state mein hai (parcel courier ne wapas
-                  bheja aur physically office aaya). Ye button:
-                    - Saara stock wapas inventory mein add karta (DB + Shopify)
-                    - Order status RTO → Returned (terminal)
-                    - inventory_adjustments mein audit log
                   Permission: orders.return_restock (default super_admin/admin/manager,
-                  delegate-able via /roles page). */}
+                  delegate-able via /roles page). Cancel route ki jaga ye use karo
+                  RTO orders ke liye. */}
               {canReturnRestock && s === 'rto' && (
                 <button onClick={returnAndRestock} disabled={loading}
                   style={{ background: '#22c55e22', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
@@ -1277,8 +1269,8 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
                     placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
 
-                  {/* May 8 2026 — Force cancel option (perm: orders.cancel_force).
-                      Default: super_admin/admin only — but delegate-able via /roles. */}
+                  {/* May 8 2026 — Force cancel = perm orders.cancel_force.
+                      Default: super_admin/admin only. Delegate-able via /roles. */}
                   {canCancelForce && (NO_CANCEL_FROM_UI.has(s)) && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '8px 10px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer' }}>
                       <input type="checkbox" checked={forceCancel} onChange={e => setForceCancel(e.target.checked)} style={{ cursor: 'pointer' }} />
@@ -1332,7 +1324,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
               {/* Timeline Entries — super_admin sees all, staff hides webhook/system noise */}
               {(() => {
-                const visibleLog = isCEO ? log : log.filter(l => {
+                const visibleLog = canViewFullAudit ? log : log.filter(l => {
                   const a = String(l.action || '');
                   if (a.startsWith('webhook:')) return false;
                   if (a.startsWith('protocol_violation:')) return false;
