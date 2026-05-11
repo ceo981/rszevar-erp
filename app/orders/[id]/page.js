@@ -30,6 +30,11 @@ import OrderDrawer, {
 import EditCustomerModal from '../_components/EditCustomerModal';
 import EditShippingModal from '../_components/EditShippingModal';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
+import {
+  isActiveRawLineItem,
+  enrichItemWithDiscount,
+  computeGrossSubtotal,
+} from '../../../lib/order-line-items';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
 function formatFullDate(iso) {
@@ -852,32 +857,13 @@ export default function SingleOrderPage() {
   // FIX Apr 2026 (additional) — Filter out items removed via Shopify Order Edit
   // (current_quantity === 0). Removed items remain in line_items array for
   // history but should not appear in ERP display.
-  const isActiveRawLineItem = (it) => {
-    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
-      return it.current_quantity > 0;
-    }
-    return (it?.quantity || 0) > 0;
-  };
+  //
+  // FIX May 2026 — Variant cross-matching: matching now lives in
+  // lib/order-line-items.js with priority-ordered lookup (id → sku → full
+  // variant-aware title → single-candidate prefix). Previous inline OR'd
+  // predicate cross-matched variants sharing a base title (ZEVAR-119281
+  // Silver pulled Antique's discount, displaying Rs 150 instead of Rs 500).
   const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
-  const enrichItemWithDiscount = (item) => {
-    // Try to match with raw Shopify line item by shopify_line_item_id, SKU, or title
-    const raw = rawLineItems.find(r =>
-      (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
-      (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
-      (r.title && item.title && item.title.startsWith(r.title))
-    );
-    const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
-    const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
-    const qty = item.quantity || 1;
-    const effectiveUnitPrice = qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice;
-    return {
-      ...item,
-      original_unit_price: rawPrice,
-      effective_unit_price: effectiveUnitPrice,
-      line_discount: rawDiscount,
-      has_line_discount: rawDiscount > 0.01,
-    };
-  };
 
   const items = ((order.order_items?.length > 0)
     ? order.order_items.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
@@ -895,7 +881,7 @@ export default function SingleOrderPage() {
           shopify_line_item_id: String(it.id),
         };
       })
-  ).map(enrichItemWithDiscount);
+  ).map(item => enrichItemWithDiscount(item, rawLineItems));
 
   // FIX Apr 2026 — Removed items history (Shopify-style):
   // Shopify Order Edit ke baad jo items remove hue, woh `line_items` array mein
@@ -921,6 +907,17 @@ export default function SingleOrderPage() {
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
   const total = parseFloat(order.total_amount || 0);
+
+  // FIX May 2026 — Gross subtotal display:
+  // `order.subtotal` is Shopify's `current_subtotal_price` which is POST
+  // line-item discounts, but `order.discount` is the FULL discount total.
+  // Showing both as-is breaks the math (subtotal − discount ≠ total).
+  // We derive a gross subtotal from the enriched line items so the totals
+  // section reads correctly: Gross − Discount + Shipping = Total.
+  // Falls back to `subtotal + discount` if items list is empty for any reason.
+  const grossSubtotal = items.length > 0
+    ? computeGrossSubtotal(items)
+    : (subtotal + discount);
 
   // FIX Apr 2026 — Discount code name extraction from shopify_raw.
   // Shopify exposes discount codes via `discount_codes` (array) and
@@ -1756,11 +1753,14 @@ export default function SingleOrderPage() {
                   Pehle items.length use hota tha (distinct line items count) —
                   Shopify total QUANTITY dikhata hai (sum of qty across lines).
                   Multi-quantity items ki wajah se 61 vs 63 ka mismatch ho raha
-                  tha. Ab dono aligned hain. */}
+                  tha. Ab dono aligned hain.
+                  FIX May 2026 — value ab grossSubtotal hai (pre-discount sum
+                  from line items) instead of order.subtotal (post-discount).
+                  Subtotal − Discount = Total math ab properly reads. */}
               {(() => {
                 const totalQty = items.reduce((s, it) => s + (parseInt(it.quantity) || 0), 0);
                 return (
-                  <Row label={`Subtotal (${totalQty} item${totalQty !== 1 ? 's' : ''})`} value={fmt(subtotal)} />
+                  <Row label={`Subtotal (${totalQty} item${totalQty !== 1 ? 's' : ''})`} value={fmt(grossSubtotal)} />
                 );
               })()}
               {discount > 0 && (
