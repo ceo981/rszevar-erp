@@ -10,6 +10,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
+import {
+  isActiveRawLineItem,
+  enrichItemWithDiscount,
+} from '../../../lib/order-line-items';
 
 // ─── Shared style constants (mirrored from orders/page.js) ───────────────
 export const gold   = '#c9a96e';
@@ -182,31 +186,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   //   - Discount enrichment lookup mein — taa ke active item ka raw match
   //     hamesha milay (filter na karein toh active + removed dono entries
   //     same SKU rakh sakti hain)
-  const isActiveRawLineItem = (it) => {
-    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
-      return it.current_quantity > 0;
-    }
-    return (it?.quantity || 0) > 0;
-  };
+  //
+  // FIX May 2026 — Matching ab lib/order-line-items.js me centralized hai.
+  // Inline OR'd find() me title.startsWith() cross-match karta tha jab do
+  // variants same base product title share karte the (ZEVAR-119281 Silver
+  // ko Antique ka discount mil raha tha → Rs 150 instead of Rs 500).
   const buildItems = (ord) => {
     const rawLineItems = (ord.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
-    const enrichWithDiscount = (item) => {
-      const raw = rawLineItems.find(r =>
-        (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
-        (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
-        (r.title && item.title && item.title.startsWith(r.title))
-      );
-      const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
-      const rawPrice = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
-      const qty = item.quantity || 1;
-      return {
-        ...item,
-        original_unit_price: rawPrice,
-        effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
-        line_discount: rawDiscount,
-        has_line_discount: rawDiscount > 0.01,
-      };
-    };
+    const enrichWithDiscount = (item) => enrichItemWithDiscount(item, rawLineItems);
 
     if (ord.order_items?.length > 0) {
       return ord.order_items
@@ -318,29 +305,16 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
     // effective_unit_price, line_discount) gayab ho jati thi 1 second baad. Drawer
     // mein strikethrough discount UI suddenly disappear ho jati thi. Ab API se aaye
     // items ko bhi enrichWithDiscount se enrich karte hain shopify_raw matching ke through.
+    //
+    // FIX May 2026 (variant cross-match) — matching ab shared helper se aata hai
+    // (priority-ordered: id → sku → full title → single-candidate prefix).
     fetch(`/api/orders?action=items&order_id=${order.id}`)
       .then(r => r.json())
       .then(d => {
         if (d.items?.length > 0) {
           // Re-enrich with discount info from order's shopify_raw.line_items
           const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
-          const enriched = d.items.map(item => {
-            const raw = rawLineItems.find(r =>
-              (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
-              (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
-              (r.title && item.title && item.title.startsWith(r.title))
-            );
-            const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
-            const rawPrice    = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
-            const qty = item.quantity || 1;
-            return {
-              ...item,
-              original_unit_price: rawPrice,
-              effective_unit_price: qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice,
-              line_discount: rawDiscount,
-              has_line_discount: rawDiscount > 0.01,
-            };
-          });
+          const enriched = d.items.map(item => enrichItemWithDiscount(item, rawLineItems));
           setOrderItems(enriched);
         }
       })
