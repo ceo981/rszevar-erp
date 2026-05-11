@@ -110,7 +110,13 @@ async function fetchProtocolViolations(supabase) {
   }
 
   return {
-    ids: Object.keys(reasons).map(Number),
+    // FIX May 2026 — `orders.id` UUID hai, integer nahi. Pehle yahan
+    // `.map(Number)` tha jo har UUID ko NaN bana deta tha — phir
+    // `.in('id', [NaN, NaN, ...])` zero rows match karta. Tab pe badge count
+    // 26 dikhta tha (length sahi) lekin table empty aata tha (filter broken).
+    // UUIDs ko hamesha string ke roop me chodte hain — PostgREST `.in()` ke
+    // saath natively work karta hai.
+    ids: Object.keys(reasons),
     reasons,
   };
 }
