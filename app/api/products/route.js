@@ -51,6 +51,11 @@ const LIST_COLUMNS = [
   'seo_score', 'seo_tier',
   'last_sold_at',
   'updated_at',
+  // May 2026 — variant weight in grams. Needed by Create Order page so that
+  // total order weight can be shown in the totals section (international
+  // shipping rate decision aid). Additive column — safe for all existing
+  // consumers (inventory page ignores unknown fields).
+  'grams',
 ].join(', ');
 
 // ── Module-level caches with TTL ─────────────────────────────────────────────
