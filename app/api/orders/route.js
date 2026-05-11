@@ -9,6 +9,112 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
 
+// ============================================================================
+// Protocol Audit — violation discovery (May 2 2026, extended May 2026)
+// ----------------------------------------------------------------------------
+// Returns the full list of orders that should appear in the 🚨 Protocol Audit
+// tab, with a `reasons` map keyed by order_id. Two violation SOURCES are
+// merged here:
+//
+//   A) `v_protocol_unfollowed_orders` view (existing) — flags:
+//        - skipped_assignment    : dispatched without a packer assigned
+//        - skipped_packing_log   : no packing scan log entry
+//        - skipped_confirmation  : reached dispatch/delivered without confirm
+//
+//   B) Manual cash-payment audit (NEW May 2026) — flag:
+//        - unverified_manual_payment : order was MANUALLY marked paid via the
+//          ERP "Mark as paid" button (i.e. `order_activity_log` has an entry
+//          with action='payment_marked_paid') AND the order is `delivered`,
+//          AND `payment_status='paid'`, AND not yet protocol-verified.
+//
+//        Use case: walk-in customers who came to the office, paid cash, and
+//        left with the order. CEO needs visibility on these so he can verify
+//        the cash actually reached him (and wasn't pocketed).
+//
+//        Why this check is clean:
+//        - Courier auto-settlement does NOT go through /api/orders/mark-paid,
+//          so it leaves no `payment_marked_paid` log. Those orders are
+//          correctly EXCLUDED.
+//        - Walk-in orders created via /api/orders/create get their paid state
+//          from Shopify draft completion, not the ERP mark-paid button —
+//          also correctly EXCLUDED.
+//        - Only the explicit "I clicked Mark as paid in the ERP" path
+//          generates this log row, which is the exact suspect set.
+//
+// Same order can be flagged by BOTH sources. We dedupe IDs and merge reason
+// booleans on each row.
+//
+// Request-scoped cache: call the helper at most twice per request — once
+// from the audit-filter block, once from the count Promise.all. The cache
+// ensures only one round-trip pair to Supabase per request.
+// ============================================================================
+async function fetchProtocolViolations(supabase) {
+  // ── A) View-based violations ──────────────────────────────────────────
+  const { data: viewRows, error: viewErr } = await supabase
+    .from('v_protocol_unfollowed_orders')
+    .select('id, skipped_assignment, skipped_packing_log, skipped_confirmation')
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (viewErr) throw new Error('view fetch: ' + viewErr.message);
+
+  // ── B) Manual mark-paid + delivered (new) ─────────────────────────────
+  // Step 1 — Distinct order_ids that ever had a manual mark-paid event.
+  const { data: paidLogs, error: logErr } = await supabase
+    .from('order_activity_log')
+    .select('order_id')
+    .eq('action', 'payment_marked_paid')
+    .order('performed_at', { ascending: false })
+    .limit(2000); // generous bound — typically <100 per month
+  if (logErr) throw new Error('activity log fetch: ' + logErr.message);
+
+  const candidateIds = Array.from(
+    new Set((paidLogs || []).map(l => l.order_id).filter(Boolean)),
+  );
+
+  let manualPaidDeliveredIds = [];
+  if (candidateIds.length > 0) {
+    // Step 2 — Filter candidates: delivered + paid + not yet verified.
+    // .in() comfortably handles 2000 IDs; Supabase chunks under the hood.
+    const { data: matching, error: ordErr } = await supabase
+      .from('orders')
+      .select('id')
+      .in('id', candidateIds)
+      .eq('status', 'delivered')
+      .eq('payment_status', 'paid')
+      .is('protocol_verified_at', null);
+    if (ordErr) throw new Error('orders filter: ' + ordErr.message);
+    manualPaidDeliveredIds = (matching || []).map(o => o.id);
+  }
+
+  // ── Merge: build reasons map keyed by order_id, dedupe IDs ────────────
+  const reasons = {};
+  for (const v of (viewRows || [])) {
+    reasons[v.id] = {
+      skipped_assignment:        !!v.skipped_assignment,
+      skipped_packing_log:       !!v.skipped_packing_log,
+      skipped_confirmation:      !!v.skipped_confirmation,
+      unverified_manual_payment: false,
+    };
+  }
+  for (const id of manualPaidDeliveredIds) {
+    if (reasons[id]) {
+      reasons[id].unverified_manual_payment = true;
+    } else {
+      reasons[id] = {
+        skipped_assignment:        false,
+        skipped_packing_log:       false,
+        skipped_confirmation:      false,
+        unverified_manual_payment: true,
+      };
+    }
+  }
+
+  return {
+    ids: Object.keys(reasons).map(Number),
+    reasons,
+  };
+}
+
 export async function GET(request) {
   try {
     const supabase = createServerClient();
@@ -127,29 +233,29 @@ export async function GET(request) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    // ── Protocol Audit prefetch (May 2 2026) ─────────────────────────────
-    // Agar `audit=protocol_unfollowed` filter aaya, pehle view se matching IDs
-    // + reason flags fetch karte. Phir main orders query ko `.in('id', ids)`
-    // se constrain karte. Reasons map separately attach hota response mein.
+    // ── Protocol Audit prefetch (May 2 2026, extended May 2026) ──────────
+    // Agar `audit=protocol_unfollowed` filter aaya, helper se merged
+    // violations (view + manual-paid-delivered) fetch karte. Result is
+    // cached in `cachedProtocolViolations` so the count-side reuse
+    // ke time double-query nahi hoti.
+    let cachedProtocolViolations = null;
+    const getProtocolViolations = async () => {
+      if (cachedProtocolViolations) return cachedProtocolViolations;
+      cachedProtocolViolations = await fetchProtocolViolations(supabase);
+      return cachedProtocolViolations;
+    };
+
     let protocolFilteredIds = null;
     let protocolReasons = {};
     if (audit === 'protocol_unfollowed') {
-      const { data: violations, error: vErr } = await supabase
-        .from('v_protocol_unfollowed_orders')
-        .select('id, skipped_assignment, skipped_packing_log, skipped_confirmation')
-        .order('created_at', { ascending: false })
-        .limit(500); // sane upper bound — usually count is much lower
-      if (vErr) {
-        return NextResponse.json({ success: false, error: 'Protocol audit fetch fail: ' + vErr.message }, { status: 500 });
+      let pv;
+      try {
+        pv = await getProtocolViolations();
+      } catch (e) {
+        return NextResponse.json({ success: false, error: 'Protocol audit fetch fail: ' + e.message }, { status: 500 });
       }
-      protocolFilteredIds = (violations || []).map(v => v.id);
-      protocolReasons = Object.fromEntries(
-        (violations || []).map(v => [v.id, {
-          skipped_assignment: v.skipped_assignment,
-          skipped_packing_log: v.skipped_packing_log,
-          skipped_confirmation: v.skipped_confirmation,
-        }])
-      );
+      protocolFilteredIds = pv.ids;
+      protocolReasons = pv.reasons;
       // Empty result → return zero immediately, save downstream queries
       if (protocolFilteredIds.length === 0) {
         return NextResponse.json({
@@ -440,9 +546,16 @@ export async function GET(request) {
       baseCount()
         .eq('status', 'delivered')
         .neq('payment_status', 'paid'),
-      // May 2 2026 — Protocol Audit count (CEO-only tab)
-      // Note: queries the view directly. View already excludes verified + walkin/wholesale.
-      supabase.from('v_protocol_unfollowed_orders').select('id', { count: 'exact', head: true }),
+      // May 2 2026 (extended May 2026) — Protocol Audit count (CEO-only tab).
+      // Uses merged helper so count includes BOTH the view-based violations
+      // AND the new manual-paid+delivered orders. Cached: if audit filter
+      // was active above, this resolves instantly from the request cache.
+      getProtocolViolations()
+        .then(pv => ({ count: pv.ids.length }))
+        .catch(e => {
+          console.error('[orders] protocol count failed:', e.message);
+          return { count: 0 };
+        }),
     ]);
 
     const globalCounts = {
