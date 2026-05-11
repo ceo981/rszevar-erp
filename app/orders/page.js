@@ -1043,16 +1043,17 @@ export default function OrdersPage() {
             // ── Closed / Exceptions ──
             { label: 'Cancelled',  value: 'cancelled',  color: '#ef4444', count: globalCounts.cancelled, groupStart: true },
             { label: '⚠️ Review',  value: 'wa_cancelled', filterType: 'review', color: '#fbbf24', count: globalCounts.wa_cancelled, tooltip: 'WhatsApp se cancel hue orders — team review zaroori' },
-            // ── Protocol Audit (May 2 2026) — CEO-only highlighted tab ──
+            // ── Protocol Audit (May 2 2026, extended May 2026) — CEO-only ──
             // Operations ne kahan shortcut liya: skipped assignment / packing scan
-            // / confirmation. CEO verify karke close kar sakta intentional cases.
+            // / confirmation. Plus walk-in cash verification (manual mark-paid +
+            // delivered). CEO verify karke close kar sakta intentional cases.
             ...(canAuditProtocol ? [{
               label: '🚨 Protocol Audit',
               value: 'protocol_unfollowed',
               filterType: 'audit',
               color: '#ef4444',
               count: globalCounts.protocol_unfollowed || 0,
-              tooltip: 'Office protocol skip hua — confirm/assign/pack ke kadam chod ke aage badh gaye orders',
+              tooltip: 'Protocol shortcuts (no assign/scan/confirm) OR delivered orders manually marked paid in ERP — cash verification pending',
               groupStart: true,
               highlighted: true, // special red border styling
             }] : []),
@@ -1511,6 +1512,18 @@ export default function OrdersPage() {
                             <span title="Dispatched/delivered without ever being confirmed"
                               style={{ background: '#3a3300', color: '#fbbf24', fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, letterSpacing: 0.3 }}>
                               🟡 NO CONFIRM
+                            </span>
+                          )}
+                          {/* May 2026 — Manual cash-payment audit. Order
+                              delivered ho gaya aur kisi ne ERP me "Mark as
+                              paid" daba diya — bohot zyada chance hai ke
+                              office pe walk-in customer cash de ke gaya tha.
+                              CEO ko verify karna hai ke paisa actually mil
+                              gaya hai ya kisi ne pocket kiya. */}
+                          {protocolReasons[order.id].unverified_manual_payment && (
+                            <span title="Order delivered + manually marked paid in ERP — likely walk-in cash. CEO verification pending ke paisa actually receive hua."
+                              style={{ background: '#2a003a', color: '#c084fc', fontSize: 9, padding: '2px 6px', borderRadius: 3, fontWeight: 600, letterSpacing: 0.3 }}>
+                              💵 CASH VERIFY
                             </span>
                           )}
                         </div>
