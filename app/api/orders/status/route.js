@@ -27,10 +27,6 @@
 //       mila tha agar delivery hi galat thi).
 //   Role check: SERVER-SIDE — sirf super_admin/admin allowed. Client agar
 //   force bheje aur user CEO nahi to 403.
-// May 8 2026 — Permission-based force flag (was: hardcoded super_admin/admin).
-//   Permission: orders.force_status_revert (delegate-able via /roles page).
-//   Default grants: super_admin, admin only — but CEO can grant to manager/CSR
-//   if needed for operational autonomy.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -89,7 +85,7 @@ export async function POST(request) {
       );
     }
 
-    // Permission gate for force mode (May 8 2026).
+    // Permission gate for force mode (May 8 2026, perm-based May 9 2026).
     // Force flag bypasses canTransition guard, so it needs an explicit
     // permission grant. Default: super_admin/admin only. CEO can grant to
     // manager/CSR/other roles via /roles page without code changes.
