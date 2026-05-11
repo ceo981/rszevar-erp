@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // Use case: Parcel courier ne RTO kiya (return to origin) aur physically
 // office wapas pohcha. Stock wapas inventory mein add karna hai aur order ko
-// terminal "cancelled" state mein move karna hai with 'returned' tag.
+// terminal "returned" state mein move karna hai.
 //
 // Pehle issue: staff cancel button click karte the (taa-ke Shopify cancel
 // flow auto-restock kar de), but cancel route RTO state se block hoti hai
@@ -20,14 +20,7 @@
 //         (her order_item ke variant_id se match, fallback SKU).
 //      b) Shopify: inventory_levels/set.json call (best-effort, log on fail).
 //      c) inventory_adjustments mein audit row (source='rto_restock').
-//   3. Order: status='cancelled', cancel_reason set, 'returned' tag added.
-//   4. Shopify cancel (with restock=false to avoid double-restock).
-//   5. Audit log: 'rto_restocked_and_cancelled' action.
-//
-// May 9 2026 — Workflow change:
-//   Pehle status='returned' tha (terminal). Ab status='cancelled' + 'returned'
-//   tag — taa-ke order Cancelled tab mein dikhe (visibility ke liye behtar)
-//   while preserving the WHY (return ki wajah se cancelled vs manual cancel).
+//   3. Order status: rto → returned (terminal, no further auto-progression).
 //   4. Activity log: rto_restocked action with item-level summary.
 //
 // Permission: super_admin/admin/manager only (server-side check).
@@ -95,7 +88,7 @@ export async function POST(request) {
       performed_by,
       performed_by_email,
       sync_shopify_stock,      // optional, default true
-      allow_from_delivered,    // optional flag for refund/return from delivered
+      allow_from_delivered,    // optional flag for refund/return scenarios
                                // (requires orders.force_status_revert permission)
     } = body;
 
@@ -103,10 +96,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
     }
 
-    // ── Permission check (May 8 2026) ───────────────────────────────────────
-    // Replaced hardcoded role gate with delegate-able permission check.
-    // Default grants: super_admin, admin, manager. CEO can grant to other
-    // roles via /roles page (e.g. CSR for parcel handling).
+    // ── Permission check (May 9 2026 — was hardcoded role gate) ──────────────
+    // orders.return_restock — default super_admin/admin/manager.
+    // CEO can grant to other roles via /roles page without code change.
     const restockCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.return_restock');
     if (!restockCheck.allowed) {
       return NextResponse.json(
@@ -115,8 +107,7 @@ export async function POST(request) {
       );
     }
 
-    // For delivered → returned (refund/return scenario), need a stronger perm.
-    // Default: super_admin/admin only.
+    // For delivered → returned (refund/return scenario), need stronger perm.
     if (allow_from_delivered === true) {
       const forceCheck = await checkPermissionByEmail(supabase, performed_by_email, 'orders.force_status_revert');
       if (!forceCheck.allowed) {
@@ -327,12 +318,10 @@ export async function POST(request) {
     }
 
     // ── Update order: cancel + add 'returned' tag ──────────────────────────
-    // May 9 2026 — User wants this to be an actual cancellation (not just
-    // 'returned' status). Reasoning:
-    //   - Cancel state ka clearly mean hai "yeh order nahi gaya"
-    //   - 'returned' tag add karne se HOW it was cancelled visible rehta
-    //     (return ki wajah se vs manual cancel)
-    //   - Cancelled tab mein appear hoga, jo visibility ke liye behtar
+    // May 9 2026 — Workflow change. Pehle status='returned' tha (terminal).
+    // Ab status='cancelled' + 'returned' tag — taa-ke order Cancelled tab mein
+    // dikhe (visibility) while preserving the WHY (return ki wajah se
+    // cancelled vs manual cancel).
     //
     // Tags: existing tags + 'returned' (idempotent — duplicate add nahi hoga)
     const existingTags = Array.isArray(order.tags) ? order.tags : [];
@@ -355,7 +344,6 @@ export async function POST(request) {
       .eq('id', order_id);
 
     if (orderUpdErr) {
-      // Stock already restocked — order update failure is non-fatal but flag it
       console.error('[return-restock] order update failed:', orderUpdErr.message);
     }
 
@@ -366,7 +354,6 @@ export async function POST(request) {
     let shopifyCancelled = false;
     let shopifyAlreadyCancelledNote = false;
     let shopifyCancelError = null;
-    // May 9 2026 — also push 'returned' tag to Shopify so it's visible there.
     let shopifyTagPushed = false;
     let shopifyTagError = null;
 
@@ -399,9 +386,8 @@ export async function POST(request) {
         }
       }
 
-      // Push 'returned' tag to Shopify regardless of whether cancel succeeded
-      // or order was already cancelled — tag visibility is independent of
-      // cancel state. Helper is idempotent (won't dup-add existing tags).
+      // Push 'returned' tag to Shopify regardless of cancel result.
+      // Tag visibility is independent of cancel state.
       try {
         await updateShopifyOrderTags(order.shopify_order_id, ['returned'], []);
         shopifyTagPushed = true;
