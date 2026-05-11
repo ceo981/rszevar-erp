@@ -22,6 +22,8 @@ import {
   isActiveRawLineItem,
   enrichItemWithDiscount,
   computeGrossSubtotal,
+  computeOrderWeightGrams,
+  formatWeight,
 } from '../../../../../lib/order-line-items';
 
 const fmt = (n) => 'Rs ' + Math.round(Number(n || 0)).toLocaleString('en-PK');
@@ -103,6 +105,11 @@ export default function InvoicePage() {
   const grossSubtotal = items.length > 0
     ? computeGrossSubtotal(items)
     : (subtotal + discount);
+
+  // May 2026 — Order weight (from shopify_raw.line_items.grams). Useful on
+  // printed invoices for international customs documentation and as a
+  // dispatch reference. Falls back to '—' when no shopify_raw available.
+  const orderWeightGrams = computeOrderWeightGrams(rawLineItems);
   const paidAmount = parseFloat(order.paid_amount || 0);
   const balance = Math.max(0, total - paidAmount);
   const isPaid = order.payment_status === 'paid';
@@ -648,6 +655,16 @@ export default function InvoicePage() {
                 <div className="totals-row">
                   <span className="label">Discount</span>
                   <span style={{ color: '#dc2626' }}>-{fmt(discount)}</span>
+                </div>
+              )}
+              {/* May 2026 — Weight row on invoice (from shopify_raw.line_items.grams).
+                  International orders ke customs docs aur courier reference ke
+                  liye useful. Hides itself when weight unavailable (walk-in / no
+                  variant weight data) so domestic invoices stay clean. */}
+              {orderWeightGrams > 0 && (
+                <div className="totals-row">
+                  <span className="label">Weight</span>
+                  <span style={{ fontFamily: 'monospace' }}>{formatWeight(orderWeightGrams)}</span>
                 </div>
               )}
               <div className="totals-row">
