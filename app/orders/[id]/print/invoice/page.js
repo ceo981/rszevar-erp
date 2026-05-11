@@ -18,6 +18,11 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import {
+  isActiveRawLineItem,
+  enrichItemWithDiscount,
+  computeGrossSubtotal,
+} from '../../../../../lib/order-line-items';
 
 const fmt = (n) => 'Rs ' + Math.round(Number(n || 0)).toLocaleString('en-PK');
 
@@ -77,37 +82,27 @@ export default function InvoicePage() {
   // match nahi karti thi. Yahan order detail page wala same enrichment
   // pattern use karte hain: shopify_raw.line_items se total_discount aur
   // original price milate hain DB row ke saath.
-  const isActiveRawLineItem = (it) => {
-    if (it?.current_quantity !== undefined && it?.current_quantity !== null) {
-      return it.current_quantity > 0;
-    }
-    return (it?.quantity || 0) > 0;
-  };
+  // FIX May 2026 — Matching ab lib/order-line-items.js me centralized hai
+  // (priority-ordered: id → sku+qty → sku → full variant-aware title →
+  // single-candidate prefix). Pehla OR'd predicate cross-matched variants
+  // sharing a base title — ZEVAR-119281 invoice Silver line Rs 150 dikha
+  // raha tha jab actual Rs 500 hona chahiye tha.
   const rawLineItems = (order.shopify_raw?.line_items || []).filter(isActiveRawLineItem);
-  const enrichItemWithDiscount = (item) => {
-    const raw = rawLineItems.find(r =>
-      (item.shopify_line_item_id && String(r.id) === String(item.shopify_line_item_id)) ||
-      (item.sku && r.sku === item.sku && r.quantity === item.quantity) ||
-      (r.title && item.title && item.title.startsWith(r.title))
-    );
-    const rawDiscount = raw ? (parseFloat(raw.total_discount) || 0) : 0;
-    const rawPrice    = raw ? (parseFloat(raw.price) || 0) : parseFloat(item.unit_price || 0);
-    const qty = item.quantity || 1;
-    const effectiveUnitPrice = qty > 0 ? rawPrice - (rawDiscount / qty) : rawPrice;
-    return {
-      ...item,
-      original_unit_price: rawPrice,
-      effective_unit_price: effectiveUnitPrice,
-      line_discount: rawDiscount,
-      has_line_discount: rawDiscount > 0.01,
-    };
-  };
 
-  const items = (order.order_items || []).map(enrichItemWithDiscount);
+  const items = (order.order_items || []).map(item => enrichItemWithDiscount(item, rawLineItems));
   const subtotal = parseFloat(order.subtotal || 0);
   const discount = parseFloat(order.discount || 0);
   const shipping = parseFloat(order.shipping_fee || 0);
   const total = parseFloat(order.total_amount || 0);
+
+  // FIX May 2026 — Gross subtotal display for invoice:
+  // Same fix as the main order page. `order.subtotal` is post line-item
+  // discount but `order.discount` is the full discount, so showing both as-is
+  // breaks Subtotal − Discount = Total math on the printed invoice. We
+  // compute gross from enriched line items instead.
+  const grossSubtotal = items.length > 0
+    ? computeGrossSubtotal(items)
+    : (subtotal + discount);
   const paidAmount = parseFloat(order.paid_amount || 0);
   const balance = Math.max(0, total - paidAmount);
   const isPaid = order.payment_status === 'paid';
@@ -647,7 +642,7 @@ export default function InvoicePage() {
             <div className="totals">
               <div className="totals-row">
                 <span className="label">Subtotal</span>
-                <span>{fmt(subtotal)}</span>
+                <span>{fmt(grossSubtotal)}</span>
               </div>
               {discount > 0 && (
                 <div className="totals-row">
