@@ -76,7 +76,7 @@ function Card({ title, children, pad = '18px 20px', noPadBody = false, overflowV
           alignItems: 'center',
           background: 'rgba(201,169,110,0.03)',
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>{title}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</div>
           {right}
         </div>
       )}
@@ -90,7 +90,7 @@ function Row({ label, value, mono, color }) {
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
       <span style={{ color: '#888' }}>{label}</span>
       <span style={{
-        color: color || '#e5e5e5',
+        color: color || 'var(--text)',
         fontFamily: mono ? 'monospace' : 'inherit',
         textAlign: 'right',
         maxWidth: '60%',
@@ -102,7 +102,7 @@ function Row({ label, value, mono, color }) {
 
 function HeaderBtn({ onClick, href, target, children, primary, title }) {
   const style = {
-    background: primary ? gold : '#1a1a1a',
+    background: primary ? gold : 'var(--bg-section)',
     border: `1px solid ${primary ? gold : border}`,
     color: primary ? '#000' : '#ccc',
     borderRadius: 7,
@@ -143,7 +143,7 @@ function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
         fontFamily: 'inherit',
         opacity: disabled ? 0.5 : 1,
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = '#1a1a1a'; }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-section)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
     >
       {icon && <span style={{ fontSize: 14, flexShrink: 0, width: 16, textAlign: 'center' }}>{icon}</span>}
@@ -1051,7 +1051,7 @@ export default function SingleOrderPage() {
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: '#0a0a0a', minHeight: '100vh', color: '#e5e5e5' }}>
+    <div style={{ background: 'var(--bg)', minHeight: '100vh', color: 'var(--text)' }}>
       <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 24px 40px' }}>
 
         {/* ─── Header ─── */}
@@ -1062,8 +1062,8 @@ export default function SingleOrderPage() {
                 <Link href="/orders" style={{ color: '#888', textDecoration: 'none', fontSize: 13 }}>
                   ← Orders
                 </Link>
-                <span style={{ color: '#333' }}>/</span>
-                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#fff' }}>
+                <span style={{ color: 'var(--border2)' }}>/</span>
+                <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
                   {order.order_number || `#${String(order.id).slice(0, 8)}`}
                 </h1>
                 <StatusBadge status={order.status} />
@@ -1118,7 +1118,7 @@ export default function SingleOrderPage() {
                     onClick={e => e.stopPropagation()}
                     style={{
                       position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                      background: '#0f0f0f', border: `1px solid ${border}`,
+                      background: 'var(--bg-section)', border: `1px solid ${border}`,
                       borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
                       boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                     }}
@@ -1139,7 +1139,7 @@ export default function SingleOrderPage() {
                     onClick={e => e.stopPropagation()}
                     style={{
                       position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                      background: '#0f0f0f', border: `1px solid ${border}`,
+                      background: 'var(--bg-section)', border: `1px solid ${border}`,
                       borderRadius: 8, padding: 5, minWidth: 220, zIndex: 50,
                       boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                     }}
@@ -1215,7 +1215,7 @@ export default function SingleOrderPage() {
                   }}>
                     {itemsHeaderLabel}
                   </span>
-                  <span style={{ background: '#1a1a1a', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: '#888' }}>
+                  <span style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: '#888' }}>
                     📍 OFFICE
                   </span>
                 </div>
@@ -1239,7 +1239,7 @@ export default function SingleOrderPage() {
                   }}>
                     <div style={{
                       width: 52, height: 52, borderRadius: 8,
-                      background: '#1a1a1a', border: `1px solid ${border}`,
+                      background: 'var(--bg-section)', border: `1px solid ${border}`,
                       overflow: 'hidden', flexShrink: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
@@ -1251,7 +1251,7 @@ export default function SingleOrderPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <Link
                         href={item.product_id ? `/inventory/${item.product_id}` : (item.sku ? `/inventory?search=${encodeURIComponent(item.sku)}` : '#')}
-                        style={{ color: '#fff', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}
+                        style={{ color: 'var(--text)', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'block', wordBreak: 'break-word' }}
                       >
                         {item.title || 'Untitled'}
                       </Link>
@@ -1276,7 +1276,7 @@ export default function SingleOrderPage() {
                             </span>
                             {' '}× {item.quantity}
                           </div>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
+                          <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, marginTop: 2 }}>
                             {fmt(item.effective_unit_price * item.quantity)}
                           </div>
                           <div style={{ fontSize: 10, color: '#22c55e', marginTop: 2 }}>
@@ -1288,7 +1288,7 @@ export default function SingleOrderPage() {
                           <div style={{ fontSize: 13, color: '#ccc' }}>
                             {fmt(item.unit_price)} × {item.quantity}
                           </div>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 600, marginTop: 2 }}>
+                          <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, marginTop: 2 }}>
                             {fmt(item.total_price || (item.unit_price * item.quantity))}
                           </div>
                         </>
@@ -1327,7 +1327,7 @@ export default function SingleOrderPage() {
                       }}>
                         <div style={{
                           width: 52, height: 52, borderRadius: 8,
-                          background: '#1a1a1a', border: `1px solid ${border}`,
+                          background: 'var(--bg-section)', border: `1px solid ${border}`,
                           overflow: 'hidden', flexShrink: 0,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
@@ -1380,7 +1380,7 @@ export default function SingleOrderPage() {
                         onClick={primaryAction.onClick}
                         disabled={actionBusy}
                         style={{
-                          background: '#1a1a1a',
+                          background: 'var(--bg-section)',
                           border: `1px solid ${gold}`,
                           borderRight: fulfillSecondary.length > 0 ? 'none' : `1px solid ${gold}`,
                           color: gold,
@@ -1400,7 +1400,7 @@ export default function SingleOrderPage() {
                             onClick={toggleMenu('fulfill')}
                             disabled={actionBusy}
                             style={{
-                              background: '#1a1a1a',
+                              background: 'var(--bg-section)',
                               border: `1px solid ${gold}`,
                               color: gold,
                               borderRadius: '0 7px 7px 0',
@@ -1419,7 +1419,7 @@ export default function SingleOrderPage() {
                               onClick={e => e.stopPropagation()}
                               style={{
                                 position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                                background: '#0f0f0f', border: `1px solid ${border}`,
+                                background: 'var(--bg-section)', border: `1px solid ${border}`,
                                 borderRadius: 8, padding: 5, minWidth: 200, zIndex: 50,
                                 boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                               }}
@@ -1469,13 +1469,13 @@ export default function SingleOrderPage() {
                           <button
                             onClick={() => { setReviewMode('restore'); setReviewNote(''); }}
                             disabled={actionBusy}
-                            style={{ background: '#1a1a1a', border: '1px solid #22c55e', color: '#22c55e', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                            style={{ background: 'var(--bg-section)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                             ↩️ Restore order
                           </button>
                           <button
                             onClick={() => { setReviewMode('confirm_cancel'); setReviewNote(''); }}
                             disabled={actionBusy}
-                            style={{ background: '#1a1a1a', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                            style={{ background: 'var(--bg-section)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                             ✓ Confirm cancellation
                           </button>
                         </div>
@@ -1493,7 +1493,7 @@ export default function SingleOrderPage() {
                             onChange={e => setReviewNote(e.target.value)}
                             rows={2}
                             placeholder="Reason / note (optional) — e.g. customer ne phone pe wapas confirm kiya"
-                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                            style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                           />
                           <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
                             <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
@@ -1520,7 +1520,7 @@ export default function SingleOrderPage() {
                             onChange={e => setReviewNote(e.target.value)}
                             rows={2}
                             placeholder="Reason / note (optional)"
-                            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                            style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                           />
                           <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
                             <button onClick={() => { setReviewMode(null); setReviewNote(''); }}
@@ -1528,7 +1528,7 @@ export default function SingleOrderPage() {
                               Back
                             </button>
                             <button onClick={() => resolveReview('confirm_cancel')} disabled={actionBusy}
-                              style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                              style={{ background: '#ef4444', border: '1px solid #ef4444', color: 'var(--text)', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                               {actionBusy ? 'Cancelling…' : '✓ Confirm cancel + push to Shopify'}
                             </button>
                           </div>
@@ -1543,7 +1543,7 @@ export default function SingleOrderPage() {
             {/* Status & Dispatch info — unchanged */}
             <Card title="Status & Dispatch" overflowVisible>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
                   <StatusBadge status={order.status} />
                   {order.confirmed_at && (
@@ -1573,7 +1573,7 @@ export default function SingleOrderPage() {
                   const tagBg      = isException ? '#ef444411' : '#8b5cf611';
                   const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
                   return (
-                    <div style={{ background: '#0f0f0f', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ background: 'var(--bg-section)', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span>🚚 Courier Status</span>
                         {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
@@ -1592,7 +1592,7 @@ export default function SingleOrderPage() {
               </div>
 
               {order.dispatched_courier && (
-                <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 14px' }}>
                   <Row label="Courier" value={order.dispatched_courier} />
                   <Row
                     label="Tracking #"
@@ -1620,7 +1620,7 @@ export default function SingleOrderPage() {
                     <button
                       onClick={() => setShowStatusMenu(v => !v)}
                       style={{
-                        background: isForceMode ? '#1a0000' : '#1a1a1a',
+                        background: isForceMode ? 'var(--red-dim)' : 'var(--bg-section)',
                         border: `1px solid ${isForceMode ? '#660000' : border}`,
                         color: isForceMode ? '#ef4444' : '#ccc',
                         borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
@@ -1628,7 +1628,7 @@ export default function SingleOrderPage() {
                       {isForceMode ? '⚡ Force revert (admin)' : '🔄 Change status'} ▾
                     </button>
                     {showStatusMenu && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 200, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8, padding: 6, minWidth: 200, zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
                         {isForceMode && (
                           <div style={{ fontSize: 10, color: '#ef4444', padding: '4px 8px 8px', borderBottom: `1px solid ${border}`, marginBottom: 4, lineHeight: 1.4 }}>
                             ⚡ Terminal state ({order.status}) override.<br/>
@@ -1640,7 +1640,7 @@ export default function SingleOrderPage() {
                             key={s}
                             onClick={() => setStatus(s, { force: isForceMode })}
                             style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 12, padding: '7px 10px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                           >
                             <StatusBadge status={s} />
@@ -1652,7 +1652,7 @@ export default function SingleOrderPage() {
                   {canCancelOrder && !isDelivered && (
                     <button
                       onClick={() => setShowCancelBox(v => !v)}
-                      style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ background: 'var(--red-dim)', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                       ✕ Cancel order
                     </button>
                   )}
@@ -1666,7 +1666,7 @@ export default function SingleOrderPage() {
                     <button
                       onClick={cancelFulfillment}
                       disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      style={{ background: 'var(--bg-section)', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                       🔄 Cancel fulfillment
                     </button>
                   )}
@@ -1688,7 +1688,7 @@ export default function SingleOrderPage() {
                     <button
                       onClick={unconfirmOrder}
                       disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      style={{ background: 'var(--bg-section)', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                       ↩️ Unconfirm
                     </button>
                   )}
@@ -1698,7 +1698,7 @@ export default function SingleOrderPage() {
                     <button
                       onClick={unassignPacker}
                       disabled={actionBusy}
-                      style={{ background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      style={{ background: 'var(--bg-section)', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
                       👤 Unassign packer
                     </button>
                   )}
@@ -1706,14 +1706,14 @@ export default function SingleOrderPage() {
               )}
 
               {showCancelBox && (
-                <div style={{ marginTop: 12, padding: 14, background: '#1a0000', border: '1px solid #660000', borderRadius: 8 }}>
+                <div style={{ marginTop: 12, padding: 14, background: 'var(--red-dim)', border: '1px solid #660000', borderRadius: 8 }}>
                   <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>Cancel reason (required)</div>
                   <textarea
                     value={cancelReason}
                     onChange={e => setCancelReason(e.target.value)}
                     rows={2}
                     placeholder="Kyun cancel kar rahe ho..."
-                    style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                    style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                   />
 
                   {/* May 8 2026 — Force cancel = perm orders.cancel_force. */}
@@ -1735,7 +1735,7 @@ export default function SingleOrderPage() {
                       Back
                     </button>
                     <button onClick={cancelOrder} disabled={actionBusy || !cancelReason.trim()}
-                      style={{ background: '#ef4444', border: '1px solid #ef4444', color: '#fff', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: (actionBusy || !cancelReason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !cancelReason.trim()) ? 0.5 : 1 }}>
+                      style={{ background: '#ef4444', border: '1px solid #ef4444', color: 'var(--text)', borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: (actionBusy || !cancelReason.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (actionBusy || !cancelReason.trim()) ? 0.5 : 1 }}>
                       {actionBusy ? 'Cancelling…' : (forceCancel ? '⚡ Force cancel' : 'Confirm cancel')}
                     </button>
                   </div>
@@ -1835,12 +1835,12 @@ export default function SingleOrderPage() {
               <Row label="Shipping" value={fmt(shipping)} />
               <div style={{ borderTop: `1px solid ${border}`, margin: '8px 0', paddingTop: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 700 }}>
-                  <span style={{ color: '#fff' }}>Total</span>
-                  <span style={{ color: '#fff' }}>{fmt(total)}</span>
+                  <span style={{ color: 'var(--text)' }}>Total</span>
+                  <span style={{ color: 'var(--text)' }}>{fmt(total)}</span>
                 </div>
               </div>
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}` }}>
-                <Row label="Paid" value={<span style={{ color: paidAmt > 0 ? '#22c55e' : '#e5e5e5' }}>{fmt(paidAmt)}</span>} />
+                <Row label="Paid" value={<span style={{ color: paidAmt > 0 ? '#22c55e' : 'var(--text)' }}>{fmt(paidAmt)}</span>} />
                 <Row label="Balance" value={<span style={{ color: balance > 0 ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>{fmt(balance)}</span>} />
               </div>
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, fontSize: 11, color: '#666' }}>
@@ -1854,7 +1854,7 @@ export default function SingleOrderPage() {
                     <button
                       onClick={toggleMenu('payment')}
                       style={{
-                        background: '#1a1a1a',
+                        background: 'var(--bg-section)',
                         border: `1px solid ${gold}`,
                         color: gold,
                         borderRadius: 7,
@@ -1871,7 +1871,7 @@ export default function SingleOrderPage() {
                         onClick={e => e.stopPropagation()}
                         style={{
                           position: 'absolute', top: 'calc(100% + 4px)', right: 0,
-                          background: '#0f0f0f', border: `1px solid ${border}`,
+                          background: 'var(--bg-section)', border: `1px solid ${border}`,
                           borderRadius: 8, padding: 5, minWidth: 240, zIndex: 50,
                           boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
                         }}
@@ -1917,7 +1917,7 @@ export default function SingleOrderPage() {
                     💰 {paymentMethodModal.method} — confirm payment
                   </div>
                   <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
-                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> {paymentMethodModal.method} ke through paid mark hoga.
+                    Order amount <strong style={{ color: 'var(--text)' }}>{fmt(total)}</strong> {paymentMethodModal.method} ke through paid mark hoga.
                     {order.shopify_order_id ? ' Shopify pe bhi "Paid" sync hogi.' : ' (Manual order — sirf ERP).'}
                   </div>
 
@@ -1951,7 +1951,7 @@ export default function SingleOrderPage() {
                           }
                           setPaymentProofUploading(false);
                         }}
-                        style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit' }}
+                        style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '6px 8px', fontSize: 12, fontFamily: 'inherit' }}
                       />
                       {paymentProofUploading && (
                         <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>⟳ Uploading…</div>
@@ -1974,7 +1974,7 @@ export default function SingleOrderPage() {
                       value={paymentMethodNote}
                       onChange={e => setPaymentMethodNote(e.target.value)}
                       placeholder="TXN-1234567 / Reference"
-                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxSizing: 'border-box', fontFamily: 'inherit' }}
+                      style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxSizing: 'border-box', fontFamily: 'inherit' }}
                     />
                   </div>
 
@@ -2015,7 +2015,7 @@ export default function SingleOrderPage() {
                     ✓ Confirm: Mark as Paid
                   </div>
                   <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10, lineHeight: 1.5 }}>
-                    Order amount <strong style={{ color: '#fff' }}>{fmt(total)}</strong> paid mark ho jaayega.
+                    Order amount <strong style={{ color: 'var(--text)' }}>{fmt(total)}</strong> paid mark ho jaayega.
                     {order.shopify_order_id
                       ? ' Shopify pe bhi "Paid" dikhane lagega.'
                       : ' (Manual order — sirf ERP mein mark hoga)'}
@@ -2037,7 +2037,7 @@ export default function SingleOrderPage() {
             {/* Timeline — unchanged */}
             <Card title={`Timeline (${(canViewFullAudit ? timeline : timeline.filter(l => { const a = String(l.action || ''); return !a.startsWith('webhook:') && !a.startsWith('protocol_violation:') && a !== 'shopify_order_edited_webhook' && a !== 'courier_reclassified'; })).length})`}>
               {/* Comment input */}
-              <div style={{ marginBottom: 14, padding: '12px', background: '#0f0f0f', borderRadius: 8, border: `1px solid ${border}` }}>
+              <div style={{ marginBottom: 14, padding: '12px', background: 'var(--bg-section)', borderRadius: 8, border: `1px solid ${border}` }}>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <div style={{ width: 32, height: 32, borderRadius: '50%', background: gold + '22', color: gold, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
                     {(performer[0] || '?').toUpperCase()}
@@ -2048,7 +2048,7 @@ export default function SingleOrderPage() {
                       onChange={e => setCommentText(e.target.value)}
                       placeholder="Leave a comment… (internal note)"
                       rows={2}
-                      style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                      style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                     />
                     {commentText.trim() && (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
@@ -2095,7 +2095,7 @@ export default function SingleOrderPage() {
                       : gold;
 
                     return (
-                      <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : '#0f0f0f', border: `1px solid ${border}`, borderRadius: 7 }}>
+                      <div key={l.id} style={{ display: 'flex', gap: 10, padding: '10px 12px', background: isComment ? 'rgba(201,169,110,0.05)' : 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 7 }}>
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', color: actionColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>
                           {isComment ? '💬' : '•'}
                         </div>
@@ -2117,7 +2117,7 @@ export default function SingleOrderPage() {
                                   disabled={actionBusy}
                                   title="Edit"
                                   style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.color = gold; }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-section)'; e.currentTarget.style.color = gold; }}
                                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
                                   ✏️
                                 </button>
@@ -2126,7 +2126,7 @@ export default function SingleOrderPage() {
                                   disabled={actionBusy}
                                   title="Delete"
                                   style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 12, padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' }}
-                                  onMouseEnter={e => { e.currentTarget.style.background = '#1a0000'; e.currentTarget.style.color = '#ef4444'; }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-dim)'; e.currentTarget.style.color = '#ef4444'; }}
                                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#888'; }}>
                                   🗑
                                 </button>
@@ -2141,7 +2141,7 @@ export default function SingleOrderPage() {
                                 value={editingText}
                                 onChange={e => setEditingText(e.target.value)}
                                 rows={2}
-                                style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
+                                style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }}
                               />
                               <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
                                 <button onClick={cancelEditComment} disabled={actionBusy}
@@ -2202,7 +2202,7 @@ export default function SingleOrderPage() {
                       fontFamily: 'inherit',
                     }}
                     title="Customer actions"
-                    onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >⋯</button>
                   {openMenu === 'customer-edit' && (
@@ -2216,7 +2216,7 @@ export default function SingleOrderPage() {
                         position: 'absolute',
                         top: 'calc(100% + 4px)',
                         right: 0,
-                        background: '#0f0f0f',
+                        background: 'var(--bg-section)',
                         border: `1px solid ${border}`,
                         borderRadius: 8,
                         padding: 4,
@@ -2227,7 +2227,7 @@ export default function SingleOrderPage() {
                         <button
                           onClick={() => { setOpenMenu(null); setShowEditCustomer(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           ✏️ Edit contact information
@@ -2235,7 +2235,7 @@ export default function SingleOrderPage() {
                         <button
                           onClick={() => { setOpenMenu(null); setShowEditShipping(true); }}
                           style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#ccc', fontSize: 13, padding: '8px 12px', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
                           📍 Edit shipping address
@@ -2246,7 +2246,7 @@ export default function SingleOrderPage() {
                 </div>
               )
             }>
-              <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
+              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{order.customer_name || 'Unknown'}</div>
               {order.customer_order_count > 0 && (
                 <Link href={`/orders?search=${encodeURIComponent(order.customer_phone || '')}`}
                   style={{ fontSize: 12, color: gold, textDecoration: 'none', display: 'inline-block', marginTop: 6 }}>
@@ -2261,7 +2261,7 @@ export default function SingleOrderPage() {
                       const cfg = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
                       return (
                         <Link key={co.id} href={`/orders/${co.id}`}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 6, textDecoration: 'none', fontSize: 11 }}>
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 6, textDecoration: 'none', fontSize: 11 }}>
                           <span style={{ color: gold, fontFamily: 'monospace', fontWeight: 600 }}>{co.order_number}</span>
                           <span style={{ color: cfg.color, fontSize: 10 }}>{cfg.label}</span>
                           <span style={{ color: '#666', fontSize: 10, flexShrink: 0 }}>{timeAgo(co.created_at)}</span>
@@ -2280,7 +2280,7 @@ export default function SingleOrderPage() {
                   <a href={`tel:${order.customer_phone}`} style={{ fontSize: 13, color: gold, textDecoration: 'none' }}>
                     {order.customer_phone}
                   </a>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid var(--border2)', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
                   <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '2px 7px', borderRadius: 4, lineHeight: 1.4 }}>💬 WhatsApp</a>
                 </div>
               ) : <div style={{ fontSize: 12, color: '#555' }}>No phone</div>}
@@ -2290,7 +2290,7 @@ export default function SingleOrderPage() {
             {/* Shipping address */}
             <Card title="Shipping address">
               <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.55 }}>
-                <div style={{ color: '#fff', fontWeight: 500 }}>{order.customer_name || '—'}</div>
+                <div style={{ color: 'var(--text)', fontWeight: 500 }}>{order.customer_name || '—'}</div>
                 {order.customer_address && <div>{order.customer_address}</div>}
                 {order.customer_city && <div>{order.customer_city}</div>}
                 <div>Pakistan</div>
@@ -2306,7 +2306,7 @@ export default function SingleOrderPage() {
                     🗺️ View on map ↗
                   </a>
                   <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText([order.customer_address, order.customer_city].filter(Boolean).join(', ')); }} title="Copy full address"
-                    style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 11, cursor: 'pointer', padding: '3px 8px', borderRadius: 4, fontFamily: 'inherit' }}>
+                    style={{ background: 'transparent', border: '1px solid var(--border2)', color: '#888', fontSize: 11, cursor: 'pointer', padding: '3px 8px', borderRadius: 4, fontFamily: 'inherit' }}>
                     📋 Copy
                   </button>
                 </div>
@@ -2342,7 +2342,7 @@ export default function SingleOrderPage() {
                 {!assignmentUnlocked && !canAssign ? (
                   // Pre-fulfill non-privileged: explain why dropdown is hidden
                   <div style={{
-                    fontSize: 11, color: '#888', background: '#0f0f0f',
+                    fontSize: 11, color: '#888', background: 'var(--bg-section)',
                     border: `1px dashed ${border}`, borderRadius: 6,
                     padding: '8px 10px', lineHeight: 1.5,
                   }}>
@@ -2359,7 +2359,7 @@ export default function SingleOrderPage() {
                     value=""
                     onChange={e => { if (e.target.value) assignTo(e.target.value); }}
                     disabled={actionBusy}
-                    style={{ width: '100%', background: '#0f0f0f', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
+                    style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '7px 10px', fontSize: 12, fontFamily: 'inherit' }}
                   >
                     <option value="">Change / assign…</option>
                     <option value="packing_team">👥 Whole Packing Team (shared credit)</option>
@@ -2384,7 +2384,7 @@ export default function SingleOrderPage() {
                 {/* Walk-in toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🚶 Walk-in</div>
+                    <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>🚶 Walk-in</div>
                     <div style={{ fontSize: 10, color: '#666' }}>Customer shop pe aaya / pickup</div>
                   </div>
                   <input
@@ -2399,7 +2399,7 @@ export default function SingleOrderPage() {
                 {/* International toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🌍 International</div>
+                    <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>🌍 International</div>
                     <div style={{ fontSize: 10, color: '#666' }}>Pakistan ke bahar ka order</div>
                   </div>
                   <input
@@ -2414,7 +2414,7 @@ export default function SingleOrderPage() {
                 {/* Wholesale toggle */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>🏢 Wholesale</div>
+                    <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>🏢 Wholesale</div>
                     <div style={{ fontSize: 10, color: '#666' }}>Bulk / re-sale buyer</div>
                   </div>
                   <input
@@ -2449,7 +2449,7 @@ export default function SingleOrderPage() {
                   borderRadius: 6,
                 }}>
                   <div>
-                    <div style={{ fontSize: 12, color: '#e5e5e5', fontWeight: 500 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
                       {order.is_credit_order ? '✓ Credit order' : 'Mark as credit order'}
                     </div>
                     <div style={{ fontSize: 10, color: '#666', marginTop: 2 }}>
@@ -2578,7 +2578,7 @@ export default function SingleOrderPage() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: '#141414', border: '1px solid #2a2a2a', borderRadius: 12,
+              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
               padding: 24, width: '100%', maxWidth: 520,
               boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
             }}
@@ -2601,7 +2601,7 @@ export default function SingleOrderPage() {
             </div>
 
             <div style={{ fontSize: 12, color: '#888', marginBottom: 16, lineHeight: 1.5 }}>
-              Order: <strong style={{ color: '#e5e5e5' }}>{order.order_number}</strong> · Total: <strong style={{ color: '#e5e5e5' }}>Rs {Number(total).toLocaleString('en-PK')}</strong>
+              Order: <strong style={{ color: 'var(--text)' }}>{order.order_number}</strong> · Total: <strong style={{ color: 'var(--text)' }}>Rs {Number(total).toLocaleString('en-PK')}</strong>
               <div style={{ marginTop: 6, fontSize: 11, color: '#666' }}>
                 Yeh option courier outside ERP book hua ho (Kangaroo Shopify app / Leopards portal),
                 ya walk-in / wholesale / pickup bina tracking ke fulfill karna ho — uske liye hai.
@@ -2621,8 +2621,8 @@ export default function SingleOrderPage() {
                 disabled={actionBusy}
                 style={{
                   width: '100%', padding: '9px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text)', fontSize: 13,
                   fontFamily: 'monospace', outline: 'none',
                 }}
                 autoFocus
@@ -2651,8 +2651,8 @@ export default function SingleOrderPage() {
                 disabled={actionBusy}
                 style={{
                   width: '100%', padding: '9px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 13,
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text)', fontSize: 13,
                   fontFamily: 'inherit', outline: 'none',
                 }}
               >
@@ -2687,7 +2687,7 @@ export default function SingleOrderPage() {
                 wholesale / international hai, yahin se mark kar sakte ho —
                 sidebar par jana zaroori nahi. Backend update-tags endpoint
                 par jata hai. */}
-            <div style={{ marginBottom: 14, padding: '10px 12px', background: '#0a0a0a', border: '1px solid #1f1f1f', borderRadius: 6 }}>
+            <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--bg)', border: '1px solid #1f1f1f', borderRadius: 6 }}>
               <div style={{ fontSize: 10, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Order Type (optional)
               </div>
@@ -2738,8 +2738,8 @@ export default function SingleOrderPage() {
                 disabled={actionBusy}
                 style={{
                   width: '100%', padding: '8px 12px',
-                  background: '#0a0a0a', border: '1px solid #2a2a2a',
-                  borderRadius: 6, color: '#e5e5e5', fontSize: 12,
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text)', fontSize: 12,
                   fontFamily: 'inherit', outline: 'none',
                 }}
               />
@@ -2752,7 +2752,7 @@ export default function SingleOrderPage() {
                 disabled={actionBusy}
                 style={{
                   padding: '9px 16px', background: 'transparent',
-                  border: '1px solid #333', borderRadius: 6,
+                  border: '1px solid var(--border2)', borderRadius: 6,
                   color: '#aaa', fontSize: 12, cursor: 'pointer',
                   fontFamily: 'inherit',
                 }}
