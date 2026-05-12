@@ -21,13 +21,13 @@ import { useUser } from '@/context/UserContext';
 
 // ── Shared style atoms ──────────────────────────────────────────────────────
 const S = {
-  input:   { width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
-  btn:     { background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 16px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 },
+  input:   { width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' },
+  btn:     { background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 16px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 },
   label:   { display: 'block', fontSize: 11, color: '#666', marginBottom: 6, fontFamily: 'monospace', letterSpacing: 0.5, textTransform: 'uppercase' },
   td:      { padding: '12px 16px', fontSize: 13, color: '#888', verticalAlign: 'middle' },
-  th:      { padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#444', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400, borderBottom: '1px solid #1e1e1e' },
-  card:    { background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, padding: '20px 24px' },
-  section: { background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, overflow: 'hidden', marginBottom: 20 },
+  th:      { padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#444', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400, borderBottom: '1px solid var(--bg-hover)' },
+  card:    { background: 'var(--bg)', border: '1px solid var(--bg-hover)', borderRadius: 12, padding: '20px 24px' },
+  section: { background: 'var(--bg)', border: '1px solid var(--bg-hover)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ function useIsMobile() {
 function Modal({ title, onClose, children, width = 500 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 14, padding: 24, width: '100%', maxWidth: width, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, width: '100%', maxWidth: width, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a96e' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer', padding: 0, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>✕</button>
@@ -80,7 +80,7 @@ function Modal({ title, onClose, children, width = 500 }) {
 
 function StatCard({ label, value, sub, color = '#c9a96e', icon, border }) {
   return (
-    <div style={{ ...S.card, borderColor: border || '#1e1e1e' }}>
+    <div style={{ ...S.card, borderColor: border || 'var(--bg-hover)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</span>
         {icon && <span style={{ fontSize: 18 }}>{icon}</span>}
@@ -184,7 +184,7 @@ function DashboardTab() {
         {Object.keys(expenses.by_category || {}).length > 0 && (
           <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {Object.entries(expenses.by_category).map(([cat, amt]) => (
-              <span key={cat} style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#666' }}>{cat}: <span style={{ color: '#ef4444' }}>{fmt(amt)}</span></span>
+              <span key={cat} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#666' }}>{cat}: <span style={{ color: '#ef4444' }}>{fmt(amt)}</span></span>
             ))}
           </div>
         )}
@@ -433,7 +433,7 @@ function VendorsTab() {
             onClick={() => setSortBy(s.id)}
             style={{
               background: sortBy === s.id ? '#c9a96e22' : 'transparent',
-              border: '1px solid ' + (sortBy === s.id ? '#c9a96e66' : '#2a2a2a'),
+              border: '1px solid ' + (sortBy === s.id ? '#c9a96e66' : 'var(--border)'),
               color: sortBy === s.id ? '#c9a96e' : '#666',
               fontSize: 11,
               padding: '4px 10px',
@@ -463,8 +463,8 @@ function VendorsTab() {
               key={v.id}
               onClick={() => setSelected(v.id)}
               style={{
-                background: isActive ? '#1a1a1a' : '#0d0d0d',
-                border: '1px solid ' + (isActive ? '#c9a96e66' : '#1a1a1a'),
+                background: isActive ? 'var(--bg-section)' : '#0d0d0d',
+                border: '1px solid ' + (isActive ? '#c9a96e66' : 'var(--bg-section)'),
                 borderRadius: 10,
                 padding: '12px 14px',
                 cursor: 'pointer',
@@ -497,7 +497,7 @@ function VendorsTab() {
                   marginBottom: 3,
                 }}>{v.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10, color: '#666', background: '#1a1a1a', padding: '1px 7px', borderRadius: 10, border: '1px solid #2a2a2a' }}>{v.category || 'General'}</span>
+                  <span style={{ fontSize: 10, color: '#666', background: 'var(--bg-section)', padding: '1px 7px', borderRadius: 10, border: '1px solid var(--border)' }}>{v.category || 'General'}</span>
                   {v.outstanding > 0 ? (
                     <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 700 }}>{fmt(v.outstanding)} due</span>
                   ) : v.transactions > 0 ? (
@@ -531,7 +531,7 @@ function VendorsTab() {
               {isMobile && (
                 <button
                   onClick={() => setSelected(null)}
-                  style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#888', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
+                  style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#888', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}
                 >← Back</button>
               )}
 
@@ -554,7 +554,7 @@ function VendorsTab() {
                     <button
                       onClick={() => openEditVendor(selV)}
                       title="Edit vendor details"
-                      style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 11, padding: '3px 9px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 500 }}
+                      style={{ background: 'transparent', border: '1px solid var(--border)', color: '#c9a96e', cursor: 'pointer', fontSize: 11, padding: '3px 9px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 500 }}
                     >✏️ Edit</button>
                   )}
                 </div>
@@ -562,7 +562,7 @@ function VendorsTab() {
                   {selV?.phone           && <span>📞 {selV.phone}</span>}
                   {selV?.contact_person  && <span>👤 {selV.contact_person}</span>}
                   {selV?.payment_terms   && <span>⏱ {selV.payment_terms}</span>}
-                  {selV?.category        && <span style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 4, padding: '1px 7px', fontSize: 10 }}>{selV.category}</span>}
+                  {selV?.category        && <span style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 7px', fontSize: 10 }}>{selV.category}</span>}
                 </div>
               </div>
             </div>
@@ -575,7 +575,7 @@ function VendorsTab() {
                 gap: 10,
                 marginTop: 14,
                 paddingTop: 14,
-                borderTop: '1px solid #1e1e1e',
+                borderTop: '1px solid var(--bg-hover)',
               }}>
                 {[
                   { l: 'Purchased', v: selData.total_purchase, c: '#ccc' },
@@ -596,13 +596,13 @@ function VendorsTab() {
             {canVendorEdit && (
               <button
                 onClick={() => setShowTxn('purchase')}
-                style={{ ...S.btn, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e', flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto', minWidth: 0 }}
+                style={{ ...S.btn, background: 'var(--green-dim)', borderColor: '#22c55e44', color: '#22c55e', flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto', minWidth: 0 }}
               >+ Purchase</button>
             )}
             {canVendorPayment && (
               <button
                 onClick={() => setShowTxn('payment')}
-                style={{ ...S.btn, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444', flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto', minWidth: 0 }}
+                style={{ ...S.btn, background: 'var(--red-dim)', borderColor: '#ef444444', color: '#ef4444', flex: isMobile ? '1 1 calc(50% - 4px)' : '0 0 auto', minWidth: 0 }}
               >+ Payment</button>
             )}
             <button
@@ -611,7 +611,7 @@ function VendorsTab() {
             >🖨️ Print Statement</button>
           </div>
 
-          {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13, marginBottom: 12 }}>{msg}</div>}
+          {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13, marginBottom: 12 }}>{msg}</div>}
 
           {/* Transaction list — table on desktop, cards on mobile */}
           {isMobile ? (
@@ -660,7 +660,7 @@ function VendorsTab() {
                 {['General', 'Jewelry', 'Packaging', 'Accessories', 'Raw Material', 'Other'].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
-            {modalMsg && <div style={{ padding: '10px 14px', borderRadius: 8, background: modalMsg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: modalMsg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{modalMsg}</div>}
+            {modalMsg && <div style={{ padding: '10px 14px', borderRadius: 8, background: modalMsg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: modalMsg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{modalMsg}</div>}
             <button onClick={addVendor} disabled={saving} style={{ ...S.btn, background: '#c9a96e', color: '#000', fontWeight: 700, padding: '11px' }}>
               {saving ? 'Saving...' : editingVendor ? 'Update Vendor' : 'Add Vendor'}
             </button>
@@ -701,11 +701,11 @@ function VendorsTab() {
               <label style={S.label}>Reference / Note</label>
               <input placeholder="Invoice number or reference" value={tForm.note} onChange={e => setTForm(f => ({ ...f, note: e.target.value }))} style={S.input} />
             </div>
-            {modalMsg && <div style={{ padding: '10px 14px', borderRadius: 8, background: modalMsg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: modalMsg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{modalMsg}</div>}
+            {modalMsg && <div style={{ padding: '10px 14px', borderRadius: 8, background: modalMsg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: modalMsg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{modalMsg}</div>}
             <button
               onClick={() => addTxn(showTxn)}
               disabled={saving}
-              style={{ ...S.btn, background: showTxn === 'purchase' ? '#1a2a1a' : '#2a1a1a', borderColor: showTxn === 'purchase' ? '#22c55e44' : '#ef444444', color: showTxn === 'purchase' ? '#22c55e' : '#ef4444', padding: '11px', fontWeight: 700 }}
+              style={{ ...S.btn, background: showTxn === 'purchase' ? 'var(--green-dim)' : 'var(--red-dim)', borderColor: showTxn === 'purchase' ? '#22c55e44' : '#ef444444', color: showTxn === 'purchase' ? '#22c55e' : '#ef4444', padding: '11px', fontWeight: 700 }}
             >
               {saving ? 'Saving...' : editingTxn ? 'Update Entry' : (showTxn === 'purchase' ? 'Save Purchase' : 'Save Payment')}
             </button>
@@ -724,13 +724,13 @@ function TxnTable({ transactions, canEdit, onEdit, onDelete }) {
         <thead><tr>{['Date', 'Type', 'Description', 'Amount', 'Due Date', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
         <tbody>
           {!transactions.length && (
-            <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#333' }}>No transactions yet</td></tr>
+            <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: 'var(--border2)' }}>No transactions yet</td></tr>
           )}
           {transactions.map(t => {
             const isP = t.payment_type === 'purchase';
             const overdue = t.due_date && new Date(t.due_date) < new Date();
             return (
-              <tr key={t.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+              <tr key={t.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                 <td style={S.td}>{fmtDate(t.payment_date)}</td>
                 <td style={S.td}>
                   <span style={{ background: isP ? '#22c55e22' : '#ef444422', color: isP ? '#22c55e' : '#ef4444', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
@@ -746,8 +746,8 @@ function TxnTable({ transactions, canEdit, onEdit, onDelete }) {
                 </td>
                 <td style={S.td}>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    {canEdit && <button onClick={() => onEdit(t)} title="Edit entry" style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>✏️ Edit</button>}
-                    {canEdit && <button onClick={() => onDelete(t.id)} title="Delete entry" style={{ background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>🗑 Delete</button>}
+                    {canEdit && <button onClick={() => onEdit(t)} title="Edit entry" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>✏️ Edit</button>}
+                    {canEdit && <button onClick={() => onDelete(t.id)} title="Delete entry" style={{ background: 'var(--red-dim)', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 6, fontFamily: 'inherit' }}>🗑 Delete</button>}
                   </div>
                 </td>
               </tr>
@@ -780,7 +780,7 @@ function TxnCardList({ transactions, canEdit, onEdit, onDelete }) {
           <div
             key={t.id}
             style={{
-              background: '#0f0f0f',
+              background: 'var(--bg-section)',
               border: '1px solid ' + (isP ? '#22c55e22' : '#ef444422'),
               borderLeftWidth: 3,
               borderLeftColor: isP ? '#22c55e' : '#ef4444',
@@ -811,9 +811,9 @@ function TxnCardList({ transactions, canEdit, onEdit, onDelete }) {
             )}
 
             {canEdit && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid #1a1a1a' }}>
-                <button onClick={() => onEdit(t)} style={{ flex: 1, background: '#1e1e1e', border: '1px solid #2a2a2a', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '7px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>✏️ Edit</button>
-                <button onClick={() => onDelete(t.id)} style={{ flex: 1, background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '7px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>🗑 Delete</button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--bg-section)' }}>
+                <button onClick={() => onEdit(t)} style={{ flex: 1, background: 'var(--bg-hover)', border: '1px solid var(--border)', color: '#c9a96e', cursor: 'pointer', fontSize: 12, padding: '7px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>✏️ Edit</button>
+                <button onClick={() => onDelete(t.id)} style={{ flex: 1, background: 'var(--red-dim)', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '7px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>🗑 Delete</button>
               </div>
             )}
           </div>
@@ -883,7 +883,7 @@ function PersonalTab() {
           <span style={{ fontSize: 18, fontWeight: 700, color: '#ef4444', marginLeft: 8 }}>{fmt(total)}</span>
         </div>
         {canPersonalEdit && (
-          <button onClick={() => setShowModal(true)} style={{ ...S.btn, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444' }}>
+          <button onClick={() => setShowModal(true)} style={{ ...S.btn, background: 'var(--red-dim)', borderColor: '#ef444444', color: '#ef4444' }}>
             + Add Expense
           </button>
         )}
@@ -891,13 +891,13 @@ function PersonalTab() {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {Object.entries(byCategory).map(([cat, amt]) => (
-          <span key={cat} style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#666' }}>
+          <span key={cat} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#666' }}>
             {cat}: <span style={{ color: '#ef4444' }}>{fmt(amt)}</span>
           </span>
         ))}
       </div>
 
-      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
 
       {/* Mobile: cards · Desktop: table */}
       {isMobile ? (
@@ -909,12 +909,12 @@ function PersonalTab() {
             </div>
           )}
           {expenses.map(e => (
-            <div key={e.id} style={{ background: '#0f0f0f', border: '1px solid #1e1e1e', borderLeft: '3px solid #ef4444', borderRadius: 10, padding: '12px 14px' }}>
+            <div key={e.id} style={{ background: 'var(--bg-section)', border: '1px solid var(--bg-hover)', borderLeft: '3px solid #ef4444', borderRadius: 10, padding: '12px 14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: '#ddd', fontWeight: 600, marginBottom: 3, wordBreak: 'break-word' }}>{e.title}</div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 10, padding: '1px 8px', fontSize: 10, color: '#777' }}>{e.category}</span>
+                    <span style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 10, padding: '1px 8px', fontSize: 10, color: '#777' }}>{e.category}</span>
                     <span style={{ fontSize: 11, color: '#666' }}>{fmtDate(e.expense_date)}</span>
                   </div>
                 </div>
@@ -922,8 +922,8 @@ function PersonalTab() {
               </div>
               {e.note && <div style={{ fontSize: 12, color: '#666', marginTop: 4, fontStyle: 'italic' }}>{e.note}</div>}
               {canPersonalEdit && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #1a1a1a', textAlign: 'right' }}>
-                  <button onClick={() => del(e.id)} style={{ background: '#2a1a1a', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 11, padding: '5px 12px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>🗑 Delete</button>
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--bg-section)', textAlign: 'right' }}>
+                  <button onClick={() => del(e.id)} style={{ background: 'var(--red-dim)', border: '1px solid #ef444455', color: '#ef4444', cursor: 'pointer', fontSize: 11, padding: '5px 12px', borderRadius: 6, fontFamily: 'inherit', fontWeight: 600 }}>🗑 Delete</button>
                 </div>
               )}
             </div>
@@ -934,13 +934,13 @@ function PersonalTab() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>{['Date', 'Title', 'Category', 'Amount', 'Note', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
             <tbody>
-              {expenses.length === 0 && <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: '#333' }}>No personal expenses recorded</td></tr>}
+              {expenses.length === 0 && <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: 'var(--border2)' }}>No personal expenses recorded</td></tr>}
               {expenses.map(e => (
-                <tr key={e.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                <tr key={e.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                   <td style={S.td}>{fmtDate(e.expense_date)}</td>
                   <td style={{ ...S.td, color: '#ccc', fontWeight: 500 }}>{e.title}</td>
                   <td style={S.td}>
-                    <span style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{e.category}</span>
+                    <span style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{e.category}</span>
                   </td>
                   <td style={{ ...S.td, color: '#ef4444', fontWeight: 700 }}>{fmt(e.amount)}</td>
                   <td style={{ ...S.td, color: '#555' }}>{e.note || '—'}</td>
@@ -1080,11 +1080,11 @@ function ZakatTab() {
         </select>
         {canZakatEdit && <button onClick={() => setShowCalc(true)} style={S.btn}>🧮 Calculate Zakat</button>}
         {canZakatEdit && record && remaining > 0 && (
-          <button onClick={() => setShowDist(true)} style={{ ...S.btn, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e' }}>+ Add Distribution</button>
+          <button onClick={() => setShowDist(true)} style={{ ...S.btn, background: 'var(--green-dim)', borderColor: '#22c55e44', color: '#22c55e' }}>+ Add Distribution</button>
         )}
       </div>
 
-      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
 
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</div>
@@ -1109,13 +1109,13 @@ function ZakatTab() {
                   </div>
                 ))}
               </div>
-              <div style={{ background: '#1a1a1a', borderRadius: 100, height: 10, overflow: 'hidden', marginBottom: 6 }}>
+              <div style={{ background: 'var(--bg-section)', borderRadius: 100, height: 10, overflow: 'hidden', marginBottom: 6 }}>
                 <div style={{ height: '100%', width: percent + '%', background: percent >= 100 ? '#22c55e' : '#c9a96e', borderRadius: 100, transition: 'width 0.5s ease' }} />
               </div>
               <div style={{ fontSize: 11, color: '#555' }}>
                 {percent.toFixed(1)}% distributed — {remaining > 0 ? fmt(remaining) + ' remaining' : '✅ Full zakat distributed!'}
               </div>
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #1e1e1e', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--bg-hover)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 {[
                   ['Inventory',     record.inventory_value],
                   ['Cash',          record.cash_in_hand],
@@ -1140,16 +1140,16 @@ function ZakatTab() {
 
           {record && (
             <div style={S.section}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bg-hover)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>🤲 Distribution History</span>
                 <span style={{ fontSize: 12, color: '#444' }}>{data?.distributions?.length || 0} entries</span>
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr>{['Date', 'Recipient', 'Amount', 'Note', ''].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {!data?.distributions?.length && <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: '#333' }}>No distributions yet</td></tr>}
+                  {!data?.distributions?.length && <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--border2)' }}>No distributions yet</td></tr>}
                   {data?.distributions?.map(d => (
-                    <tr key={d.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                    <tr key={d.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                       <td style={S.td}>{fmtDate(d.distribution_date)}</td>
                       <td style={{ ...S.td, color: '#ccc', fontWeight: 500 }}>{d.recipient}</td>
                       <td style={{ ...S.td, color: '#c9a96e', fontWeight: 700 }}>{fmt(d.amount)}</td>
@@ -1169,7 +1169,7 @@ function ZakatTab() {
       {showCalc && (
         <Modal title="🧮 Zakat Calculator" onClose={() => setShowCalc(false)} width={560}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ background: '#1a1a1a', border: '1px solid #c9a96e33', borderRadius: 8, padding: 14, fontSize: 12, color: '#888' }}>
+            <div style={{ background: 'var(--bg-section)', border: '1px solid #c9a96e33', borderRadius: 8, padding: 14, fontSize: 12, color: '#888' }}>
               📌 Zakat = (Total Assets − Liabilities) × 2.5% &nbsp;|&nbsp; Nisab ≈ Rs. 175,000 (52.5 tola silver, 2026)
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1182,7 +1182,7 @@ function ZakatTab() {
                 <input type="number" value={cForm.nisab_amount} onChange={e => setCForm(f => ({ ...f, nisab_amount: e.target.value }))} style={S.input} />
               </div>
             </div>
-            <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', borderTop: '1px solid #1e1e1e', paddingTop: 14 }}>Assets</div>
+            <div style={{ fontSize: 12, color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', borderTop: '1px solid var(--bg-hover)', paddingTop: 14 }}>Assets</div>
             <div>
               <label style={S.label}>📦 Inventory Value (Rs.)</label>
               <input type="number" value={cForm.inventory_value} onChange={e => setCForm(f => ({ ...f, inventory_value: e.target.value }))} style={S.input} placeholder="Auto-filled from inventory" />
@@ -1211,7 +1211,7 @@ function ZakatTab() {
               <label style={S.label}>➖ Liabilities (money you owe)</label>
               <input type="number" value={cForm.liabilities} onChange={e => setCForm(f => ({ ...f, liabilities: e.target.value }))} style={S.input} placeholder="0" />
             </div>
-            <div style={{ background: '#1a2a1a', border: '1px solid #22c55e33', borderRadius: 10, padding: 16 }}>
+            <div style={{ background: 'var(--green-dim)', border: '1px solid #22c55e33', borderRadius: 10, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: '#555' }}>Total Zakatable Assets:</span>
                 <span style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e' }}>{fmt(calcTotal())}</span>
@@ -1238,7 +1238,7 @@ function ZakatTab() {
       {showDist && (
         <Modal title="🤲 Zakat Distribution" onClose={() => setShowDist(false)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ ...S.card, background: '#1a2a1a', borderColor: '#22c55e33' }}>
+            <div style={{ ...S.card, background: 'var(--green-dim)', borderColor: '#22c55e33' }}>
               <span style={{ fontSize: 12, color: '#555' }}>Remaining: </span>
               <span style={{ fontSize: 18, fontWeight: 700, color: '#22c55e', marginLeft: 8 }}>{fmt(remaining)}</span>
             </div>
@@ -1260,7 +1260,7 @@ function ZakatTab() {
               <label style={S.label}>Note</label>
               <input placeholder="Additional details..." value={dForm.note} onChange={e => setDForm(f => ({ ...f, note: e.target.value }))} style={S.input} />
             </div>
-            <div style={{ background: '#1a1a1a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+            <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
               ⚠️ Distribution cannot exceed the remaining amount
             </div>
             <button onClick={addDist} disabled={saving} style={{ ...S.btn, background: '#c9a96e', color: '#000', fontWeight: 700, padding: '11px' }}>
@@ -1297,7 +1297,7 @@ export default function AccountsPage() {
     return (
       <div style={{ padding: 60, textAlign: 'center', color: '#888', fontFamily: "'Söhne', 'Helvetica Neue', sans-serif" }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#666' }}>You don&apos;t have access to any Accounts tabs. Please contact the CEO to grant access.</div>
       </div>
     );
@@ -1323,10 +1323,10 @@ export default function AccountsPage() {
         <div style={{
           display: 'inline-flex',
           gap: 4,
-          background: '#111',
+          background: 'var(--bg)',
           borderRadius: 10,
           padding: 4,
-          border: '1px solid #1e1e1e',
+          border: '1px solid var(--bg-hover)',
           minWidth: 'min-content',
         }}>
           {TABS.map(t => (
@@ -1334,8 +1334,8 @@ export default function AccountsPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               style={{
-                background: tab === t.id ? '#1e1e1e' : 'transparent',
-                border: `1px solid ${tab === t.id ? '#2a2a2a' : 'transparent'}`,
+                background: tab === t.id ? 'var(--bg-hover)' : 'transparent',
+                border: `1px solid ${tab === t.id ? 'var(--border)' : 'transparent'}`,
                 borderRadius: 8,
                 padding: '8px 16px',
                 cursor: 'pointer',
