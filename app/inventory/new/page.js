@@ -28,10 +28,10 @@ import { useUser } from '@/context/UserContext';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
-const bgPage = '#080808';
-const text1 = '#e5e5e5';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
+const bgPage = 'var(--bg)';
+const text1 = 'var(--text)';
 const text2 = '#aaa';
 const text3 = '#666';
 
@@ -482,7 +482,7 @@ function ImageUploader({ images, onChange }) {
                   <button onClick={() => setAsFirst(idx)}
                     style={{
                       width: '100%', marginBottom: 6,
-                      background: '#1a1a1a', border: `1px solid ${border}`,
+                      background: 'var(--bg-section)', border: `1px solid ${border}`,
                       color: '#4ade80', borderRadius: 4, padding: '4px 8px',
                       fontSize: 10, fontFamily: 'inherit', cursor: 'pointer',
                     }}>★ Set as main</button>
@@ -847,7 +847,7 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
                             position: 'absolute', bottom: 4, right: 4,
                             width: 24, height: 24, borderRadius: '50%',
                             background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
-                            color: '#fff', fontSize: 13, cursor: 'pointer',
+                            color: 'var(--text)', fontSize: 13, cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             padding: 0, lineHeight: 1, fontFamily: 'inherit',
                             transition: 'transform 0.1s, background 0.15s',
@@ -895,7 +895,7 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
         >
           <div style={{
             position: 'absolute', top: 18, left: 24,
-            color: '#fff', fontSize: 13, fontWeight: 500,
+            color: 'var(--text)', fontSize: 13, fontWeight: 500,
             background: 'rgba(0,0,0,0.5)', padding: '6px 12px', borderRadius: 20,
             fontFamily: 'inherit',
           }}>
@@ -906,7 +906,7 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
             style={{
               position: 'absolute', top: 18, right: 24,
               background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff', borderRadius: '50%', width: 36, height: 36,
+              color: 'var(--text)', borderRadius: '50%', width: 36, height: 36,
               fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
@@ -918,7 +918,7 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
               style={{
                 position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
                 background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                color: 'var(--text)', borderRadius: '50%', width: 44, height: 44,
                 fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
@@ -931,7 +931,7 @@ function VariantImagePicker({ images, selectedId, inheritedId, onSelect, onClear
               style={{
                 position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)',
                 background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                color: 'var(--text)', borderRadius: '50%', width: 44, height: 44,
                 fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
@@ -1732,10 +1732,10 @@ export default function NewProductPage() {
     return (
       <div style={{ padding: 60, maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
           Naya product create karne ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>inventory.create</code>{' '}
+          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>inventory.create</code>{' '}
           permission grant karwane ko bolo.
         </div>
         <Link href="/inventory" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
