@@ -27,10 +27,10 @@ import { calculateSeoScore } from '../../../lib/seo-score';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
-const bgPage = '#080808';
-const text1 = '#e5e5e5';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
+const bgPage = 'var(--bg)';
+const text1 = 'var(--text)';
 const text2 = '#aaa';
 const text3 = '#666';
 
@@ -1057,7 +1057,7 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
                           position: 'absolute', bottom: 4, right: 4,
                           width: 24, height: 24, borderRadius: '50%',
                           background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.2)',
-                          color: '#fff', fontSize: 13, cursor: 'pointer',
+                          color: 'var(--text)', fontSize: 13, cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           padding: 0, lineHeight: 1, fontFamily: 'inherit',
                           transition: 'transform 0.1s, background 0.15s',
@@ -1092,7 +1092,7 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
         >
           <div style={{
             position: 'absolute', top: 18, left: 24,
-            color: '#fff', fontSize: 13, fontWeight: 500,
+            color: 'var(--text)', fontSize: 13, fontWeight: 500,
             background: 'rgba(0,0,0,0.5)', padding: '6px 12px', borderRadius: 20,
             fontFamily: 'inherit',
           }}>
@@ -1103,7 +1103,7 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
             style={{
               position: 'absolute', top: 18, right: 24,
               background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff', borderRadius: '50%', width: 36, height: 36,
+              color: 'var(--text)', borderRadius: '50%', width: 36, height: 36,
               fontSize: 20, cursor: 'pointer', fontFamily: 'inherit',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
@@ -1115,7 +1115,7 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
               style={{
                 position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
                 background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                color: 'var(--text)', borderRadius: '50%', width: 44, height: 44,
                 fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
@@ -1128,7 +1128,7 @@ function VariantImagePicker({ images, selectedId, onSelect, size = 36, variantLa
               style={{
                 position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)',
                 background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                color: '#fff', borderRadius: '50%', width: 44, height: 44,
+                color: 'var(--text)', borderRadius: '50%', width: 44, height: 44,
                 fontSize: 22, cursor: 'pointer', fontFamily: 'inherit',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
@@ -1889,10 +1889,10 @@ export default function ProductEditPage() {
     return (
       <div style={{ padding: 60, maxWidth: 600, margin: '40px auto', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
           Product edit karne ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>inventory.edit</code>{' '}
+          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>inventory.edit</code>{' '}
           permission grant karwane ko bolo.
         </div>
         <Btn onClick={() => router.push('/inventory')}>← Back to Inventory</Btn>
@@ -2306,7 +2306,7 @@ export default function ProductEditPage() {
                           >
                             <div className="preview-hint" style={{
                               position: 'absolute', bottom: 8, right: 8,
-                              background: 'rgba(0,0,0,0.75)', color: '#fff',
+                              background: 'rgba(0,0,0,0.75)', color: 'var(--text)',
                               fontSize: 10, fontWeight: 600,
                               padding: '4px 8px', borderRadius: 4,
                               opacity: 0, transition: 'opacity 0.15s',
@@ -2349,7 +2349,7 @@ export default function ProductEditPage() {
                               title="Move left"
                               style={{
                                 flex: '0 0 auto',
-                                background: '#1a1a1a',
+                                background: 'var(--bg-section)',
                                 border: `1px solid ${border}`,
                                 color: isFirst ? text3 : text1,
                                 borderRadius: 4,
@@ -2364,7 +2364,7 @@ export default function ProductEditPage() {
                               title="Move right"
                               style={{
                                 flex: '0 0 auto',
-                                background: '#1a1a1a',
+                                background: 'var(--bg-section)',
                                 border: `1px solid ${border}`,
                                 color: isLast ? text3 : text1,
                                 borderRadius: 4,
@@ -2379,7 +2379,7 @@ export default function ProductEditPage() {
                                 title="Set as main (first) image"
                                 style={{
                                   flex: 1,
-                                  background: '#1a1a1a',
+                                  background: 'var(--bg-section)',
                                   border: `1px solid ${border}`,
                                   color: '#4ade80',
                                   borderRadius: 4,
