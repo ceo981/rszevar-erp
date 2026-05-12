@@ -24,7 +24,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { transformOrder, transformLineItems } from '@/lib/shopify';
+import { transformOrder, transformLineItems, buildImageLookupMaps } from '@/lib/shopify';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -132,17 +132,13 @@ async function runBackfill(daysBack = 180, maxSeconds = 55) {
       }
 
       // 3. Transform + insert line items with resolved order_id FK
-      // SKU → image fallback
-      let skuImgMap = {};
-      try {
-        const { data: pImgs } = await supabase.from('products').select('sku, image_url').not('sku', 'is', null).not('image_url', 'is', null);
-        for (const p of pImgs || []) { if (p.sku && p.image_url && !skuImgMap[p.sku]) skuImgMap[p.sku] = p.image_url; }
-      } catch(e) {}
+      // FIX May 2026 — Both sku + variant_id maps (variant_id-aware lookup).
+      const { skuImageMap: skuImgMap, variantImageMap: variantImgMap } = await buildImageLookupMaps(supabase);
       const allLineItems = [];
       for (const shopifyOrder of newOrders) {
         const dbOrderId = idMap.get(String(shopifyOrder.id));
         if (!dbOrderId) continue;
-        const items = transformLineItems(shopifyOrder, skuImgMap);
+        const items = transformLineItems(shopifyOrder, skuImgMap, variantImgMap);
         for (const item of items) {
           allLineItems.push({ ...item, order_id: dbOrderId });
         }
