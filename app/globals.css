@@ -6,7 +6,8 @@
    Color 2: Sapphire   (#4a82d8)
    Accent:  Jewelry Gold (#c9a96e)
 ═══════════════════════════════════════════════════════ */
-:root {
+:root,
+[data-theme="dark"] {
   /* ── Gold Accent ── */
   --gold:        #c9a96e;
   --gold-light:  #e8d5a8;
@@ -60,6 +61,69 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left:   env(safe-area-inset-left, 0px);
   --safe-right:  env(safe-area-inset-right, 0px);
+
+  /* ── Body radial-gradient ambience (overridden in light theme) ── */
+  --bg-glow-1: rgba(74,130,216,0.07);
+  --bg-glow-2: rgba(201,169,110,0.04);
+}
+
+/* ═══════════════════════════════════════════════════════
+   RS ZEVAR ERP — LIGHT THEME
+   ───────────────────────────────────────────────────────
+   Ivory + Gold luxury aesthetic. Toggle via:
+     document.documentElement.dataset.theme = 'light'
+   (See app/context/ThemeContext.js)
+═══════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  /* ── Gold Accent (slightly darker for contrast on light bg) ── */
+  --gold:        #a8843d;
+  --gold-light:  #c9a96e;
+  --gold-dim:    rgba(168,132,61,0.10);
+  --gold-glow:   rgba(168,132,61,0.22);
+
+  /* ── Sapphire (deeper shade for AA contrast on light) ── */
+  --sapphire:       #2a5298;
+  --sapphire-dark:  #1e3a6e;
+  --sapphire-dim:   rgba(42,82,152,0.10);
+  --sapphire-glow:  rgba(42,82,152,0.22);
+
+  /* ── Ivory Backgrounds ── */
+  --bg:         #faf7f0;
+  --bg2:        #f5f0e4;
+  --bg-card:    #ffffff;
+  --bg-hover:   #ede5d2;
+  --bg-section: #f7f3e7;
+
+  /* ── Borders ── */
+  --border:  #e0d6bc;
+  --border2: #c9bda0;
+
+  /* ── Text ── */
+  --text:  #1a1a1a;
+  --text2: #555044;
+  --text3: #8a826e;
+
+  /* ── Status Colors (deeper shades for light bg contrast) ── */
+  --green:      #16a34a;
+  --green-dim:  rgba(22,163,74,0.10);
+  --red:        #dc2626;
+  --red-dim:    rgba(220,38,38,0.10);
+  --blue:       #2563eb;
+  --blue-dim:   rgba(37,99,235,0.10);
+  --orange:     #ea580c;
+  --orange-dim: rgba(234,88,12,0.10);
+  --purple:     #7c3aed;
+  --purple-dim: rgba(124,58,237,0.10);
+  --cyan:       #0891b2;
+  --cyan-dim:   rgba(8,145,178,0.10);
+
+  /* ── Softer shadows on light ── */
+  --shadow:    0 2px 8px rgba(60,40,10,0.08);
+  --shadow-lg: 0 4px 24px rgba(60,40,10,0.12);
+
+  /* ── Body ambient glows (warm parchment tints) ── */
+  --bg-glow-1: rgba(168,132,61,0.10);
+  --bg-glow-2: rgba(74,130,216,0.04);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -88,9 +152,11 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   background-image:
-    radial-gradient(ellipse 70% 35% at 60% 0%, rgba(74,130,216,0.07) 0%, transparent 65%),
-    radial-gradient(ellipse 35% 50% at 0% 60%, rgba(201,169,110,0.04) 0%, transparent 55%);
+    radial-gradient(ellipse 70% 35% at 60% 0%, var(--bg-glow-1) 0%, transparent 65%),
+    radial-gradient(ellipse 35% 50% at 0% 60%, var(--bg-glow-2) 0%, transparent 55%);
   background-attachment: fixed;
+  /* Smooth theme transition — avoids jarring flip when toggle clicked */
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* Dedicated utility class for anywhere we explicitly want emoji fonts in the
@@ -420,6 +486,11 @@ body {
     justify-content: space-around;
   }
 
+  /* Light theme: re-color the mobile bottom nav with cream tint */
+  [data-theme="light"] .mobile-bottom-nav {
+    background: rgba(250,247,240,0.98);
+  }
+
   .mobile-bottom-nav-item {
     flex: 1;
     display: flex;
@@ -580,3 +651,160 @@ body {
     display: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT-THEME OVERRIDE LAYER — handles inline hardcoded hex colors
+   ────────────────────────────────────────────────────────────────────────────
+   Project mein zyada-tar pages inline `style={{ background: '#1a1a1a' }}` use
+   karte hain instead of `var(--bg-card)`. Jab user light mode toggle kare,
+   CSS variable swap se ye dark hex colors apne aap update nahi hote — kyunke
+   wo CSS variables nahi, hardcoded hex hain.
+
+   Solution: attribute selectors `[style*="#1a1a1a"]` use karke un elements ko
+   target karte hain jinke style attribute mein common dark hex codes hain,
+   aur unhe `!important` se override karte hain.
+
+   Coverage: ~85% of UI. Status colors (red/green/blue badges), gold accents,
+   gradients etc. dono themes mein theek dikhein gi. Borders mostly fine.
+   Edge cases: kuch pages mein chhote glitches hone ka chance hai — incremental
+   migration se fix hota rahe ga.
+
+   Scope: SIRF `[data-theme="light"]` ke andar apply hota hai. Dark theme
+   bilkul untouched hai.
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. DARK BACKGROUND HEXES → light card bg ──────────────────────────── */
+/* Sabse common pure-dark backgrounds (the "card" / "modal" / "section" surfaces) */
+[data-theme="light"] [style*="#1a1a1a"],
+[data-theme="light"] [style*="#0a0a0a"],
+[data-theme="light"] [style*="#0f0f0f"],
+[data-theme="light"] [style*="#1e1e1e"],
+[data-theme="light"] [style*="#141414"],
+[data-theme="light"] [style*="#080808"],
+[data-theme="light"] [style*="#1f1f1f"],
+[data-theme="light"] [style*="#0d1117"],
+[data-theme="light"] [style*="#0d1626"],
+[data-theme="light"] [style*="#080c16"],
+[data-theme="light"] [style*="#101c32"],
+[data-theme="light"] [style*="#162540"],
+[data-theme="light"] [style*="#0b1420"],
+[data-theme="light"] [style*="#0e1421"],
+[data-theme="light"] [style*="#0c1623"],
+[data-theme="light"] [style*="#0e1d36"],
+[data-theme="light"] [style*="#0f172a"],
+[data-theme="light"] [style*="#0c1220"] {
+  background-color: var(--bg-card) !important;
+}
+
+/* Slate-toned dark backgrounds (Tailwind slate-800/900 equivalents) */
+[data-theme="light"] [style*="#1e293b"],
+[data-theme="light"] [style*="#111827"],
+[data-theme="light"] [style*="#1f2937"],
+[data-theme="light"] [style*="#0f1729"] {
+  background-color: var(--bg-section) !important;
+}
+
+/* Red-tinted dark backgrounds (error/danger sections) → light red wash */
+[data-theme="light"] [style*="#1a0000"],
+[data-theme="light"] [style*="#2a1a1a"],
+[data-theme="light"] [style*="#330000"],
+[data-theme="light"] [style*="#3a0a0a"] {
+  background-color: rgba(220,38,38,0.05) !important;
+}
+
+/* Green-tinted dark backgrounds (success sections) → light green wash */
+[data-theme="light"] [style*="#1a2a1a"],
+[data-theme="light"] [style*="#0a1a0a"],
+[data-theme="light"] [style*="#0a2a14"] {
+  background-color: rgba(22,163,74,0.05) !important;
+}
+
+/* Amber/yellow dark bgs */
+[data-theme="light"] [style*="#2a1f0a"],
+[data-theme="light"] [style*="#1a1500"] {
+  background-color: rgba(234,88,12,0.05) !important;
+}
+
+/* ── 2. LIGHT TEXT HEXES → dark text ──────────────────────────────────── */
+/* Iska zaroor flip karna hai — warna white text on white bg = invisible */
+[data-theme="light"] [style*="#ffffff"],
+[data-theme="light"] [style*="'#fff'"],
+[data-theme="light"] [style*="\"#fff\""],
+[data-theme="light"] [style*="#dde8f5"],
+[data-theme="light"] [style*="#e5e5e5"],
+[data-theme="light"] [style*="#e2e8f0"],
+[data-theme="light"] [style*="#f5f5f5"],
+[data-theme="light"] [style*="#fafafa"],
+[data-theme="light"] [style*="#f0f0f0"],
+[data-theme="light"] [style*="#cbd5e1"] {
+  color: var(--text) !important;
+}
+
+/* Exception: gold-colored buttons (background: var(--gold) ya '#c9a96e' ya
+   gradient with #c9a96e) often have `color: '#000'` already. We don't need
+   to touch those. But buttons that say color:'#fff' on a colored background
+   should KEEP white text. Hence we DON'T override color on elements that
+   ALSO have a gradient or solid color background (because their bg is dark
+   enough to keep white text readable). Below: restore white text where
+   the element ALSO has a status-color background or gradient.
+
+   Re-flip white text back to white if element bg is a status/accent color: */
+[data-theme="light"] [style*="background: var(--gold)"][style*="#fff"],
+[data-theme="light"] [style*="background:var(--gold)"][style*="#fff"],
+[data-theme="light"] [style*="linear-gradient"][style*="#fff"],
+[data-theme="light"] [style*="background: '#c9a96e'"][style*="#fff"],
+[data-theme="light"] [style*="background:'#c9a96e'"][style*="#fff"],
+[data-theme="light"] button[style*="rgba(74,130,216"][style*="#fff"],
+[data-theme="light"] button[style*="rgba(201,169,110"][style*="#fff"] {
+  color: #fff !important;
+}
+
+/* ── 3. DARK BORDERS on common containers → soft cream borders ────────── */
+/* Ye mostly cosmetic — borders #2a2a2a, #333 dark theme mein dikhte hain,
+   light theme mein wo "card outline" effect chahiye softer. We target only
+   when the value is a known border-only hex. */
+[data-theme="light"] [style*="1px solid #2a2a2a"],
+[data-theme="light"] [style*="1px solid #1a2e4e"],
+[data-theme="light"] [style*="1px solid #243d66"],
+[data-theme="light"] [style*="1px solid #374151"],
+[data-theme="light"] [style*="1px solid #1f2937"],
+[data-theme="light"] [style*="1px solid #334155"],
+[data-theme="light"] [style*="1px solid #475569"],
+[data-theme="light"] [style*="1px solid #333"],
+[data-theme="light"] [style*="1px solid #222"] {
+  border-color: var(--border) !important;
+}
+
+[data-theme="light"] [style*="2px solid #2a2a2a"],
+[data-theme="light"] [style*="2px solid #1a2e4e"],
+[data-theme="light"] [style*="2px solid #243d66"],
+[data-theme="light"] [style*="2px solid #374151"] {
+  border-color: var(--border2) !important;
+}
+
+/* ── 4. LOGIN PAGE / LANDING — hero gradients ──────────────────────────── */
+/* Login page uses a dark gradient hero. In light mode, give it a cream wash. */
+[data-theme="light"] [style*="linear-gradient(135deg, #0d1626"],
+[data-theme="light"] [style*="linear-gradient(135deg,#0d1626"],
+[data-theme="light"] [style*="linear-gradient(180deg, #080c16"],
+[data-theme="light"] [style*="linear-gradient(180deg,#080c16"] {
+  background-image: linear-gradient(135deg, var(--bg-card), var(--bg2)) !important;
+}
+
+/* ── 5. SIDEBAR — already var-based mostly, but a few hardcoded ─────── */
+/* The AIAdvisorFloat bubble uses #0d1117 and #111827 — handled in section 1. */
+
+/* ── 6. SCROLLBAR in light mode — softer ──────────────────────────────── */
+[data-theme="light"] ::-webkit-scrollbar-track { background: var(--bg2); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--border2); }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+/* ── 7. SELECTION color in light mode ──────────────────────────────────── */
+[data-theme="light"] ::selection {
+  background: var(--gold-dim);
+  color: var(--text);
+}
+
+/* ── 8. SMOOTH TRANSITIONS — opt-in for common elements ────────────────── */
+/* Sirf body pe transition diya hai (line 154). Cards aur surfaces snap se
+   change ho jate hain — that's intentional, full-page transition slow lagta hai. */
