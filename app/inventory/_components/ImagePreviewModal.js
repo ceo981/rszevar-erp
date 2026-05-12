@@ -24,7 +24,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const border = 'var(--border)';
 const bg     = 'var(--bg)';
 
@@ -104,7 +104,7 @@ export default function ImagePreviewModal({
             title="Close (ESC)"
             style={{
               background: 'transparent', border: `1px solid ${border}`,
-              color: '#888', borderRadius: 6, padding: '6px 12px',
+              color: 'var(--text2)', borderRadius: 6, padding: '6px 12px',
               fontSize: 16, cursor: 'pointer', fontFamily: 'inherit',
               lineHeight: 1,
             }}>←</button>
@@ -112,7 +112,7 @@ export default function ImagePreviewModal({
             <div style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>
               {productTitle || 'Image preview'}
             </div>
-            <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>
+            <div style={{ color: 'var(--text3)', fontSize: 11, marginTop: 2 }}>
               {idx + 1} of {total}
             </div>
           </div>
@@ -127,7 +127,7 @@ export default function ImagePreviewModal({
             title="Download original (PNG/JPG, not WebP)"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: gold, color: '#000',
+              background: gold, color: 'var(--text)',
               border: `1px solid ${gold}`, borderRadius: 6,
               padding: '7px 14px', fontSize: 12, fontWeight: 700,
               cursor: 'pointer', textDecoration: 'none', fontFamily: 'inherit',
@@ -145,7 +145,7 @@ export default function ImagePreviewModal({
               title="Open product in Shopify admin"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
-                background: 'transparent', color: '#888',
+                background: 'transparent', color: 'var(--text2)',
                 border: `1px solid ${border}`, borderRadius: 6,
                 padding: '7px 12px', fontSize: 11, fontWeight: 600,
                 textDecoration: 'none', fontFamily: 'inherit',
@@ -159,7 +159,7 @@ export default function ImagePreviewModal({
             title="Close (ESC)"
             style={{
               background: 'transparent', border: 'none',
-              color: '#888', fontSize: 24, cursor: 'pointer',
+              color: 'var(--text2)', fontSize: 24, cursor: 'pointer',
               lineHeight: 1, padding: '0 4px', marginLeft: 4,
             }}>×</button>
         </div>
@@ -229,16 +229,16 @@ export default function ImagePreviewModal({
             padding: 20, overflowY: 'auto',
             fontSize: 12,
           }}>
-          <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
             Image Details
           </div>
 
           {current.alt && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ color: 'var(--text2)', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Alt text
               </div>
-              <div style={{ color: '#ddd', fontSize: 12, lineHeight: 1.5 }}>
+              <div style={{ color: 'var(--text)', fontSize: 12, lineHeight: 1.5 }}>
                 {current.alt}
               </div>
             </div>
@@ -246,18 +246,18 @@ export default function ImagePreviewModal({
 
           {dims && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ color: 'var(--text2)', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Dimensions
               </div>
-              <div style={{ color: '#ddd', fontSize: 12 }}>{dims}</div>
+              <div style={{ color: 'var(--text)', fontSize: 12 }}>{dims}</div>
             </div>
           )}
 
           <div style={{ marginBottom: 14 }}>
-            <div style={{ color: '#888', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <div style={{ color: 'var(--text2)', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Position
             </div>
-            <div style={{ color: '#ddd', fontSize: 12 }}>
+            <div style={{ color: 'var(--text)', fontSize: 12 }}>
               #{current.position || (idx + 1)}
               {idx === 0 && <span style={{ color: '#4ade80', marginLeft: 6 }}>★ Main</span>}
             </div>
@@ -265,10 +265,10 @@ export default function ImagePreviewModal({
 
           {current.id && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div style={{ color: 'var(--text2)', fontSize: 10, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Image ID
               </div>
-              <div style={{ color: '#666', fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              <div style={{ color: 'var(--text3)', fontSize: 11, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                 {current.id}
               </div>
             </div>
@@ -278,7 +278,7 @@ export default function ImagePreviewModal({
             marginTop: 18, padding: '10px 12px',
             background: 'rgba(201,169,110,0.05)',
             border: '1px solid rgba(201,169,110,0.15)',
-            borderRadius: 6, fontSize: 11, color: '#888', lineHeight: 1.5,
+            borderRadius: 6, fontSize: 11, color: 'var(--text2)', lineHeight: 1.5,
           }}>
             💡 <strong style={{ color: gold }}>Download</strong> button asli format mein file deta hai (PNG/JPG) — Shopify ka WebP nahi.
           </div>
@@ -302,7 +302,7 @@ export default function ImagePreviewModal({
               style={{
                 flex: '0 0 auto',
                 width: 48, height: 48,
-                background: '#000',
+                background: 'var(--bg)',
                 border: `2px solid ${i === idx ? gold : 'transparent'}`,
                 borderRadius: 4, padding: 0,
                 cursor: 'pointer', overflow: 'hidden',

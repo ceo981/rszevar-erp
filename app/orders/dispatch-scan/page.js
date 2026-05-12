@@ -24,12 +24,12 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 
 // Theme tokens (matching existing pages)
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const bg = 'var(--bg)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
-const text1 = 'var(--text)';
-const text2 = '#888';
+const text1 = '#e5e5e5';
+const text2 = 'var(--text2)';
 const success = '#22c55e';
 const danger = '#ef4444';
 const warn = '#f59e0b';
@@ -558,7 +558,7 @@ export default function DispatchScanPage() {
               autoFocus
               style={{
                 flex: 1, padding: '14px 16px', fontSize: 16,
-                background: '#0d0d0d', color: text1,
+                background: 'var(--bg)', color: text1,
                 border: `1.5px solid ${busy ? gold : border}`, borderRadius: 6,
                 outline: 'none', fontFamily: 'monospace',
               }}
@@ -568,7 +568,7 @@ export default function DispatchScanPage() {
               disabled={busy || generating}
               style={{
                 padding: '14px 18px', fontSize: 14, fontWeight: 600,
-                background: cameraOpen ? gold : 'var(--bg-section)',
+                background: cameraOpen ? gold : '#1a1a1a',
                 color: cameraOpen ? '#000' : text1,
                 border: `1.5px solid ${gold}`, borderRadius: 6,
                 cursor: 'pointer', whiteSpace: 'nowrap',
@@ -784,7 +784,7 @@ export default function DispatchScanPage() {
                 disabled={generating}
                 style={{
                   width: '100%', padding: '10px 12px', fontSize: 13,
-                  background: '#0d0d0d', color: text1,
+                  background: 'var(--bg)', color: text1,
                   border: `1px solid ${border}`, borderRadius: 6,
                   outline: 'none',
                 }}
@@ -854,7 +854,7 @@ export default function DispatchScanPage() {
                   fontSize: 12, color: text1, textDecoration: 'none',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
+                onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 <div>
@@ -904,7 +904,7 @@ export default function DispatchScanPage() {
               onClick={() => setCameraOpen(false)}
               style={{
                 padding: '8px 16px', fontSize: 14, fontWeight: 600,
-                background: 'var(--bg-section)', color: text1,
+                background: 'var(--bg-card)', color: text1,
                 border: `1px solid ${border}`, borderRadius: 6, cursor: 'pointer',
               }}
             >
@@ -917,7 +917,7 @@ export default function DispatchScanPage() {
           }}>
             <div id="qr-reader" style={{
               width: '100%', maxWidth: 500,
-              background: '#000', borderRadius: 8, overflow: 'hidden',
+              background: 'var(--bg)', borderRadius: 8, overflow: 'hidden',
             }} />
           </div>
           {feedback && (

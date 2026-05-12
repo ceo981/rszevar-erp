@@ -26,7 +26,7 @@ import { useUser } from '@/context/UserContext';
 import PaymentModal from '../_components/PaymentModal';
 import ImportOrderModal from '../_components/ImportOrderModal';
 
-const gold    = '#c9a96e';
+const gold    = 'var(--gold)';
 const danger  = '#ef4444';
 const warning = '#f59e0b';
 const success = '#22c55e';
@@ -259,7 +259,7 @@ export default function CustomerKhaataPage() {
           {canRecordPayment && openOrders.length > 0 && (
             <button onClick={() => setShowPaymentModal(true)}
               style={{
-                background: gold, color: '#000',
+                background: gold, color: 'var(--text)',
                 border: 'none', borderRadius: 8,
                 padding: '10px 18px', fontSize: 13, fontWeight: 600,
                 cursor: 'pointer', fontFamily: 'inherit',

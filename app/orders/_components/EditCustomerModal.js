@@ -19,7 +19,7 @@
 
 import { useState, useEffect } from 'react';
 
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const card   = 'var(--bg-card)';
 const border = 'var(--border)';
 const bg     = 'var(--bg)';
@@ -105,7 +105,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--bg-section)',
+          background: 'var(--bg-card)',
           border: `1px solid ${border}`,
           borderRadius: 12,
           width: '100%', maxWidth: 500,
@@ -123,7 +123,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
           <button onClick={onClose} disabled={saving}
             style={{
               background: 'transparent', border: 'none',
-              color: '#888', fontSize: 22, cursor: saving ? 'not-allowed' : 'pointer',
+              color: 'var(--text2)', fontSize: 22, cursor: saving ? 'not-allowed' : 'pointer',
               lineHeight: 1, padding: '0 4px',
             }}>×</button>
         </div>
@@ -131,7 +131,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
         {/* Body */}
         <div style={{ padding: 22 }}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
               Customer name
             </label>
             <input
@@ -153,7 +153,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
               Phone
             </label>
             <input
@@ -175,8 +175,8 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
-              Reason for change <span style={{ color: '#555', fontWeight: 400 }}>(audit log mein save hoga)</span>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
+              Reason for change <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(audit log mein save hoga)</span>
             </label>
             <input
               type="text"
@@ -207,7 +207,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
           )}
 
           <div style={{
-            fontSize: 11, color: '#555', marginBottom: 14,
+            fontSize: 11, color: 'var(--text3)', marginBottom: 14,
             padding: '8px 10px', background: 'rgba(201,169,110,0.05)',
             border: '1px solid rgba(201,169,110,0.15)', borderRadius: 6,
           }}>
@@ -225,7 +225,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
             disabled={saving}
             style={{
               background: 'transparent', border: `1px solid ${border}`,
-              color: '#888', borderRadius: 7,
+              color: 'var(--text2)', borderRadius: 7,
               padding: '9px 18px', fontSize: 13,
               cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             }}>
@@ -235,7 +235,7 @@ export default function EditCustomerModal({ order, performer, userEmail, onClose
             onClick={handleSave}
             disabled={saving || !dirty}
             style={{
-              background: (saving || !dirty) ? 'var(--bg-section)' : gold,
+              background: (saving || !dirty) ? '#1a1a1a' : gold,
               border: `1px solid ${(saving || !dirty) ? border : gold}`,
               color: (saving || !dirty) ? '#555' : '#000',
               borderRadius: 7,

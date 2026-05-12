@@ -2,7 +2,7 @@
 import { useUser } from '@/context/UserContext';
 import { useState, useEffect, useRef } from 'react';
 
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
@@ -13,9 +13,9 @@ function StatCard({ label, value, sub, color, icon }) {
     <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '18px 20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
           <div style={{ fontSize: 26, fontWeight: 700, color: color || '#fff' }}>{value}</div>
-          {sub && <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>{sub}</div>}
+          {sub && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{sub}</div>}
         </div>
         {icon && <span style={{ fontSize: 22 }}>{icon}</span>}
       </div>
@@ -25,20 +25,20 @@ function StatCard({ label, value, sub, color, icon }) {
 
 // ── Simple bar chart (pure CSS/SVG, no library needed) ────────
 function BarChart({ data, valueKey, labelKey, color, title, formatValue }) {
-  if (!data || data.length === 0) return <div style={{ color: '#444', padding: 20, textAlign: 'center' }}>No data</div>;
+  if (!data || data.length === 0) return <div style={{ color: 'var(--text3)', padding: 20, textAlign: 'center' }}>No data</div>;
   const max = Math.max(...data.map(d => d[valueKey] || 0)) || 1;
   const fmt2 = formatValue || (v => v);
 
   return (
     <div>
-      {title && <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
+      {title && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {data.map((d, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 90, fontSize: 11, color: '#666', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ width: 90, fontSize: 11, color: 'var(--text3)', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {d[labelKey]}
             </div>
-            <div style={{ flex: 1, background: 'var(--bg-section)', borderRadius: 4, height: 22, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: 4, height: 22, position: 'relative', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${(d[valueKey] / max) * 100}%`,
@@ -48,7 +48,7 @@ function BarChart({ data, valueKey, labelKey, color, title, formatValue }) {
                 minWidth: d[valueKey] > 0 ? 4 : 0,
               }} />
             </div>
-            <div style={{ width: 80, fontSize: 11, color: '#888', flexShrink: 0 }}>{fmt2(d[valueKey])}</div>
+            <div style={{ width: 80, fontSize: 11, color: 'var(--text2)', flexShrink: 0 }}>{fmt2(d[valueKey])}</div>
           </div>
         ))}
       </div>
@@ -58,7 +58,7 @@ function BarChart({ data, valueKey, labelKey, color, title, formatValue }) {
 
 // ── Line chart (SVG) ──────────────────────────────────────────
 function LineChart({ data, title }) {
-  if (!data || data.length < 2) return <div style={{ color: '#444', padding: 20, textAlign: 'center' }}>Not enough data</div>;
+  if (!data || data.length < 2) return <div style={{ color: 'var(--text3)', padding: 20, textAlign: 'center' }}>Not enough data</div>;
 
   const W = 600, H = 160, PAD = { t: 10, r: 20, b: 30, l: 50 };
   const iW = W - PAD.l - PAD.r;
@@ -84,12 +84,12 @@ function LineChart({ data, title }) {
 
   return (
     <div>
-      {title && <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
+      {title && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
         {/* Grid lines */}
         {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
           <g key={i}>
-            <line x1={PAD.l} y1={PAD.t + iH * (1-t)} x2={PAD.l + iW} y2={PAD.t + iH * (1-t)} stroke="var(--bg-section)" strokeWidth="1" />
+            <line x1={PAD.l} y1={PAD.t + iH * (1-t)} x2={PAD.l + iW} y2={PAD.t + iH * (1-t)} stroke="#1a1a1a" strokeWidth="1" />
             <text x={PAD.l - 6} y={PAD.t + iH * (1-t) + 4} fill="#444" fontSize="10" textAnchor="end">
               {fmtK(maxRev * t)}
             </text>
@@ -141,11 +141,11 @@ function DonutChart({ data, title }) {
 
   return (
     <div>
-      {title && <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
+      {title && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         <svg viewBox="0 0 160 160" style={{ width: 120, flexShrink: 0 }}>
           {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} opacity="0.85" />)}
-          <circle cx="80" cy="80" r="35" fill="var(--bg-section)" />
+          <circle cx="80" cy="80" r="35" fill="#0f0f0f" />
           <text x="80" y="76" fill="#fff" fontSize="12" fontWeight="700" textAnchor="middle">{data.length}</text>
           <text x="80" y="90" fill="#555" fontSize="9" textAnchor="middle">couriers</text>
         </svg>
@@ -153,9 +153,9 @@ function DonutChart({ data, title }) {
           {slices.map((s, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: s.color, flexShrink: 0 }} />
-              <span style={{ color: '#888' }}>{s.label}</span>
+              <span style={{ color: 'var(--text2)' }}>{s.label}</span>
               <span style={{ color: 'var(--text)', fontWeight: 600, marginLeft: 'auto' }}>{s.value}</span>
-              <span style={{ color: '#555', fontSize: 11 }}>({(s.pct * 100).toFixed(0)}%)</span>
+              <span style={{ color: 'var(--text3)', fontSize: 11 }}>({(s.pct * 100).toFixed(0)}%)</span>
             </div>
           ))}
         </div>
@@ -190,7 +190,7 @@ export default function AnalyticsPage() {
     { label: 'Delivered', value: s.delivered_count || 0, color: '#22c55e', bg: '#22c55e22' },
     { label: 'Pending', value: s.pending_count || 0, color: '#fb923c', bg: '#fb923c22' },
     { label: 'RTO', value: s.rto_count || 0, color: '#ef4444', bg: '#ef444422' },
-    { label: 'Cancelled', value: s.cancelled_count || 0, color: '#555', bg: '#55555522' },
+    { label: 'Cancelled', value: s.cancelled_count || 0, color: 'var(--text3)', bg: '#55555522' },
   ];
 
   return (
@@ -199,12 +199,12 @@ export default function AnalyticsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Analytics</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Sales performance & insights</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text3)' }}>Sales performance & insights</p>
         </div>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', padding: 4, borderRadius: 9 }}>
           {[['7', '7 Days'], ['30', '30 Days'], ['60', '60 Days'], ['90', '90 Days']].map(([v, l]) => (
             <button key={v} onClick={() => setRange(v)}
-              style={{ background: range === v ? 'var(--bg-hover)' : 'transparent', border: `1px solid ${range === v ? 'var(--border)' : 'transparent'}`, borderRadius: 7, padding: '6px 14px', fontSize: 12, color: range === v ? gold : '#555', fontWeight: range === v ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ background: range === v ? '#1e1e1e' : 'transparent', border: `1px solid ${range === v ? 'var(--border)' : 'transparent'}`, borderRadius: 7, padding: '6px 14px', fontSize: 12, color: range === v ? gold : '#555', fontWeight: range === v ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
               {l}
             </button>
           ))}
@@ -212,7 +212,7 @@ export default function AnalyticsPage() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 80, color: '#444' }}>Loading analytics...</div>
+        <div style={{ textAlign: 'center', padding: 80, color: 'var(--text3)' }}>Loading analytics...</div>
       ) : (
         <>
           {/* Summary Cards */}
@@ -287,8 +287,8 @@ export default function AnalyticsPage() {
               />
               <div style={{ marginTop: 16 }}>
                 {(data?.couriers || []).map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid var(--bg-section)`, fontSize: 12 }}>
-                    <span style={{ color: '#888' }}>{c.courier}</span>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid #1a1a1a`, fontSize: 12 }}>
+                    <span style={{ color: 'var(--text2)' }}>{c.courier}</span>
                     <span style={{ color: '#22c55e' }}>{c.delivered} delivered</span>
                     <span style={{ color: '#ef4444' }}>{c.rto} RTO</span>
                   </div>
@@ -305,13 +305,13 @@ export default function AnalyticsPage() {
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${border}` }}>
                     {['Date', 'Orders', ...(canViewFinancial ? ['Revenue'] : []), 'Delivered', 'RTO'].map(h => (
-                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', color: '#555', fontWeight: 500 }}>{h}</th>
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {[...(data?.daily || [])].reverse().map((d, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-section)' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}>
                       <td style={{ padding: '10px 16px', color: gold }}>{d.date}</td>
                       <td style={{ padding: '10px 16px', color: 'var(--text)' }}>{d.orders}</td>
                       {canViewFinancial && <td style={{ padding: '10px 16px', color: '#22c55e', fontWeight: 600 }}>{fmt(d.revenue)}</td>}

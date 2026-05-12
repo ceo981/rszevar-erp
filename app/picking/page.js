@@ -21,7 +21,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 
@@ -38,7 +38,7 @@ const STATUS_DISPLAY = {
 };
 
 function StatusPill({ status }) {
-  const s = STATUS_DISPLAY[status] || { label: status || 'Unknown', color: '#888', bg: 'var(--bg-section)' };
+  const s = STATUS_DISPLAY[status] || { label: status || 'Unknown', color: 'var(--text2)', bg: '#1a1a1a' };
   return (
     <span style={{
       fontSize: 11, padding: '4px 12px', borderRadius: 4,
@@ -78,12 +78,12 @@ export default function PickingPage() {
       <div style={{ padding: 60, textAlign: 'center', maxWidth: 500, margin: '40px auto', fontFamily: 'Inter, sans-serif' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
         <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 18 }}>
           Picking page ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>picking.view</code>{' '}
+          <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: 4 }}>picking.view</code>{' '}
           permission grant karwane ko bolo.
         </div>
-        <Link href="/" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/" style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
           ← Dashboard pe wapas
         </Link>
       </div>
@@ -167,7 +167,7 @@ export default function PickingPage() {
       <div style={{ textAlign: 'center', marginBottom: 28 }}>
         <div style={{ fontSize: 40, marginBottom: 6 }}>🏷️</div>
         <div style={{ fontSize: 24, fontWeight: 700, color: gold }}>Pick Order</div>
-        <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 4 }}>
           Order ID dalo, items + quantity dekho, shelves se nikalo
         </div>
       </div>
@@ -198,7 +198,7 @@ export default function PickingPage() {
             onClick={search}
             disabled={searching || !orderNum}
             style={{
-              background: searching || !orderNum ? 'var(--bg-section)' : gold,
+              background: searching || !orderNum ? '#1a1a1a' : gold,
               color: searching || !orderNum ? '#444' : '#000',
               border: 'none',
               borderRadius: 10,
@@ -216,7 +216,7 @@ export default function PickingPage() {
         {msg && !order && (
           <div style={{
             marginTop: 12,
-            background: msg.startsWith('❌') ? 'var(--red-dim)' : '#1a1000',
+            background: msg.startsWith('❌') ? '#1a0000' : '#1a1000',
             border: '1px solid ' + (msg.startsWith('❌') ? '#ef4444' : '#f59e0b'),
             borderRadius: 8,
             padding: 12,
@@ -244,10 +244,10 @@ export default function PickingPage() {
                 <div style={{ fontSize: 24, fontWeight: 800, color: gold, lineHeight: 1.1 }}>
                   {order.order_number}
                 </div>
-                <div style={{ fontSize: 12, color: '#666', marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <StatusPill status={order.status} />
                   <span>·</span>
-                  <span style={{ color: '#999' }}>
+                  <span style={{ color: 'var(--text2)' }}>
                     {items.length} item{items.length === 1 ? '' : 's'}, {totalUnits} unit{totalUnits === 1 ? '' : 's'}
                   </span>
                 </div>
@@ -256,9 +256,9 @@ export default function PickingPage() {
                 onClick={reset}
                 title="Clear & search again"
                 style={{
-                  background: 'var(--bg-section)',
-                  border: '1px solid var(--border2)',
-                  color: '#888',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text2)',
                   borderRadius: 8,
                   padding: '8px 14px',
                   fontSize: 13,
@@ -374,7 +374,7 @@ export default function PickingPage() {
                         {isPicked ? '✓' : `×${item.quantity}`}
                       </div>
                       {!isPicked && (
-                        <div style={{ fontSize: 9, color: '#555', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                           tap pick
                         </div>
                       )}
@@ -390,7 +390,7 @@ export default function PickingPage() {
               borderRadius: 12,
               padding: 20,
               textAlign: 'center',
-              color: '#666',
+              color: 'var(--text3)',
               fontSize: 13,
               marginBottom: 20,
             }}>
@@ -404,7 +404,7 @@ export default function PickingPage() {
             disabled={!allPicked}
             style={{
               width: '100%',
-              background: allPicked ? gold : 'var(--bg-section)',
+              background: allPicked ? gold : '#1a1a1a',
               color: allPicked ? '#000' : '#555',
               border: allPicked ? 'none' : '2px dashed #333',
               borderRadius: 12,
@@ -435,7 +435,7 @@ export default function PickingPage() {
           border: `1px solid ${gold}22`,
           borderRadius: 8,
           fontSize: 12,
-          color: '#888',
+          color: 'var(--text2)',
           lineHeight: 1.6,
           textAlign: 'center',
         }}>

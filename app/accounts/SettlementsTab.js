@@ -15,9 +15,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const border = 'var(--border)';
-const card   = 'var(--bg)';
+const card   = 'var(--bg-card)';
 
 const COURIERS = [
   { id: 'Leopards', label: '🐆 Leopards', format: 'PDF / XLS', accept: '.pdf,.xls,.xlsx' },
@@ -96,7 +96,7 @@ function UploadSection({ onDone }) {
   return (
     <div style={{ maxWidth: 700, marginBottom: 36 }}>
       {result && (
-        <div style={{ background: 'var(--green-dim)', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+        <div style={{ background: '#001a0a', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', marginBottom: 12 }}>✅ Settlement Applied</div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
             {[
@@ -108,18 +108,18 @@ function UploadSection({ onDone }) {
               ['📋 Total Parsed',    result.total_parsed,  gold],
             ].map(([label, val, color]) => (
               <div key={label} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
-                <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>{label}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color }}>{val}</div>
               </div>
             ))}
           </div>
           {result.meta?.totalDeliveryCharges > 0 && (
-            <div style={{ fontSize: 12, color: '#555', borderTop: `1px solid ${border}`, paddingTop: 10 }}>
+            <div style={{ fontSize: 12, color: 'var(--text3)', borderTop: `1px solid ${border}`, paddingTop: 10 }}>
               📦 Delivery Charges: <span style={{ color: '#f59e0b' }}>Rs {Number(result.meta.totalDeliveryCharges).toLocaleString()}</span>
               {result.meta?.totalWHT > 0 && <> &nbsp;·&nbsp; Taxes: <span style={{ color: '#ef4444' }}>Rs {Number(result.meta.totalWHT + (result.meta.totalGST || 0)).toLocaleString()}</span></>}
             </div>
           )}
-          <button onClick={reset} style={{ marginTop: 14, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={reset} style={{ marginTop: 14, background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
             🔄 Upload Another File
           </button>
         </div>
@@ -131,7 +131,7 @@ function UploadSection({ onDone }) {
 
           {/* Courier picker — 3-col desktop, 1-col mobile */}
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Courier</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Courier</div>
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 8 }}>
               {COURIERS.map(c => (
                 <button
@@ -144,7 +144,7 @@ function UploadSection({ onDone }) {
                     fontFamily: 'inherit',
                     fontSize: 13,
                     fontWeight: 600,
-                    background: courier === c.id ? gold + '22' : 'var(--bg)',
+                    background: courier === c.id ? gold + '22' : '#0a0a0a',
                     border: `1px solid ${courier === c.id ? gold : border}`,
                     color: courier === c.id ? gold : '#666',
                   }}
@@ -157,7 +157,7 @@ function UploadSection({ onDone }) {
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>File ({selectedCourier?.format})</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>File ({selectedCourier?.format})</div>
             <input
               type="file"
               accept={selectedCourier?.accept}
@@ -169,11 +169,11 @@ function UploadSection({ onDone }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 20 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reference No (optional)</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Reference No (optional)</div>
               <input value={referenceNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. CPR-LDHDY348060" style={{ ...inp, width: '100%' }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Settlement Date</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Settlement Date</div>
               <input type="date" value={settledAt} onChange={e => setSettledAt(e.target.value)} style={{ ...inp, width: '100%' }} />
             </div>
           </div>
@@ -196,8 +196,8 @@ function UploadSection({ onDone }) {
                   ['⏩ Skip (zero amt)', preview.skipped,      '#555'],
                   ['📋 Total',          preview.total_parsed, gold],
                 ].map(([label, val, color]) => (
-                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: 'var(--bg)', borderRadius: 7, border: `1px solid ${border}` }}>
-                    <div style={{ fontSize: 9, color: '#555', marginBottom: 3 }}>{label}</div>
+                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: 'var(--bg-card)', borderRadius: 7, border: `1px solid ${border}` }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color }}>{val}</div>
                   </div>
                 ))}
@@ -215,7 +215,7 @@ function UploadSection({ onDone }) {
                 disabled={!file || loading}
                 style={{
                   flex: 1,
-                  background: file ? gold + '22' : 'var(--bg)',
+                  background: file ? gold + '22' : '#0a0a0a',
                   border: `1px solid ${file ? gold : border}`,
                   color: file ? gold : '#555',
                   borderRadius: 8,
@@ -233,7 +233,7 @@ function UploadSection({ onDone }) {
                 <button
                   onClick={() => setPreview(null)}
                   disabled={loading}
-                  style={{ flex: 1, background: 'var(--bg)', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ flex: 1, background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   ✕ Back
                 </button>
@@ -287,7 +287,7 @@ function HistorySection({ refresh }) {
               key={c}
               onClick={() => setFilter(c)}
               style={{
-                background: filter === c ? 'var(--bg-hover)' : 'transparent',
+                background: filter === c ? '#1e1e1e' : 'transparent',
                 border: `1px solid ${filter === c ? 'var(--border)' : 'transparent'}`,
                 color: filter === c ? gold : '#666',
                 borderRadius: 6,
@@ -298,17 +298,17 @@ function HistorySection({ refresh }) {
               }}
             >{c}</button>
           ))}
-          <button onClick={load} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#666', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>⟳</button>
+          <button onClick={load} style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text3)', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>⟳</button>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 30, textAlign: 'center', color: '#444', fontSize: 13 }}>Loading...</div>
+        <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 30, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading...</div>
       ) : filtered.length === 0 ? (
-        <div style={{ background: card, border: `1px dashed ${border}`, borderRadius: 10, padding: 32, textAlign: 'center', color: '#444' }}>
+        <div style={{ background: card, border: `1px dashed ${border}`, borderRadius: 10, padding: 32, textAlign: 'center', color: 'var(--text3)' }}>
           <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.5 }}>📦</div>
-          <div style={{ fontSize: 13, color: '#888' }}>No records yet</div>
-          <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>Upload your first settlement file to begin</div>
+          <div style={{ fontSize: 13, color: 'var(--text2)' }}>No records yet</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Upload your first settlement file to begin</div>
         </div>
       ) : isMobile ? (
         // Mobile cards
@@ -319,31 +319,31 @@ function HistorySection({ refresh }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                     <span style={{ color: courierColor[s.courier] || '#888', fontWeight: 700, fontSize: 13 }}>{s.courier}</span>
-                    <span style={{ fontSize: 11, color: '#666' }}>{fmtDate(s.invoice_date || s.created_at)}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDate(s.invoice_date || s.created_at)}</span>
                   </div>
-                  {s.invoice_number && <div style={{ fontSize: 10, color: '#555', fontFamily: 'monospace' }}>Ref: {s.invoice_number}</div>}
+                  {s.invoice_number && <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace' }}>Ref: {s.invoice_number}</div>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 17, fontWeight: 800, color: '#22c55e', letterSpacing: -0.3 }}>{fmt(s.net_amount)}</div>
-                  <div style={{ fontSize: 10, color: '#555' }}>net</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>net</div>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, paddingTop: 8, borderTop: `1px solid ${border}` }}>
                 <div>
-                  <div style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>Parcels</div>
-                  <div style={{ fontSize: 13, color: '#ddd', fontWeight: 600 }}>{s.total_parcels || '—'}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Parcels</div>
+                  <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{s.total_parcels || '—'}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>COD</div>
-                  <div style={{ fontSize: 13, color: '#ddd', fontWeight: 600 }}>{fmt(s.total_cod_collected)}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>COD</div>
+                  <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{fmt(s.total_cod_collected)}</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.5 }}>Charges</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Charges</div>
                   <div style={{ fontSize: 13, color: '#f59e0b', fontWeight: 600 }}>{fmt(s.courier_charges)}</div>
                 </div>
               </div>
               {s.discrepancy_notes && (
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${border}`, fontSize: 11, color: '#555', wordBreak: 'break-word' }}>
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${border}`, fontSize: 11, color: 'var(--text3)', wordBreak: 'break-word' }}>
                   {s.discrepancy_notes.split(' | ').slice(0, 3).join(' · ')}
                 </div>
               )}
@@ -357,23 +357,23 @@ function HistorySection({ refresh }) {
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
                 {['Date', 'Courier', 'Ref#', 'Parcels', 'Total COD', 'Charges', 'Net', 'Notes'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((s, i) => (
-                <tr key={s.id} style={{ borderBottom: `1px solid #111`, background: i % 2 === 0 ? 'transparent' : 'var(--bg)' }}>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{fmtDate(s.invoice_date || s.created_at)}</td>
+                <tr key={s.id} style={{ borderBottom: `1px solid #111`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{fmtDate(s.invoice_date || s.created_at)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ color: courierColor[s.courier] || '#888', fontWeight: 600, fontSize: 12 }}>{s.courier}</span>
                   </td>
-                  <td style={{ padding: '10px 14px', color: '#666', fontSize: 12 }}>{s.invoice_number || '—'}</td>
-                  <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.total_parcels || '—'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: 12 }}>{s.invoice_number || '—'}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.total_parcels || '—'}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text)', fontWeight: 600 }}>{fmt(s.total_cod_collected)}</td>
                   <td style={{ padding: '10px 14px', color: '#f59e0b' }}>{fmt(s.courier_charges)}</td>
                   <td style={{ padding: '10px 14px', color: '#22c55e', fontWeight: 600 }}>{fmt(s.net_amount)}</td>
-                  <td style={{ padding: '10px 14px', color: '#444', fontSize: 11, maxWidth: 200 }}>
+                  <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: 11, maxWidth: 200 }}>
                     {s.discrepancy_notes ? s.discrepancy_notes.split(' | ').slice(0, 3).join(' · ') : '—'}
                   </td>
                 </tr>

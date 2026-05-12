@@ -30,12 +30,12 @@ const inpStyle = {
   fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
 };
 const btnPrimary = {
-  background: gold, border: 'none', color: '#000', borderRadius: 6,
+  background: gold, border: 'none', color: 'var(--text)', borderRadius: 6,
   padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
   fontFamily: 'inherit',
 };
 const btnGhost = {
-  background: 'transparent', border: `1px solid ${border}`, color: '#ccc',
+  background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)',
   borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500,
   cursor: 'pointer', fontFamily: 'inherit',
 };
@@ -153,19 +153,19 @@ function ProductPicker({ onClose, onAdd }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Add products</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: '14px 20px', borderBottom: `1px solid ${border}` }}>
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
             placeholder="🔍 Search by name or SKU..." style={inpStyle} />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-          {loading && <div style={{ textAlign: 'center', padding: 20, color: '#666' }}>Searching...</div>}
+          {loading && <div style={{ textAlign: 'center', padding: 20, color: 'var(--text3)' }}>Searching...</div>}
           {!loading && query.length >= 2 && results.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 20, color: '#666' }}>Koi product nahi mila</div>
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--text3)' }}>Koi product nahi mila</div>
           )}
           {!loading && query.length < 2 && (
-            <div style={{ textAlign: 'center', padding: 20, color: '#666' }}>Type karo (min 2 chars)</div>
+            <div style={{ textAlign: 'center', padding: 20, color: 'var(--text3)' }}>Type karo (min 2 chars)</div>
           )}
           {results.map(p => {
             const key = p.shopify_variant_id;
@@ -186,13 +186,13 @@ function ProductPicker({ onClose, onAdd }) {
                 {p.image_url ? (
                   <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer', filter: isOutOfStock ? 'grayscale(80%)' : 'none' }} onClick={() => toggle(p)} />
                 ) : (
-                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-section)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}>💍</div>
+                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}>💍</div>
                 )}
                 <div style={{ flex: 1, minWidth: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }} onClick={() => toggle(p)}>
                   <div style={{ fontSize: 13, color: isOutOfStock ? '#888' : '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isOutOfStock ? 'line-through' : 'none' }}>
                     {p.title || p.parent_title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#666', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span>SKU: {p.sku || '—'}</span>
                     {isOutOfStock ? (
                       <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid #ef4444', padding: '1px 8px', borderRadius: 10, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
@@ -220,7 +220,7 @@ function ProductPicker({ onClose, onAdd }) {
           padding: '14px 20px', borderTop: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 12, color: '#999' }}>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
             {Object.keys(selected).length} product{Object.keys(selected).length === 1 ? '' : 's'} selected
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -283,11 +283,11 @@ function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
             {isEdit ? 'Edit discount' : 'Add discount'}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: 20 }}>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            Item: <span style={{ color: '#ddd' }}>{item.title}</span>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
+            Item: <span style={{ color: 'var(--text)' }}>{item.title}</span>
           </div>
 
           {isEdit && (
@@ -322,7 +322,7 @@ function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
               {type === 'PERCENTAGE' ? 'Percentage (1-100)' : 'Amount (Rs)'}
             </div>
             <input type="number" min="0" step="0.01" value={value}
@@ -332,7 +332,7 @@ function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Reason (optional)</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>Reason (optional)</div>
             <input type="text" value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="e.g. Loyalty discount"
@@ -393,11 +393,11 @@ function CustomItemModal({ onClose, onAdd }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Add custom item</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: 20 }}>
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
               Item name <span style={{ color: '#e8a76d' }}>*</span>
             </div>
             <input ref={titleRef} type="text" value={title}
@@ -408,7 +408,7 @@ function CustomItemModal({ onClose, onAdd }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
                 Price (Rs) <span style={{ color: '#e8a76d' }}>*</span>
               </div>
               <input type="number" min="0" step="0.01" value={price}
@@ -416,7 +416,7 @@ function CustomItemModal({ onClose, onAdd }) {
                 placeholder="0.00" style={inpStyle} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>Quantity</div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>Quantity</div>
               <input type="number" min="1" value={quantity}
                 onChange={e => setQuantity(e.target.value)}
                 style={inpStyle} />
@@ -426,7 +426,7 @@ function CustomItemModal({ onClose, onAdd }) {
           <div style={{ marginBottom: 6 }}>
             <label style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 13, color: '#ccc', cursor: 'pointer', padding: '6px 0',
+              fontSize: 13, color: 'var(--text2)', cursor: 'pointer', padding: '6px 0',
             }}>
               <input type="checkbox" checked={taxable}
                 onChange={e => setTaxable(e.target.checked)}
@@ -435,7 +435,7 @@ function CustomItemModal({ onClose, onAdd }) {
             </label>
             <label style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 13, color: '#ccc', cursor: 'pointer', padding: '6px 0',
+              fontSize: 13, color: 'var(--text2)', cursor: 'pointer', padding: '6px 0',
             }}>
               <input type="checkbox" checked={physical}
                 onChange={e => setPhysical(e.target.checked)}
@@ -449,7 +449,7 @@ function CustomItemModal({ onClose, onAdd }) {
               marginTop: 10, padding: '8px 12px', borderRadius: 5,
               background: 'rgba(201,169,110,0.06)',
               border: `1px solid rgba(201,169,110,0.2)`,
-              fontSize: 12, color: '#aaa',
+              fontSize: 12, color: 'var(--text2)',
               display: 'flex', justifyContent: 'space-between',
             }}>
               <span>Line total ({quantity} × {fmt(price)})</span>
@@ -906,9 +906,9 @@ export default function OrderEditPage() {
       <div style={{ padding: 40, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
         <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
-        <div style={{ fontSize: 13, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 18, lineHeight: 1.5 }}>
           Order line items edit karne ki ijazat tumhe nahi hai. CEO se request karo
-          ya <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>orders.edit_items</code> permission grant karwane ko bolo.
+          ya <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: 4 }}>orders.edit_items</code> permission grant karwane ko bolo.
         </div>
         <Link href={`/orders/${id}`} style={{ ...btnGhost, display: 'inline-block', textDecoration: 'none' }}>
           ← Order pe wapas jao
@@ -920,9 +920,9 @@ export default function OrderEditPage() {
   // ── Loading / error states ──
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text2)' }}>
         <div style={{ fontSize: 14, marginBottom: 8 }}>Edit session shuru ho rahi hai...</div>
-        <div style={{ fontSize: 11, color: '#555' }}>Shopify se calculatedOrder draft create ho raha hai</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Shopify se calculatedOrder draft create ho raha hai</div>
       </div>
     );
   }
@@ -930,7 +930,7 @@ export default function OrderEditPage() {
     return (
       <div style={{ padding: 24, maxWidth: 720, margin: '0 auto' }}>
         <div style={{
-          padding: 18, background: '#2a1818', border: '1px solid #5a2222',
+          padding: 18, background: 'var(--red-dim)', border: '1px solid #5a2222',
           borderRadius: 8, color: '#ff8080', fontSize: 13, marginBottom: 14,
         }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>❌ Edit nahi ho sakta</div>
@@ -957,14 +957,14 @@ export default function OrderEditPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <Link href={`/orders/${id}`} style={{
-            color: '#888', textDecoration: 'none', fontSize: 13,
+            color: 'var(--text2)', textDecoration: 'none', fontSize: 13,
             padding: '6px 10px', border: `1px solid ${border}`, borderRadius: 6,
           }}>← Back</Link>
           <div>
             <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>
               Edit order {orderNumber ? `#${orderNumber}` : ''}
             </div>
-            <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
               {hasChanges ? '● Unsaved changes' : 'No changes yet'}
               {hasChanges && totalDelta !== 0 && (
                 <span style={{ marginLeft: 8, color: totalDelta > 0 ? '#7dc88a' : '#e8a76d' }}>
@@ -1004,7 +1004,7 @@ export default function OrderEditPage() {
           <Card title="Items" right={
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => setShowCustom(true)} disabled={busy} style={{
-                background: 'transparent', border: `1px solid ${border}`, color: '#ccc',
+                background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)',
                 borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500,
                 cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.5 : 1,
                 fontFamily: 'inherit',
@@ -1018,7 +1018,7 @@ export default function OrderEditPage() {
             </div>
           }>
             {calcOrder.items.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: '#666', fontSize: 12 }}>
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
                 Order khaali hai. Kam-az-kam ek item add karo.
               </div>
             ) : (
@@ -1037,7 +1037,7 @@ export default function OrderEditPage() {
                         }} />
                       ) : (
                         <div style={{
-                          width: 56, height: 56, borderRadius: 6, background: 'var(--bg-section)',
+                          width: 56, height: 56, borderRadius: 6, background: 'var(--bg-card)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 22, flexShrink: 0,
                         }}>💍</div>
@@ -1046,7 +1046,7 @@ export default function OrderEditPage() {
                         <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
                           {item.title || item.product_title || 'Unknown product'}
                         </div>
-                        <div style={{ fontSize: 11, color: '#666', marginTop: 3 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
                           {item.variant_title && item.variant_title !== 'Default Title' && (
                             <span style={{ marginRight: 8 }}>{item.variant_title}</span>
                           )}
@@ -1111,7 +1111,7 @@ export default function OrderEditPage() {
                           style={{
                             width: 28, height: 28, borderRadius: 4,
                             background: 'transparent', border: `1px solid ${border}`,
-                            color: '#ccc', fontSize: 14, fontWeight: 600,
+                            color: 'var(--text2)', fontSize: 14, fontWeight: 600,
                             cursor: (busy || locked || item.quantity <= 1) ? 'not-allowed' : 'pointer',
                             opacity: (busy || locked || item.quantity <= 1) ? 0.4 : 1,
                             fontFamily: 'inherit',
@@ -1125,7 +1125,7 @@ export default function OrderEditPage() {
                           style={{
                             width: 28, height: 28, borderRadius: 4,
                             background: 'transparent', border: `1px solid ${border}`,
-                            color: '#ccc', fontSize: 14, fontWeight: 600,
+                            color: 'var(--text2)', fontSize: 14, fontWeight: 600,
                             cursor: (busy || locked) ? 'not-allowed' : 'pointer',
                             opacity: (busy || locked) ? 0.4 : 1,
                             fontFamily: 'inherit',
@@ -1141,7 +1141,7 @@ export default function OrderEditPage() {
               </div>
             )}
             {itemsDelta !== 0 && (
-              <div style={{ marginTop: 10, fontSize: 11, color: '#888' }}>
+              <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text2)' }}>
                 {itemsDelta > 0 ? `+${itemsDelta}` : itemsDelta} items vs original
               </div>
             )}
@@ -1157,7 +1157,7 @@ export default function OrderEditPage() {
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, color: 'var(--text)' }}>{sl.title || 'Shipping'}</div>
-                    <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                       Current: {fmt(sl.price)}
                     </div>
                   </div>
@@ -1177,7 +1177,7 @@ export default function OrderEditPage() {
             ) : (
               // No shipping line on this order — give option to add
               <div>
-                <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.5 }}>
                   Is order pe shipping fee abhi nahi lagi.
                   Customer ne shayad free-ship checkout kiya tha — agar manual shipping fee
                   add karni hai to neeche amount daalo.
@@ -1198,7 +1198,7 @@ export default function OrderEditPage() {
                   <button onClick={addShipping}
                     disabled={busy || !newShipPrice}
                     style={{
-                      background: gold, color: '#000', border: 'none',
+                      background: gold, color: 'var(--text)', border: 'none',
                       borderRadius: 6, padding: '8px 16px', fontSize: 12, fontWeight: 700,
                       cursor: (busy || !newShipPrice) ? 'not-allowed' : 'pointer',
                       opacity: (busy || !newShipPrice) ? 0.4 : 1,
@@ -1243,7 +1243,7 @@ export default function OrderEditPage() {
 
           <Card title="Commit changes">
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 5 }}>
                 Reason (audit log mein save hoga)
               </div>
               <textarea value={reason} onChange={e => setReason(e.target.value)}
@@ -1253,7 +1253,7 @@ export default function OrderEditPage() {
             </div>
             <label style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              fontSize: 12, color: '#ccc', marginBottom: 14, cursor: 'pointer',
+              fontSize: 12, color: 'var(--text2)', marginBottom: 14, cursor: 'pointer',
             }}>
               <input type="checkbox" checked={notify}
                 onChange={e => setNotify(e.target.checked)}
@@ -1268,7 +1268,7 @@ export default function OrderEditPage() {
               }}>
               {committing ? 'Saving to Shopify...' : 'Save changes'}
             </button>
-            <div style={{ marginTop: 10, fontSize: 10, color: '#666', lineHeight: 1.5 }}>
+            <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
               Save karne par Shopify pe atomic edit hota hai aur ERP turant resync ho jata hai. Webhook safety net 5 sec mein verify karta hai.
             </div>
           </Card>
@@ -1309,7 +1309,7 @@ function Row({ label, value, color }) {
       display: 'flex', justifyContent: 'space-between',
       padding: '5px 0', fontSize: 13,
     }}>
-      <span style={{ color: '#aaa' }}>{label}</span>
+      <span style={{ color: 'var(--text2)' }}>{label}</span>
       <span style={{ color: color || '#ddd' }}>{value}</span>
     </div>
   );

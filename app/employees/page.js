@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
 
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
@@ -113,15 +113,15 @@ function EmployeeModal({ emp, onClose, onSave }) {
 
   const inp = (label, key, type = 'text', opts = {}) => (
     <div>
-      <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>{label}</div>
       {opts.select ? (
         <select value={form[key] || ''} onChange={e => setForm(f => ({...f, [key]: e.target.value}))}
-          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit' }}>
+          style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit' }}>
           {opts.options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
         <input type={type} value={form[key] || ''} onChange={e => setForm(f => ({...f, [key]: e.target.value}))} placeholder={opts.placeholder || ''}
-          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }} />
+          style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }} />
       )}
     </div>
   );
@@ -134,10 +134,10 @@ function EmployeeModal({ emp, onClose, onSave }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{emp?.id ? 'Edit Employee' : 'Add Employee'}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -152,78 +152,78 @@ function EmployeeModal({ emp, onClose, onSave }) {
 
           {sectionTitle('SALARY & ADVANCE')}
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Monthly Salary (Rs) *</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>Monthly Salary (Rs) *</div>
             <input
               type="number"
               value={form.salary || ''}
               onChange={e => handleSalaryChange(e.target.value)}
               placeholder="e.g. 25000"
-              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
             />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>
               Advance Limit (Rs)
-              <span style={{ color: '#444', marginLeft: 6 }}>— auto 30% of salary</span>
+              <span style={{ color: 'var(--text3)', marginLeft: 6 }}>— auto 30% of salary</span>
             </div>
             <input
               type="number"
               value={form.advance_limit || ''}
               onChange={e => handleAdvanceChange(e.target.value)}
               placeholder="Auto calculated"
-              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--gold)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
             />
           </div>
 
           {sectionTitle('OFFICE TIMINGS')}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Start Time</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>Start Time</div>
               <input type="time" value={form.office_start || '11:00'} onChange={e => setForm(f => ({...f, office_start: e.target.value}))}
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>End Time</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>End Time</div>
               <input type="time" value={form.office_end || '21:00'} onChange={e => setForm(f => ({...f, office_end: e.target.value}))}
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Time Bonus (Rs)
-                <span style={{ color: '#444', marginLeft: 6 }}>— agar month mein allowed late limit ke andar raha</span>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>Time Bonus (Rs)
+                <span style={{ color: 'var(--text3)', marginLeft: 6 }}>— agar month mein allowed late limit ke andar raha</span>
               </div>
               <input type="number" value={form.time_bonus_amount || ''} onChange={e => setForm(f => ({...f, time_bonus_amount: e.target.value}))}
                 placeholder="e.g. 500"
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--gold)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Yearly Leaves Allowed
-                <span style={{ color: '#444', marginLeft: 6 }}>— free leaves, baad mein salary cut</span>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 5 }}>Yearly Leaves Allowed
+                <span style={{ color: 'var(--text3)', marginLeft: 6 }}>— free leaves, baad mein salary cut</span>
               </div>
               <input type="number" value={form.yearly_leaves_allowed || '14'} onChange={e => setForm(f => ({...f, yearly_leaves_allowed: e.target.value}))}
                 placeholder="e.g. 14"
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
 
           <div>
             <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 5 }}>Leaves Already Used This Year (ERP se pehle)
-              <span style={{ color: '#444', marginLeft: 6 }}>— Oct se ab tak kitni leaves le chuka hai ERP track karne se pehle</span>
+              <span style={{ color: 'var(--text3)', marginLeft: 6 }}>— Oct se ab tak kitni leaves le chuka hai ERP track karne se pehle</span>
             </div>
             <input type="number" value={form.leaves_opening_used || '0'} onChange={e => setForm(f => ({...f, leaves_opening_used: e.target.value}))}
               placeholder="0"
-              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid #ef444444`, color: '#ef4444', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+              style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid #ef444444`, color: '#ef4444', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
           </div>
 
           {sectionTitle('NOTES')}
           <div>
             <textarea value={form.notes || ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={2} placeholder="Optional..."
-              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
 
           {msg && <div style={{ color: '#ef4444', fontSize: 12 }}>{msg}</div>}
-          <button onClick={save} disabled={saving} style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+          <button onClick={save} disabled={saving} style={{ background: gold, color: 'var(--text)', border: 'none', borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
             {saving ? 'Saving...' : emp?.id ? 'Save Changes' : 'Add Employee'}
           </button>
         </div>
@@ -261,13 +261,13 @@ function SalaryPanel({ emp, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: gold }}>{emp.name} — Salary</div>
-            <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>Monthly: {fmt(emp.salary)} · Total paid: {fmt(totalPaid)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Monthly: {fmt(emp.salary)} · Total paid: {fmt(totalPaid)}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         {/* Add payment */}
@@ -275,33 +275,33 @@ function SalaryPanel({ emp, onClose }) {
           <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Record Payment</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Amount (Rs)</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Amount (Rs)</div>
               <input type="number" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))}
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Month</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Month</div>
               <input type="month" value={form.month} onChange={e => setForm(f => ({...f, month: e.target.value}))}
-                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
           <input type="text" placeholder="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
-            style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', marginBottom: 10 }} />
-          <button onClick={pay} disabled={saving} style={{ background: gold, color: '#000', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%' }}>
+            style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', marginBottom: 10 }} />
+          <button onClick={pay} disabled={saving} style={{ background: gold, color: 'var(--text)', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%' }}>
             {saving ? 'Saving...' : '+ Record Payment'}
           </button>
           {msg && <div style={{ marginTop: 8, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>{msg}</div>}
         </div>
 
         {/* Payment history */}
-        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: '#888' }}>Payment History</div>
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: 'var(--text2)' }}>Payment History</div>
         {payments.length === 0 ? (
-          <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 20 }}>No payments recorded yet</div>
+          <div style={{ color: 'var(--text3)', fontSize: 12, textAlign: 'center', padding: 20 }}>No payments recorded yet</div>
         ) : payments.map((p, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid var(--bg-section)`, fontSize: 13 }}>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid #1a1a1a`, fontSize: 13 }}>
             <div>
-              <div style={{ color: '#ccc' }}>{p.month}</div>
-              {p.notes && <div style={{ fontSize: 11, color: '#555' }}>{p.notes}</div>}
+              <div style={{ color: 'var(--text2)' }}>{p.month}</div>
+              {p.notes && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.notes}</div>}
             </div>
             <div style={{ color: '#22c55e', fontWeight: 600 }}>{fmt(p.amount)}</div>
           </div>
@@ -371,18 +371,18 @@ function TerminationModal({ emp, onClose, onSaved }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>👋 Employee Exit</div>
-            <div style={{ fontSize: 13, color: '#888' }}>{emp.name} · {emp.role}</div>
+            <div style={{ fontSize: 13, color: 'var(--text2)' }}>{emp.name} · {emp.role}</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
 
-        <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8, padding: 12, fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.6 }}>
+        <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 8, padding: 12, fontSize: 11, color: 'var(--text2)', marginBottom: 18, lineHeight: 1.6 }}>
           ⚠️ <strong>Permanent exit record.</strong> Status inactive ho jayega, assign list se gayab. Past records (packing log, attendance, salary) safe rahenge — ek "Ex-Employees" section mein dikhega.
         </div>
 
         {/* Last working day */}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Last Working Day *</label>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Last Working Day *</label>
           <input type="date" value={terminationDate} max={today}
             onChange={e => setTerminationDate(e.target.value)}
             style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
@@ -390,7 +390,7 @@ function TerminationModal({ emp, onClose, onSaved }) {
 
         {/* Reason */}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Reason *</label>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Reason *</label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[
               { value: 'resigned',   label: '📝 Resigned',    color: '#3b82f6' },
@@ -398,13 +398,13 @@ function TerminationModal({ emp, onClose, onSaved }) {
               { value: 'mutual',     label: '🤝 Mutual',      color: '#22c55e' },
               { value: 'abandoned',  label: '👻 Abandoned',   color: '#f97316' },
               { value: 'retired',    label: '🌅 Retired',     color: '#a78bfa' },
-              { value: 'other',      label: '❓ Other',        color: '#888' },
+              { value: 'other',      label: '❓ Other',        color: 'var(--text2)' },
             ].map(r => (
               <button key={r.value} onClick={() => setReason(r.value)}
                 style={{
                   background: reason === r.value ? r.color + '22' : 'transparent',
                   border: `1px solid ${reason === r.value ? r.color + '88' : border}`,
-                  color: reason === r.value ? r.color : '#888',
+                  color: reason === r.value ? r.color: 'var(--text2)',
                   borderRadius: 6, padding: '6px 12px', fontSize: 12,
                   fontWeight: reason === r.value ? 600 : 400,
                   cursor: 'pointer', fontFamily: 'inherit',
@@ -415,11 +415,11 @@ function TerminationModal({ emp, onClose, onSaved }) {
 
         {/* Final settlement */}
         <div style={{ marginBottom: 14 }}>
-          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Final Settlement Amount (Rs)</label>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Final Settlement Amount (Rs)</label>
           <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
             placeholder="e.g. 15000"
             style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
-          <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
             💡 Auto-calculated as pro-rata salary based on last working day. Manually override karo agar advances/dues adjust karne hain.
           </div>
         </div>
@@ -427,12 +427,12 @@ function TerminationModal({ emp, onClose, onSaved }) {
         {/* Mark settled now */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', userSelect: 'none' }}>
           <input type="checkbox" checked={paidNow} onChange={e => setPaidNow(e.target.checked)} style={{ cursor: 'pointer' }} />
-          <span style={{ fontSize: 13, color: '#ccc' }}>Final settlement abhi cash mein de raha hoon</span>
+          <span style={{ fontSize: 13, color: 'var(--text2)' }}>Final settlement abhi cash mein de raha hoon</span>
         </label>
 
         {/* Notes */}
         <div style={{ marginBottom: 18 }}>
-          <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Notes (optional)</label>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Notes (optional)</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Mutual agreement, notice period, performance issues..."
             rows={3}
@@ -447,11 +447,11 @@ function TerminationModal({ emp, onClose, onSaved }) {
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onClose} disabled={saving}
-            style={{ flex: 1, background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '10px', fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            style={{ flex: 1, background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '10px', fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
           <button onClick={submit} disabled={saving}
-            style={{ flex: 2, background: '#f97316', color: '#000', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.5 : 1 }}>
+            style={{ flex: 2, background: '#f97316', color: 'var(--text)', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.5 : 1 }}>
             {saving ? 'Saving...' : '👋 Confirm Exit'}
           </button>
         </div>
@@ -582,24 +582,24 @@ export default function EmployeesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Team</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>{active} active{canViewSalary && ` · ${fmt(totalSalary)}/month total payroll`}</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text3)' }}>{active} active{canViewSalary && ` · ${fmt(totalSalary)}/month total payroll`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {canCreate && employees.length === 0 && (
-            <button onClick={seedTeam} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={seedTeam} style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
               📥 Load My Team
             </button>
           )}
           {canCreate && (
           <button onClick={() => { setEditEmp(null); setShowModal(true); }}
-            style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            style={{ background: gold, color: 'var(--text)', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             + Add Employee
           </button>
           )}
         </div>
       </div>
 
-      {msg && <div style={{ marginBottom: 14, padding: '10px 16px', background: 'var(--green-dim)', border: '1px solid #003300', borderRadius: 8, fontSize: 12, color: '#22c55e' }}>{msg}</div>}
+      {msg && <div style={{ marginBottom: 14, padding: '10px 16px', background: '#001a0a', border: '1px solid #003300', borderRadius: 8, fontSize: 12, color: '#22c55e' }}>{msg}</div>}
 
       {/* Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
@@ -620,7 +620,7 @@ export default function EmployeesPage() {
           }] : []),
         ].map(s => (
           <div key={s.label} style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '14px 16px' }}>
-            <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
             {s.sub && <div style={{ fontSize: 10, color: s.color === '#f97316' && employees.filter(e => e.termination_date && !e.final_settlement_paid_at).length > 0 ? '#ef4444' : '#666', marginTop: 3 }}>{s.sub}</div>}
           </div>
@@ -631,7 +631,7 @@ export default function EmployeesPage() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or role..."
           style={{ flex: 1, maxWidth: 360, background: card, border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '9px 14px', fontSize: 13, boxSizing: 'border-box' }} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#888', cursor: 'pointer', userSelect: 'none' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', cursor: 'pointer', userSelect: 'none' }}>
           <input
             type="checkbox"
             checked={showInactive}
@@ -639,7 +639,7 @@ export default function EmployeesPage() {
             style={{ cursor: 'pointer' }}
           />
           Show inactive {employees.filter(e => e.status === 'inactive').length > 0 && (
-            <span style={{ background: 'var(--bg-section)', color: '#888', borderRadius: 10, padding: '1px 8px', fontSize: 10 }}>
+            <span style={{ background: 'var(--bg-card)', color: 'var(--text2)', borderRadius: 10, padding: '1px 8px', fontSize: 10 }}>
               {employees.filter(e => e.status === 'inactive').length}
             </span>
           )}
@@ -647,15 +647,15 @@ export default function EmployeesPage() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#444' }}>Loading team...</div>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>Loading team...</div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#444' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
           {employees.length === 0 ? (
             <div>
               <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
               <div style={{ marginBottom: 8 }}>No team members yet</div>
               {canCreate && (
-              <button onClick={seedTeam} style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              <button onClick={seedTeam} style={{ background: gold, color: 'var(--text)', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                 📥 Load My Team (13 members)
               </button>
               )}
@@ -667,7 +667,7 @@ export default function EmployeesPage() {
           {filtered.map(emp => (
             <div key={emp.id} style={{
               background: card,
-              border: `1px solid ${emp.status === 'inactive' ? 'var(--red-dim)' : border}`,
+              border: `1px solid ${emp.status === 'inactive' ? '#330000' : border}`,
               borderRadius: 10,
               padding: '16px 18px',
               opacity: emp.status === 'inactive' ? 0.55 : 1,
@@ -690,30 +690,30 @@ export default function EmployeesPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12, fontSize: 12 }}>
                 <div>
-                  <div style={{ color: '#555', marginBottom: 2 }}>Phone</div>
-                  <div style={{ color: '#888' }}>{emp.phone || '—'}</div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Phone</div>
+                  <div style={{ color: 'var(--text2)' }}>{emp.phone || '—'}</div>
                 </div>
                 <div>
-                  <div style={{ color: '#555', marginBottom: 2 }}>Monthly Salary</div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Monthly Salary</div>
                   <div style={{ color: gold, fontWeight: 600 }}>{!canViewSalary ? '••••' : (emp.base_salary || emp.salary ? fmt(emp.base_salary || emp.salary) : '—')}</div>
                 </div>
                 <div>
-                  <div style={{ color: '#555', marginBottom: 2 }}>Advance Limit</div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Advance Limit</div>
                   <div style={{ color: '#f97316' }}>{!canViewSalary ? '••••' : (emp.advance_limit ? fmt(emp.advance_limit) : '—')}</div>
                 </div>
                 <div>
-                  <div style={{ color: '#555', marginBottom: 2 }}>Joined</div>
-                  <div style={{ color: '#888' }}>{emp.join_date || '—'}</div>
+                  <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Joined</div>
+                  <div style={{ color: 'var(--text2)' }}>{emp.join_date || '—'}</div>
                 </div>
                 {emp.office_start && (
                   <div>
-                    <div style={{ color: '#555', marginBottom: 2 }}>Timing</div>
-                    <div style={{ color: '#888' }}>{emp.office_start?.slice(0,5)} – {emp.office_end?.slice(0,5)}</div>
+                    <div style={{ color: 'var(--text3)', marginBottom: 2 }}>Timing</div>
+                    <div style={{ color: 'var(--text2)' }}>{emp.office_start?.slice(0,5)} – {emp.office_end?.slice(0,5)}</div>
                   </div>
                 )}
               </div>
 
-              {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: 'var(--bg-section)', borderRadius: 6 }}>{emp.notes}</div>}
+              {emp.notes && <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12, padding: '6px 10px', background: 'var(--bg-card)', borderRadius: 6 }}>{emp.notes}</div>}
 
               {/* Termination info — shown for ex-employees (May 2 2026) */}
               {emp.termination_date && (
@@ -726,12 +726,12 @@ export default function EmployeesPage() {
                     👋 Left on {new Date(emp.termination_date).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </div>
                   {emp.termination_reason && (
-                    <div style={{ color: '#888', marginBottom: 3 }}>
-                      Reason: <span style={{ color: '#ccc', textTransform: 'capitalize' }}>{emp.termination_reason}</span>
+                    <div style={{ color: 'var(--text2)', marginBottom: 3 }}>
+                      Reason: <span style={{ color: 'var(--text2)', textTransform: 'capitalize' }}>{emp.termination_reason}</span>
                     </div>
                   )}
                   {emp.final_settlement_amount != null && (
-                    <div style={{ color: '#888' }}>
+                    <div style={{ color: 'var(--text2)' }}>
                       Final settlement: <span style={{ color: gold, fontWeight: 600 }}>{fmt(emp.final_settlement_amount)}</span>
                       {emp.final_settlement_paid_at ? (
                         <span style={{ color: '#22c55e', marginLeft: 6, fontWeight: 600 }}>✅ Settled</span>
@@ -741,7 +741,7 @@ export default function EmployeesPage() {
                     </div>
                   )}
                   {emp.termination_notes && (
-                    <div style={{ color: '#666', marginTop: 4, fontStyle: 'italic' }}>"{emp.termination_notes}"</div>
+                    <div style={{ color: 'var(--text3)', marginTop: 4, fontStyle: 'italic' }}>"{emp.termination_notes}"</div>
                   )}
                 </div>
               )}
@@ -749,13 +749,13 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {canEdit && (
                 <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
-                  style={{ flex: 1, minWidth: 70, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   ✏️ Edit
                 </button>
                 )}
                 {canViewSalary && (
                 <button onClick={() => setSalaryEmp(emp)}
-                  style={{ flex: 1, minWidth: 70, background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   💰 Salary
                 </button>
                 )}
@@ -786,7 +786,7 @@ export default function EmployeesPage() {
                 {canDelete && emp.status === 'inactive' && !emp.termination_date && (
                   <button onClick={() => reactivateEmp(emp.id, emp.name)}
                     title="Wapas active karo"
-                    style={{ background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     ✅ Reactivate
                   </button>
                 )}

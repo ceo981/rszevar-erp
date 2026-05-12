@@ -18,7 +18,7 @@
 
 import { useState, useEffect } from 'react';
 
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const card   = 'var(--bg-card)';
 const border = 'var(--border)';
 const bg     = 'var(--bg)';
@@ -110,7 +110,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--bg-section)',
+          background: 'var(--bg-card)',
           border: `1px solid ${border}`,
           borderRadius: 12,
           width: '100%', maxWidth: 540,
@@ -128,7 +128,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
           <button onClick={onClose} disabled={saving}
             style={{
               background: 'transparent', border: 'none',
-              color: '#888', fontSize: 22, cursor: saving ? 'not-allowed' : 'pointer',
+              color: 'var(--text2)', fontSize: 22, cursor: saving ? 'not-allowed' : 'pointer',
               lineHeight: 1, padding: '0 4px',
             }}>×</button>
         </div>
@@ -137,19 +137,19 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
         <div style={{ padding: 22 }}>
           {/* Country (read-only — always Pakistan for RS ZEVAR) */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
               Country / region
             </label>
             <div style={{
               padding: '10px 12px', background: 'var(--bg)',
               border: `1px solid ${border}`, borderRadius: 7,
-              color: '#888', fontSize: 13,
+              color: 'var(--text2)', fontSize: 13,
             }}>🇵🇰 Pakistan</div>
           </div>
 
           {/* Address */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
               Address <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <textarea
@@ -173,7 +173,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
 
           {/* City */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
               City <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
@@ -204,7 +204,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                   onClick={() => setCity(c)}
                   disabled={saving}
                   style={{
-                    background: city === c ? gold + '22' : 'var(--bg-section)',
+                    background: city === c ? gold + '22' : '#1a1a1a',
                     border: `1px solid ${city === c ? gold : border}`,
                     color: city === c ? gold : '#888',
                     borderRadius: 5, padding: '4px 10px', fontSize: 11,
@@ -217,21 +217,21 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
           {/* Phone (read-only — pull from order, edit via Edit Contact modal) */}
           {order?.customer_phone && (
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
-                Phone <span style={{ color: '#555', fontWeight: 400 }}>(edit via "Edit contact" option)</span>
+              <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
+                Phone <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(edit via "Edit contact" option)</span>
               </label>
               <div style={{
                 padding: '10px 12px', background: 'var(--bg)',
                 border: `1px solid ${border}`, borderRadius: 7,
-                color: '#888', fontSize: 13,
+                color: 'var(--text2)', fontSize: 13,
               }}>{order.customer_phone}</div>
             </div>
           )}
 
           {/* Reason */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#888', marginBottom: 6, fontWeight: 500 }}>
-              Reason for change <span style={{ color: '#555', fontWeight: 400 }}>(audit log)</span>
+            <label style={{ display: 'block', fontSize: 12, color: 'var(--text2)', marginBottom: 6, fontWeight: 500 }}>
+              Reason for change <span style={{ color: 'var(--text3)', fontWeight: 400 }}>(audit log)</span>
             </label>
             <input
               type="text"
@@ -262,7 +262,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
           )}
 
           <div style={{
-            fontSize: 11, color: '#555', marginBottom: 4,
+            fontSize: 11, color: 'var(--text3)', marginBottom: 4,
             padding: '8px 10px', background: 'rgba(201,169,110,0.05)',
             border: '1px solid rgba(201,169,110,0.15)', borderRadius: 6,
           }}>
@@ -280,7 +280,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
             disabled={saving}
             style={{
               background: 'transparent', border: `1px solid ${border}`,
-              color: '#888', borderRadius: 7,
+              color: 'var(--text2)', borderRadius: 7,
               padding: '9px 18px', fontSize: 13,
               cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             }}>
@@ -290,7 +290,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
             onClick={handleSave}
             disabled={saving || !dirty}
             style={{
-              background: (saving || !dirty) ? 'var(--bg-section)' : gold,
+              background: (saving || !dirty) ? '#1a1a1a' : gold,
               border: `1px solid ${(saving || !dirty) ? border : gold}`,
               color: (saving || !dirty) ? '#555' : '#000',
               borderRadius: 7,

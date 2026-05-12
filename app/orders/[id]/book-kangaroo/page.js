@@ -37,7 +37,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
 // ─── Style constants (matches OrderDrawer palette) ──────────────────────────
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const card   = 'var(--bg-card)';
 const border = 'var(--border)';
 const bg     = 'var(--bg)';
@@ -135,12 +135,12 @@ function CopyField({ label, value, multiline = false, warning, sublabel, isStati
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <label style={{ fontSize: 12, color: '#888', fontWeight: 500, letterSpacing: 0.3 }}>
+        <label style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500, letterSpacing: 0.3 }}>
           {label}
-          {sublabel && <span style={{ color: '#555', marginLeft: 6, fontWeight: 400 }}>{sublabel}</span>}
+          {sublabel && <span style={{ color: 'var(--text3)', marginLeft: 6, fontWeight: 400 }}>{sublabel}</span>}
         </label>
         {isStatic && (
-          <span style={{ fontSize: 10, color: '#666', background: 'var(--bg-section)', padding: '1px 6px', borderRadius: 3 }}>
+          <span style={{ fontSize: 10, color: 'var(--text3)', background: 'var(--bg-card)', padding: '1px 6px', borderRadius: 3 }}>
             static
           </span>
         )}
@@ -170,7 +170,7 @@ function CopyField({ label, value, multiline = false, warning, sublabel, isStati
           disabled={isEmpty || isStatic}
           title={isStatic ? 'Static value — type manually in Kangaroo' : 'Copy to clipboard'}
           style={{
-            background: copied ? '#15803d' : (isEmpty || isStatic ? 'var(--bg-section)' : gold),
+            background: copied ? '#15803d' : (isEmpty || isStatic ? '#1a1a1a' : gold),
             color: copied ? '#fff' : (isEmpty || isStatic ? '#555' : '#000'),
             border: `1px solid ${copied ? '#15803d' : (isEmpty || isStatic ? border : gold)}`,
             borderRadius: 6,
@@ -220,7 +220,7 @@ export default function BookKangarooPage() {
   // ─── Loading / Error states ─────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: bg, color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
+      <div style={{ minHeight: '100vh', background: bg, color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
         Loading order...
       </div>
     );
@@ -234,7 +234,7 @@ export default function BookKangarooPage() {
             {error || 'Order not found'}
           </div>
           <Link href={`/orders/${id}`} style={{
-            background: gold, color: '#000', padding: '8px 18px',
+            background: gold, color: 'var(--text)', padding: '8px 18px',
             borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none',
           }}>
             ← Back to Order
@@ -271,13 +271,13 @@ export default function BookKangarooPage() {
         {/* Top bar — back link */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
           <Link href={`/orders/${id}`} style={{
-            color: '#888', fontSize: 13, textDecoration: 'none',
+            color: 'var(--text2)', fontSize: 13, textDecoration: 'none',
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
             ← Back to order
           </Link>
-          <div style={{ fontSize: 12, color: '#555' }}>
-            Order: <span style={{ color: '#aaa' }}>{order.order_number || id}</span>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+            Order: <span style={{ color: 'var(--text2)' }}>{order.order_number || id}</span>
           </div>
         </div>
 
@@ -286,8 +286,8 @@ export default function BookKangarooPage() {
           <h1 style={{ fontSize: 22, color: gold, margin: '0 0 6px 0', fontWeight: 600 }}>
             🦘 Kangaroo Booking Helper
           </h1>
-          <p style={{ fontSize: 13, color: '#888', margin: 0, lineHeight: 1.5 }}>
-            Open Kangaroo neeche button se, phir har field ke saamne <strong style={{ color: '#aaa' }}>📋 Copy</strong> click kar ke Kangaroo form mein paste karte jao.
+          <p style={{ fontSize: 13, color: 'var(--text2)', margin: 0, lineHeight: 1.5 }}>
+            Open Kangaroo neeche button se, phir har field ke saamne <strong style={{ color: 'var(--text2)' }}>📋 Copy</strong> click kar ke Kangaroo form mein paste karte jao.
           </p>
         </div>
 
@@ -315,7 +315,7 @@ export default function BookKangarooPage() {
           style={{
             display: 'block',
             background: gold,
-            color: '#000',
+            color: 'var(--text)',
             padding: '14px 18px',
             borderRadius: 10,
             fontSize: 15,
@@ -338,7 +338,7 @@ export default function BookKangarooPage() {
           padding: 20,
         }}>
           <div style={{
-            fontSize: 11, color: '#666', textTransform: 'uppercase',
+            fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase',
             letterSpacing: 1, fontWeight: 600, marginBottom: 14,
           }}>
             Form fields (top to bottom — same order as Kangaroo form)
@@ -419,7 +419,7 @@ export default function BookKangarooPage() {
           borderRadius: 8,
           padding: '12px 16px',
           fontSize: 12,
-          color: '#aaa',
+          color: 'var(--text2)',
           lineHeight: 1.6,
         }}>
           <strong style={{ color: gold }}>📌 Booking ke baad:</strong> Kangaroo se tracking number copy kar ke Shopify order mein fulfillment add karna mat bhoolna — ERP usse pakar ke order auto-dispatched mark karega.

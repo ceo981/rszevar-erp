@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 import OrderDrawer from './_components/OrderDrawer';
 
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 
@@ -22,7 +22,7 @@ const timeAgo = iso => {
 };
 
 const STATUS_CONFIG = {
-  pending:    { label: 'Pending',    color: '#888',    bg: '#88888822' },
+  pending:    { label: 'Pending',    color: 'var(--text2)',    bg: '#88888822' },
   confirmed:  { label: 'Confirmed',  color: '#3b82f6', bg: '#3b82f622' },
   on_packing: { label: 'On Packing', color: '#f59e0b', bg: '#f59e0b22' },
   processing: { label: 'Processing', color: gold,      bg: gold + '22' },
@@ -34,7 +34,7 @@ const STATUS_CONFIG = {
   rto:        { label: 'RTO',        color: '#ef4444', bg: '#ef444422' },
   cancelled:  { label: 'Cancelled',  color: '#ef4444', bg: '#ef444422' },
   attempted:  { label: 'Attempted',  color: '#f97316', bg: '#f9731622' },
-  hold:       { label: 'Hold',       color: '#64748b', bg: '#64748b22' },
+  hold:       { label: 'Hold',       color: 'var(--text2)', bg: '#64748b22' },
 };
 
 const PAYMENT_CONFIG = {
@@ -81,14 +81,14 @@ function FilterDropdown({ current, onChange, globalCounts }) {
     {
       label: 'Status',
       items: [
-        { type: 'status', value: 'pending',    label: 'Pending',      color: '#888',    count: gc.pending },
+        { type: 'status', value: 'pending',    label: 'Pending',      color: 'var(--text2)',    count: gc.pending },
         { type: 'status', value: 'confirmed',  label: 'Confirmed',    color: '#3b82f6', count: gc.confirmed },
         { type: 'status', value: 'on_packing', label: 'On Packing',   color: '#f59e0b', count: gc.on_packing },
         { type: 'status', value: 'packed',     label: 'Packed',       color: '#06b6d4', count: gc.packed },
         { type: 'status', value: 'dispatched', label: 'Dispatched',   color: '#a855f7', count: gc.dispatched },
         { type: 'status', value: 'delivered',  label: 'Delivered',    color: '#22c55e', count: gc.delivered },
         { type: 'status', value: 'attempted',  label: '📞 Attempted', color: '#f97316', count: gc.attempted },
-        { type: 'status', value: 'hold',       label: '⏸ Hold',      color: '#64748b', count: gc.hold },
+        { type: 'status', value: 'hold',       label: '⏸ Hold',      color: 'var(--text2)', count: gc.hold },
         { type: 'status', value: 'rto',        label: 'RTO',          color: '#ef4444', count: gc.rto },
         { type: 'status', value: 'cancelled',  label: 'Cancelled',    color: '#ef4444', count: gc.cancelled },
       ],
@@ -107,7 +107,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
         { type: 'courier', value: 'Leopards', label: '🐆 Leopards', color: '#a855f7', count: gc.leopards },
         { type: 'courier', value: 'PostEx', label: '📦 PostEx', color: '#22d3ee', count: gc.postex },
         { type: 'courier', value: 'Kangaroo', label: '🦘 Kangaroo', color: '#f59e0b', count: gc.kangaroo },
-        { type: 'courier', value: 'Other', label: '❓ Other / Unknown', color: '#888' },
+        { type: 'courier', value: 'Other', label: '❓ Other / Unknown', color: 'var(--text2)' },
       ],
     },
     {
@@ -165,7 +165,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
         }}
       >
         <span style={{ flex: 1, textAlign: 'left' }}>{displayLabel}</span>
-        <span style={{ fontSize: 10, color: '#555' }}>▼</span>
+        <span style={{ fontSize: 10, color: 'var(--text3)' }}>▼</span>
       </button>
 
       {open && (
@@ -187,7 +187,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
             onClick={clear}
             style={{
               width: '100%',
-              background: !current.type ? 'var(--bg-section)' : 'transparent',
+              background: !current.type ? '#1a1a1a' : 'transparent',
               border: 'none',
               color: !current.type ? gold : '#ccc',
               padding: '11px 16px',
@@ -207,11 +207,11 @@ function FilterDropdown({ current, onChange, globalCounts }) {
               <div style={{
                 padding: '10px 16px 6px',
                 fontSize: 10,
-                color: '#555',
+                color: 'var(--text3)',
                 textTransform: 'uppercase',
                 letterSpacing: 1,
                 fontWeight: 600,
-                background: 'var(--bg)',
+                background: '#050505',
               }}>
                 {section.label}
               </div>
@@ -223,10 +223,10 @@ function FilterDropdown({ current, onChange, globalCounts }) {
                     onClick={() => pick(item)}
                     style={{
                       width: '100%',
-                      background: active ? 'var(--bg-section)' : 'transparent',
+                      background: active ? '#1a1a1a' : 'transparent',
                       border: 'none',
                       borderLeft: active ? `3px solid ${item.color}` : '3px solid transparent',
-                      color: active ? item.color : '#ccc',
+                      color: active ? item.color: 'var(--text2)',
                       padding: '10px 16px',
                       fontSize: 13,
                       fontWeight: active ? 600 : 400,
@@ -237,15 +237,15 @@ function FilterDropdown({ current, onChange, globalCounts }) {
                       alignItems: 'center',
                       fontFamily: 'inherit',
                     }}
-                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg)'; }}
+                    onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#111'; }}
                     onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
                   >
                     <span>{item.label}</span>
                     {typeof item.count === 'number' && (
                       <span style={{
                         fontSize: 11,
-                        color: active ? item.color : '#555',
-                        background: active ? item.color + '22' : 'var(--bg-section)',
+                        color: active ? item.color: 'var(--text3)',
+                        background: active ? item.color + '22' : '#1a1a1a',
                         padding: '2px 8px',
                         borderRadius: 10,
                         fontWeight: 600,
@@ -272,11 +272,11 @@ function BulkCancelModal({ count, onClose, onConfirm, running }) {
   const [reason, setReason] = useState('');
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460 }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ef4444' }}>
           ✕ Cancel {count} order{count > 1 ? 's' : ''}
         </h3>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>
           Reason sab orders pe lagegi. Shopify pe bhi cancel hoga. Dispatched/Delivered orders skip honge.
         </p>
         <textarea
@@ -284,11 +284,11 @@ function BulkCancelModal({ count, onClose, onConfirm, running }) {
           onChange={e => setReason(e.target.value)}
           placeholder="Cancel reason (required)..."
           rows={3}
-          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12, resize: 'vertical' }}
+          style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12, resize: 'vertical' }}
         />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose} disabled={running}
-            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
             Back
           </button>
           <button
@@ -321,11 +321,11 @@ function BulkStatusModal({ count, onClose, onConfirm, running }) {
     .map(val => ({ value: val, label: STATUS_CONFIG[val].label, color: STATUS_CONFIG[val].color }));
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 480 }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 480 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: gold }}>
           ⚙ Change status — {count} order{count > 1 ? 's' : ''}
         </h3>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>
           Select new status. Jo order pehle se same status pe hai, skip hoga.
         </p>
 
@@ -335,9 +335,9 @@ function BulkStatusModal({ count, onClose, onConfirm, running }) {
               key={opt.value}
               onClick={() => setNewStatus(opt.value)}
               style={{
-                background: newStatus === opt.value ? opt.color + '22' : 'var(--bg-section)',
+                background: newStatus === opt.value ? opt.color + '22' : '#1a1a1a',
                 border: newStatus === opt.value ? `1px solid ${opt.color}` : `1px solid ${border}`,
-                color: newStatus === opt.value ? opt.color : '#aaa',
+                color: newStatus === opt.value ? opt.color: 'var(--text2)',
                 borderRadius: 6,
                 padding: '8px 10px',
                 fontSize: 12,
@@ -355,18 +355,18 @@ function BulkStatusModal({ count, onClose, onConfirm, running }) {
           value={notes}
           onChange={e => setNotes(e.target.value)}
           placeholder="Notes (optional)"
-          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12 }}
+          style={{ width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', marginTop: 12 }}
         />
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose} disabled={running}
-            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
             Back
           </button>
           <button
             onClick={() => onConfirm({ status: newStatus, notes })}
             disabled={running || !newStatus}
-            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !newStatus) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !newStatus) ? 0.5 : 1 }}>
+            style={{ background: gold, border: `1px solid ${gold}`, color: 'var(--text)', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !newStatus) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !newStatus) ? 0.5 : 1 }}>
             {running ? 'Updating…' : 'Apply to all'}
           </button>
         </div>
@@ -389,22 +389,22 @@ function BulkAssignModal({ count, onClose, onConfirm, running }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 440 }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 440 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>
           👤 Assign packer — {count} order{count > 1 ? 's' : ''}
         </h3>
-        <p style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
+        <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>
           Sirf Confirmed / On Packing orders pe lagega. Baaki skip honge.
         </p>
 
         {loading ? (
-          <p style={{ color: '#555', fontSize: 13, marginTop: 14 }}>Loading employees…</p>
+          <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 14 }}>Loading employees…</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: 320, overflowY: 'auto' }}>
             <button
               onClick={() => setAssignedTo('packing_team')}
               style={{
-                background: assignedTo === 'packing_team' ? '#f59e0b22' : 'var(--bg-section)',
+                background: assignedTo === 'packing_team' ? '#f59e0b22' : '#1a1a1a',
                 border: assignedTo === 'packing_team' ? `1px solid #f59e0b` : `1px solid ${border}`,
                 color: assignedTo === 'packing_team' ? '#f59e0b' : '#ccc',
                 borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
@@ -416,12 +416,12 @@ function BulkAssignModal({ count, onClose, onConfirm, running }) {
                 key={emp.id}
                 onClick={() => setAssignedTo(String(emp.id))}
                 style={{
-                  background: assignedTo === String(emp.id) ? '#f59e0b22' : 'var(--bg-section)',
+                  background: assignedTo === String(emp.id) ? '#f59e0b22' : '#1a1a1a',
                   border: assignedTo === String(emp.id) ? `1px solid #f59e0b` : `1px solid ${border}`,
                   color: assignedTo === String(emp.id) ? '#f59e0b' : '#ccc',
                   borderRadius: 6, padding: '10px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
                 }}>
-                {emp.name} <span style={{ color: '#555', fontSize: 11 }}>· {emp.designation || emp.role}</span>
+                {emp.name} <span style={{ color: 'var(--text3)', fontSize: 11 }}>· {emp.designation || emp.role}</span>
               </button>
             ))}
           </div>
@@ -429,13 +429,13 @@ function BulkAssignModal({ count, onClose, onConfirm, running }) {
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose} disabled={running}
-            style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: running ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
             Back
           </button>
           <button
             onClick={() => onConfirm({ assigned_to: assignedTo })}
             disabled={running || !assignedTo}
-            style={{ background: '#f59e0b', border: `1px solid #f59e0b`, color: '#000', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !assignedTo) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !assignedTo) ? 0.5 : 1 }}>
+            style={{ background: '#f59e0b', border: `1px solid #f59e0b`, color: 'var(--text)', borderRadius: 7, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: (running || !assignedTo) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (running || !assignedTo) ? 0.5 : 1 }}>
             {running ? 'Assigning…' : `Assign ${count} order${count > 1 ? 's' : ''}`}
           </button>
         </div>
@@ -450,7 +450,7 @@ function BulkResultModal({ result, onClose }) {
   const failures = results.filter(r => !r.success);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>
           {summary.failed === 0 ? '✓ All done' : `⚠ Partial — ${summary.succeeded}/${summary.total} succeeded`}
         </h3>
@@ -459,10 +459,10 @@ function BulkResultModal({ result, onClose }) {
           {summary.failed > 0 && <span style={{ color: '#ef4444' }}>✕ {summary.failed} failed</span>}
         </div>
         {failures.length > 0 && (
-          <div style={{ marginTop: 14, flex: 1, overflowY: 'auto', background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 6, padding: 10 }}>
-            <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Failed orders</div>
+          <div style={{ marginTop: 14, flex: 1, overflowY: 'auto', background: 'var(--bg-card)', border: `1px solid ${border}`, borderRadius: 6, padding: 10 }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Failed orders</div>
             {failures.map(f => (
-              <div key={f.order_id} style={{ fontSize: 12, color: '#ccc', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+              <div key={f.order_id} style={{ fontSize: 12, color: 'var(--text2)', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
                 <span style={{ color: gold, fontWeight: 600 }}>Order #{f.order_id}</span>
                 <span style={{ color: '#ef4444', marginLeft: 8 }}>— {f.error}</span>
               </div>
@@ -471,7 +471,7 @@ function BulkResultModal({ result, onClose }) {
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
           <button onClick={onClose}
-            style={{ background: gold, border: `1px solid ${gold}`, color: '#000', borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ background: gold, border: `1px solid ${gold}`, color: 'var(--text)', borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             OK
           </button>
         </div>
@@ -865,10 +865,10 @@ export default function OrdersPage() {
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Orders</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text3)' }}>
             Confirm, dispatch, and manage all orders
             {lastSync && (
-              <span style={{ marginLeft: 10, color: '#666' }}>
+              <span style={{ marginLeft: 10, color: 'var(--text3)' }}>
                 · Last sync: {new Date(lastSync).toLocaleString('en-PK', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}
               </span>
             )}
@@ -897,7 +897,7 @@ export default function OrdersPage() {
           )}
           <button onClick={() => setShowDatePicker(s => !s)}
             style={{
-              background: showDatePicker ? `${gold}22` : 'var(--bg)',
+              background: showDatePicker ? `${gold}22` : '#0a0a0a',
               border: `1px solid ${showDatePicker ? gold : border}`,
               color: showDatePicker ? gold : '#bbb',
               borderRadius: 7, padding: '7px 12px', fontSize: 12,
@@ -923,7 +923,7 @@ export default function OrdersPage() {
                   Filter orders by date
                 </div>
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>From</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>From</div>
                   <input type="date" value={dateRange.from}
                     onChange={e => setDateRange(r => ({ ...r, from: e.target.value }))}
                     style={{
@@ -934,7 +934,7 @@ export default function OrdersPage() {
                     }} />
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>To</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>To</div>
                   <input type="date" value={dateRange.to}
                     onChange={e => setDateRange(r => ({ ...r, to: e.target.value }))}
                     style={{
@@ -946,7 +946,7 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Quick presets */}
-                <div style={{ fontSize: 10, color: '#666', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick presets</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick presets</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
                   {(() => {
                     const today = new Date();
@@ -963,7 +963,7 @@ export default function OrdersPage() {
                       <button key={p.label} onClick={() => setDateRange({ from: p.from, to: p.to })}
                         style={{
                           background: 'var(--bg)', border: `1px solid ${border}`,
-                          color: '#aaa', borderRadius: 5, padding: '5px 9px',
+                          color: 'var(--text2)', borderRadius: 5, padding: '5px 9px',
                           fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
                         }}>{p.label}</button>
                     ));
@@ -974,12 +974,12 @@ export default function OrdersPage() {
                   <button onClick={() => { setDateRange({ from: '', to: '' }); setPage(1); }}
                     style={{
                       background: 'transparent', border: `1px solid ${border}`,
-                      color: '#888', borderRadius: 6, padding: '7px 14px',
+                      color: 'var(--text2)', borderRadius: 6, padding: '7px 14px',
                       fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
                     }}>Clear</button>
                   <button onClick={() => { setShowDatePicker(false); setPage(1); }}
                     style={{
-                      background: gold, border: 'none', color: '#000',
+                      background: gold, border: 'none', color: 'var(--text)',
                       borderRadius: 6, padding: '7px 18px',
                       fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                     }}>Apply</button>
@@ -1027,7 +1027,7 @@ export default function OrdersPage() {
             { label: 'All Orders', value: null, color: gold, count: globalCounts.pending + globalCounts.confirmed + globalCounts.on_packing + globalCounts.packed + globalCounts.dispatched + globalCounts.delivered + globalCounts.attempted + globalCounts.hold + globalCounts.rto + globalCounts.cancelled },
             { label: '📦 Unfulfilled', value: 'unfulfilled', filterType: 'fulfillment', color: '#f59e0b', count: globalCounts.unfulfilled || 0, tooltip: 'Shopify side pe abhi tak fulfill nahi hue — yahi pack karne hain', groupStart: true },
             // ── Active Workflow (forward flow) ──
-            { label: 'Pending',    value: 'pending',    color: '#888',    count: globalCounts.pending, groupStart: true },
+            { label: 'Pending',    value: 'pending',    color: 'var(--text2)',    count: globalCounts.pending, groupStart: true },
             { label: 'Confirmed',  value: 'confirmed',  color: '#3b82f6', count: globalCounts.confirmed },
             { label: 'On Packing', value: 'on_packing', color: '#f59e0b', count: globalCounts.on_packing },
             { label: 'Packed',     value: 'packed',     color: '#06b6d4', count: globalCounts.packed },
@@ -1035,7 +1035,7 @@ export default function OrdersPage() {
             { label: 'Delivered',  value: 'delivered',  color: '#22c55e', count: globalCounts.delivered },
             // ── Side States (delivery exceptions) ──
             { label: 'Attempted',  value: 'attempted',  color: '#f97316', count: globalCounts.attempted, groupStart: true },
-            { label: 'Hold',       value: 'hold',       color: '#64748b', count: globalCounts.hold },
+            { label: 'Hold',       value: 'hold',       color: 'var(--text2)', count: globalCounts.hold },
             { label: 'RTO',        value: 'rto',        color: '#ef4444', count: globalCounts.rto },
             // ── Payment ──
             { label: '⏳ Pending Payment', value: 'pending_payment', filterType: 'payment_state', color: '#f59e0b', count: globalCounts.pending_payment || 0, tooltip: 'Order delivered ho chuka hai lekin courier se abhi paisa nahi aaya', groupStart: true },
@@ -1081,7 +1081,7 @@ export default function OrdersPage() {
                   borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
                   color: isActive
                     ? tab.color
-                    : (tab.highlighted && tab.count > 0 ? tab.color : '#555'),
+                    : (tab.highlighted && tab.count > 0 ? tab.color: 'var(--text3)'),
                   borderRadius: '8px 8px 0 0',
                   padding: '8px 12px',
                   fontSize: 12,
@@ -1104,8 +1104,8 @@ export default function OrdersPage() {
                   <span style={{
                     fontSize: 11,
                     fontWeight: 600,
-                    background: isActive ? tab.color + '22' : 'var(--bg-section)',
-                    color: isActive ? tab.color : '#444',
+                    background: isActive ? tab.color + '22' : '#1a1a1a',
+                    color: isActive ? tab.color: 'var(--text3)',
                     padding: '1px 7px',
                     borderRadius: 10,
                     minWidth: 20,
@@ -1133,11 +1133,11 @@ export default function OrdersPage() {
           globalCounts={globalCounts}
         />
 
-        <button onClick={load} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
+        <button onClick={load} style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>⟳ Refresh</button>
 
         {canCreate && (
         <Link href="/orders/create"
-          style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: '1px solid #22c55e', color: '#000', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          style={{ background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', border: '1px solid #22c55e', color: 'var(--text)', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           + Create Order
         </Link>
         )}
@@ -1147,8 +1147,8 @@ export default function OrdersPage() {
           onClick={syncFromShopify}
           disabled={anySyncing}
           style={{
-            background: syncing ? 'var(--bg-section)' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
-            border: `1px solid ${syncing ? border : '#c9a96e'}`,
+            background: syncing ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
+            border: `1px solid ${syncing ? border: '#c9a96e'}`,
             color: syncing ? '#888' : '#000',
             borderRadius: 8,
             padding: '9px 18px',
@@ -1339,7 +1339,7 @@ export default function OrdersPage() {
             )}
 
             {noActionsVisible && (
-              <span style={{ color: '#888', fontSize: 12, fontStyle: 'italic' }}>
+              <span style={{ color: 'var(--text2)', fontSize: 12, fontStyle: 'italic' }}>
                 Is tab pe koi bulk action available nahi
               </span>
             )}
@@ -1356,7 +1356,7 @@ export default function OrdersPage() {
             <button
               onClick={clearSelection}
               disabled={bulkRunning}
-              style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+              style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: bulkRunning ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
               ✕ Clear
             </button>
           </div>
@@ -1382,16 +1382,16 @@ export default function OrdersPage() {
                 </th>
                 )}
                 {['Order', 'Customer', 'City', 'COD', 'Office Status', 'Payment', 'Courier', 'Courier Status', 'Assigned', 'Date', 'Actions'].map(h => (
-                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>
+                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading...</td></tr>
               )}
               {!loading && orders.length === 0 && (
-                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No orders found</td></tr>
+                <tr><td colSpan={canBulk ? 12 : 11} style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>No orders found</td></tr>
               )}
               {orders.map((order, i) => {
                 let typeIcon = '';
@@ -1405,9 +1405,9 @@ export default function OrdersPage() {
                 const isSelected = selectedIds.has(order.id);
                 const rowBg = isSelected
                   ? gold + '12'
-                  : (isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : 'var(--bg)'));
+                  : (isWaCancelledReview ? '#fbbf2408' : (i % 2 === 0 ? 'transparent' : '#0a0a0a'));
                 return (
-                  <tr key={order.id} style={{ borderBottom: `1px solid var(--bg-section)`, background: rowBg }}
+                  <tr key={order.id} style={{ borderBottom: `1px solid #1a1a1a`, background: rowBg }}
                     onClick={() => setSelected(order)} className="order-row">
                     {canBulk && (
                     <td style={{ padding: '12px 8px 12px 16px', width: 36 }} onClick={e => e.stopPropagation()}>
@@ -1446,24 +1446,24 @@ export default function OrdersPage() {
                         )}
                       </div>
                     </td>
-                    <td style={{ padding: '12px 16px', color: '#ccc' }}>{order.customer_name}</td>
-                    <td style={{ padding: '12px 16px', color: '#888' }}>{order.customer_city}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--text2)' }}>{order.customer_name}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--text2)' }}>{order.customer_city}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--text)', fontWeight: 600 }}>{canViewAmount ? fmt(order.total_amount) : '••••'}</td>
                     <td style={{ padding: '12px 16px' }}><StatusBadge status={order.status} /></td>
                     <td style={{ padding: '12px 16px' }}><PaymentBadge payment_status={order.payment_status} /></td>
-                    <td style={{ padding: '12px 16px', color: '#666', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: 12 }}>{order.dispatched_courier || '—'}</td>
                     <td style={{ padding: '12px 16px' }}>
                       {courierStatusRaw
                         ? <span style={{ color: '#8b5cf6', background: '#8b5cf611', border: '1px solid #8b5cf633', padding: '2px 8px', borderRadius: 5, fontSize: 11, whiteSpace: 'nowrap' }}>{courierStatusRaw}</span>
-                        : <span style={{ color: 'var(--border2)' }}>—</span>}
+                        : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: 12 }}>
                       {order.assigned_to_name
                         ? <span style={{ color: '#f59e0b', fontWeight: 600 }}>{order.assigned_to_name}</span>
-                        : <span style={{ color: 'var(--border2)' }}>—</span>
+                        : <span style={{ color: 'var(--text3)' }}>—</span>
                       }
                     </td>
-                    <td style={{ padding: '12px 16px', color: '#555', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
+                    <td style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: 12 }}>{timeAgo(order.created_at)}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <a
@@ -1472,10 +1472,10 @@ export default function OrdersPage() {
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
                           title="Naye tab mein kholo"
-                          style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '5px 9px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
+                          style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '5px 9px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
                         >↗</a>
                         <button onClick={e => { e.stopPropagation(); setSelected(order); }}
-                          style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                           Actions →
                         </button>
                         {/* Protocol Audit verify button (May 2 2026) */}
@@ -1484,7 +1484,7 @@ export default function OrdersPage() {
                             onClick={e => { e.stopPropagation(); verifyProtocol(order.id, order.order_number); }}
                             title="Mark as protocol OK — order tab se gayab ho jayega"
                             style={{
-                              background: 'var(--green-dim)', border: '1px solid #003300',
+                              background: '#001a0a', border: '1px solid #003300',
                               color: '#22c55e', borderRadius: 6,
                               padding: '5px 10px', fontSize: 11, fontWeight: 600,
                               cursor: 'pointer', fontFamily: 'inherit',
@@ -1542,10 +1542,10 @@ export default function OrdersPage() {
             bana deta hai. Same click handler (setSelected) use karta hai. */}
         <div className="mobile-card-view">
           {loading && (
-            <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>Loading...</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>Loading...</div>
           )}
           {!loading && orders.length === 0 && (
-            <div style={{ padding: 40, textAlign: 'center', color: '#444', fontSize: 13 }}>No orders found</div>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>No orders found</div>
           )}
           {orders.map(order => {
             const isWaCancelledReview = order.status === 'cancelled'
@@ -1586,10 +1586,10 @@ export default function OrdersPage() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ color: '#ccc', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ color: 'var(--text2)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {order.customer_name}
                     </div>
-                    <div style={{ color: '#666', fontSize: 11 }}>
+                    <div style={{ color: 'var(--text3)', fontSize: 11 }}>
                       {order.customer_city || '—'} · {timeAgo(order.created_at)}
                     </div>
                   </div>
@@ -1599,7 +1599,7 @@ export default function OrdersPage() {
                   <StatusBadge status={order.status} />
                   <PaymentBadge payment_status={order.payment_status} />
                   {order.dispatched_courier && (
-                    <span style={{ color: '#888', background: 'var(--bg-section)', border: `1px solid ${border}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
+                    <span style={{ color: 'var(--text2)', background: 'var(--bg-card)', border: `1px solid ${border}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>
                       🚚 {order.dispatched_courier}
                     </span>
                   )}
@@ -1627,7 +1627,7 @@ export default function OrdersPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={e => e.stopPropagation()}
-                    style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '8px 12px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
+                    style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '8px 12px', fontSize: 12, textDecoration: 'none', lineHeight: 1 }}
                   >↗</a>
                 </div>
               </div>
@@ -1636,12 +1636,12 @@ export default function OrdersPage() {
         </div>
 
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#555' }}>Showing {orders.length} orders</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>Showing {orders.length} orders</span>
           {hasMore && (
             <button
               onClick={() => setPage(p => p + 1)}
               disabled={loading}
-              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: loading ? '#444' : gold, borderRadius: 6, padding: '6px 18px', fontSize: 12, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: loading ? '#444' : gold, borderRadius: 6, padding: '6px 18px', fontSize: 12, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
             >
               {loading ? '⟳ Loading...' : 'Show More ↓'}
             </button>

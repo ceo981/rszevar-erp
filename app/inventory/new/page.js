@@ -27,13 +27,13 @@ import { calculateSeoScore } from '../../../lib/seo-score';
 import { useUser } from '@/context/UserContext';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
-const bgPage = 'var(--bg)';
-const text1 = 'var(--text)';
-const text2 = '#aaa';
-const text3 = '#666';
+const bgPage = '#080808';
+const text1 = '#e5e5e5';
+const text2 = 'var(--text2)';
+const text3 = 'var(--text3)';
 
 // ── UI atoms (same patterns as editor — kept inline to avoid cross-file refactor) ──
 function Card({ title, children, right = null, padBody = true }) {
@@ -450,7 +450,7 @@ function ImageUploader({ images, onChange }) {
                   opacity: isDragged ? 0.4 : 1,
                   transition: 'opacity 0.15s, border-color 0.15s',
                 }}>
-                <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ position: 'relative', paddingTop: '100%', background: 'var(--bg)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
                   <img src={img.previewUrl} alt={img.alt || ''}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                   />
@@ -482,7 +482,7 @@ function ImageUploader({ images, onChange }) {
                   <button onClick={() => setAsFirst(idx)}
                     style={{
                       width: '100%', marginBottom: 6,
-                      background: 'var(--bg-section)', border: `1px solid ${border}`,
+                      background: 'var(--bg-card)', border: `1px solid ${border}`,
                       color: '#4ade80', borderRadius: 4, padding: '4px 8px',
                       fontSize: 10, fontFamily: 'inherit', cursor: 'pointer',
                     }}>★ Set as main</button>
@@ -1735,10 +1735,10 @@ export default function NewProductPage() {
         <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
           Naya product create karne ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>inventory.create</code>{' '}
+          <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: 4 }}>inventory.create</code>{' '}
           permission grant karwane ko bolo.
         </div>
-        <Link href="/inventory" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/inventory" style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
           ← Inventory list pe wapas
         </Link>
       </div>

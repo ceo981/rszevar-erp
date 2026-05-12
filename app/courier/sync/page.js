@@ -2,8 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
-const gold = '#c9a96e';
-const dark = 'var(--bg-section)';
+const gold = 'var(--gold)';
+const dark = 'var(--bg)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 
@@ -38,9 +38,9 @@ const statusLabel = s => ({
 function StatCard({ label, value, sub, color, big }) {
   return (
     <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: big ? '20px 24px' : '16px 20px' }}>
-      <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: big ? 28 : 22, fontWeight: 700, color: color || '#fff' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -81,7 +81,7 @@ function SyncTab() {
     setSyncing(false);
   };
 
-  if (loading) return <div style={{ color: '#444', padding: 40, textAlign: 'center' }}>Loading...</div>;
+  if (loading) return <div style={{ color: 'var(--text3)', padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   const todayDeliveredCOD = (data?.todayDelivered || []).reduce((a, r) => a + parseFloat(r.cod_amount || 0), 0);
   const todayRTOCOD = (data?.todayRTO || []).reduce((a, r) => a + parseFloat(r.cod_amount || 0), 0);
@@ -99,26 +99,26 @@ function SyncTab() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>Courier Sync</div>
-            <div style={{ fontSize: 12, color: '#555' }}>
-              Last sync: <span style={{ color: '#888' }}>{timeAgo(data?.lastSync)}</span>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              Last sync: <span style={{ color: 'var(--text2)' }}>{timeAgo(data?.lastSync)}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {['PostEx', 'Leopards', 'Kangaroo'].map(c => (
               <button key={c} onClick={() => runSync(c)} disabled={syncing}
-                style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#aaa', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+                style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: syncing ? 'not-allowed' : 'pointer' }}>
                 Sync {c}
               </button>
             ))}
             <button onClick={() => runSync(null)} disabled={syncing}
-              style={{ background: syncing ? 'var(--bg-section)' : gold, color: syncing ? '#555' : '#000', border: 'none', borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+              style={{ background: syncing ? '#1a1a1a' : gold, color: syncing ? '#555' : '#000', border: 'none', borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer' }}>
               {syncing ? '⟳ Syncing...' : '⟳ Sync All'}
             </button>
           </div>
         </div>
 
         {syncResult && (
-          <div style={{ marginTop: 16, padding: '12px 16px', background: syncResult.error ? 'var(--red-dim)' : 'var(--green-dim)', borderRadius: 8, border: `1px solid ${syncResult.error ? 'var(--red-dim)' : '#003300'}` }}>
+          <div style={{ marginTop: 16, padding: '12px 16px', background: syncResult.error ? '#1a0000' : '#001a0a', borderRadius: 8, border: `1px solid ${syncResult.error ? '#330000' : '#003300'}` }}>
             {syncResult.error ? (
               <span style={{ color: '#ef4444', fontSize: 12 }}>Error: {syncResult.error}</span>
             ) : (
@@ -151,37 +151,37 @@ function SyncTab() {
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>Active Shipments</span>
-          <span style={{ fontSize: 12, color: '#555' }}>{data?.activeShipments?.length} parcels</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{data?.activeShipments?.length} parcels</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
                 {['Tracking', 'Courier', 'Customer', 'City', 'COD', 'Status', 'Updated'].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: '#555', fontWeight: 500 }}>{h}</th>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', color: 'var(--text3)', fontWeight: 500 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {(data?.activeShipments || []).slice(0, 100).map((s, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid var(--bg-section)` }}>
+                <tr key={i} style={{ borderBottom: `1px solid #1a1a1a` }}>
                   <td style={{ padding: '10px 14px', color: gold, fontFamily: 'monospace' }}>{s.tracking_number}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{s.courier_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.customer_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{s.city}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.courier_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.customer_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.city}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(s.cod_amount)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ color: statusColor(s.status), fontSize: 11, background: statusColor(s.status) + '22', padding: '3px 8px', borderRadius: 4 }}>
                       {statusLabel(s.status)}
                     </span>
                   </td>
-                  <td style={{ padding: '10px 14px', color: '#555' }}>{timeAgo(s.updated_at)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text3)' }}>{timeAgo(s.updated_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {(data?.activeShipments || []).length === 0 && (
-            <div style={{ padding: 30, textAlign: 'center', color: '#444' }}>No active shipments. Run sync first.</div>
+            <div style={{ padding: 30, textAlign: 'center', color: 'var(--text3)' }}>No active shipments. Run sync first.</div>
           )}
         </div>
       </div>
@@ -212,7 +212,7 @@ function RTOTab() {
     load();
   };
 
-  if (loading) return <div style={{ color: '#444', padding: 40, textAlign: 'center' }}>Loading...</div>;
+  if (loading) return <div style={{ color: 'var(--text3)', padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
@@ -242,13 +242,13 @@ function RTOTab() {
               {data.unacknowledged_rto.map((r, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #1a0000' }}>
                   <td style={{ padding: '10px 14px', color: '#f87171', fontFamily: 'monospace' }}>{r.tracking_number}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{r.courier_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#ccc' }}>{r.customer_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{r.customer_phone}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{r.city}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{r.courier_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{r.customer_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{r.customer_phone}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{r.city}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(r.cod_amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#ef4444', fontSize: 11 }}>{r.courier_status_raw}</td>
-                  <td style={{ padding: '10px 14px', color: '#555' }}>{timeAgo(r.updated_at)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text3)' }}>{timeAgo(r.updated_at)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <button onClick={() => acknowledge(r.id)}
                       style={{ background: 'var(--red-dim)', border: '1px solid #440000', color: '#f87171', borderRadius: 5, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
@@ -281,9 +281,9 @@ function RTOTab() {
               {data.stale_shipments.map((s, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #1a1000' }}>
                   <td style={{ padding: '10px 14px', color: '#f97316', fontFamily: 'monospace' }}>{s.tracking_number}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{s.courier_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.customer_name}</td>
-                  <td style={{ padding: '10px 14px', color: '#888' }}>{s.city}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.courier_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.customer_name}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text2)' }}>{s.city}</td>
                   <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(s.cod_amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#f97316' }}>{timeAgo(s.last_tracked_at)}</td>
                 </tr>
@@ -294,7 +294,7 @@ function RTOTab() {
       )}
 
       {(data?.unacknowledged_rto || []).length === 0 && (data?.stale_shipments || []).length === 0 && (
-        <div style={{ textAlign: 'center', padding: 60, color: '#444' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>✅</div>
           <div>No active RTO alerts. All clear!</div>
         </div>
@@ -334,7 +334,7 @@ function SettlementsTab() {
     load();
   };
 
-  if (loading) return <div style={{ color: '#444', padding: 40, textAlign: 'center' }}>Loading...</div>;
+  if (loading) return <div style={{ color: 'var(--text3)', padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
@@ -345,15 +345,15 @@ function SettlementsTab() {
             <div style={{ fontWeight: 700, fontSize: 14, color: gold, marginBottom: 12 }}>{c}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                <span style={{ color: '#555' }}>Total COD</span>
+                <span style={{ color: 'var(--text3)' }}>Total COD</span>
                 <span style={{ color: 'var(--text)', fontWeight: 600 }}>{fmt(s.total_cod)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                <span style={{ color: '#555' }}>Pending</span>
+                <span style={{ color: 'var(--text3)' }}>Pending</span>
                 <span style={{ color: '#f97316' }}>{s.pending} settlements</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                <span style={{ color: '#555' }}>Disbursed</span>
+                <span style={{ color: 'var(--text3)' }}>Disbursed</span>
                 <span style={{ color: '#22c55e' }}>{s.disbursed} settlements</span>
               </div>
             </div>
@@ -373,25 +373,25 @@ function SettlementsTab() {
         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Mark COD as Received (Courier Paid Us)</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Courier</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Courier</div>
             <select value={markForm.courier} onChange={e => setMarkForm(f => ({...f, courier: e.target.value}))}
-              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%' }}>
+              style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%' }}>
               <option value="">Select...</option>
               {['PostEx', 'Leopards', 'Kangaroo'].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Amount Received</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Amount Received</div>
             <input type="number" placeholder="Rs amount" value={markForm.amount} onChange={e => setMarkForm(f => ({...f, amount: e.target.value}))}
-              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+              style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Reference (optional)</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Reference (optional)</div>
             <input type="text" placeholder="Bank ref / transaction ID" value={markForm.reference} onChange={e => setMarkForm(f => ({...f, reference: e.target.value}))}
-              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+              style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
           </div>
           <button onClick={markDisbursed} disabled={marking}
-            style={{ background: gold, color: '#000', border: 'none', borderRadius: 7, padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: marking ? 'not-allowed' : 'pointer' }}>
+            style={{ background: gold, color: 'var(--text)', border: 'none', borderRadius: 7, padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: marking ? 'not-allowed' : 'pointer' }}>
             {marking ? '...' : 'Mark Paid'}
           </button>
         </div>
@@ -423,7 +423,7 @@ export default function CourierSyncPage() {
       <div style={{ fontFamily: 'Inter, sans-serif', padding: 60, textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
         <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
-        <div style={{ fontSize: 13, color: '#666' }}>Courier Sync ke kisi tab ki ijazat tumhe nahi hai.</div>
+        <div style={{ fontSize: 13, color: 'var(--text3)' }}>Courier Sync ke kisi tab ki ijazat tumhe nahi hai.</div>
       </div>
     );
   }
@@ -432,7 +432,7 @@ export default function CourierSyncPage() {
     <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: '0' }}>
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Courier Sync</h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text3)' }}>
           Auto-pull from PostEx, Leopards & Kangaroo — real-time status, RTO alerts, COD tracking
         </p>
       </div>
@@ -442,7 +442,7 @@ export default function CourierSyncPage() {
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
-              background: tab === t.id ? 'var(--bg-hover)' : 'transparent',
+              background: tab === t.id ? '#1e1e1e' : 'transparent',
               border: `1px solid ${tab === t.id ? 'var(--border)' : 'transparent'}`,
               borderRadius: 7, padding: '7px 16px', cursor: 'pointer',
               fontSize: 13, color: tab === t.id ? gold : '#555',

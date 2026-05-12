@@ -20,16 +20,16 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function thisMonth() { return new Date().toISOString().slice(0, 7); }
 
 const inp = {
-  background: 'var(--bg-section)', border: '1px solid #334155', borderRadius: 6,
+  background: 'var(--bg-section)', border: '1px solid var(--border2)', borderRadius: 6,
   color: 'var(--text)', padding: '8px 12px', fontSize: 14, outline: 'none', width: '100%',
 };
 const btn = {
-  background: '#c9a96e', color: 'var(--bg)', border: 'none', borderRadius: 6,
+  background: 'var(--gold)', color: '#0f172a', border: 'none', borderRadius: 6,
   padding: '10px 20px', cursor: 'pointer', fontWeight: 700, fontSize: 14,
 };
 const card = { background: 'var(--bg-section)', borderRadius: 10, padding: 16, marginBottom: 12 };
-const label = { color: '#94a3b8', fontSize: 12, marginBottom: 6, display: 'block' };
-const gold = '#c9a96e';
+const label = { color: 'var(--text2)', fontSize: 12, marginBottom: 6, display: 'block' };
+const gold = 'var(--gold)';
 
 // ── Role-specific form fields ──────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ function DispatcherForm({ data, onChange }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
         {[['postex', 'PostEx'], ['leopards', 'Leopards'], ['kangaroo', 'Kangaroo']].map(([k, label]) => (
           <div key={k}>
-            <span style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
+            <span style={{ color: 'var(--text2)', fontSize: 12, display: 'block', marginBottom: 4 }}>{label}</span>
             <input type="number" min="0" value={data[k] || 0} onChange={e => f(k, e.target.value)} style={inp} />
           </div>
         ))}
@@ -164,7 +164,7 @@ function PackingForm({ data, onChange }) {
   return (
     <div>
       <h4 style={{ color: gold, marginBottom: 8 }}>Packing Summary</h4>
-      <p style={{ color: 'var(--text3)', fontSize: 13, marginBottom: 12 }}>* Items packed automatically track hote hain order assignment se. Yahan extra notes add karo.</p>
+      <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>* Items packed automatically track hote hain order assignment se. Yahan extra notes add karo.</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 12 }}>
         <div>
           <span style={label}>Orders Packed Today</span>
@@ -244,7 +244,7 @@ function SubmitForm() {
       <div style={{ textAlign: 'center', padding: '60px 20px' }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
         <h2 style={{ color: gold, marginBottom: 8 }}>Shukriya {employeeName}!</h2>
-        <p style={{ color: '#94a3b8' }}>Aapka aaj ka kaam submit ho gaya.</p>
+        <p style={{ color: 'var(--text2)' }}>Aapka aaj ka kaam submit ho gaya.</p>
         <button onClick={() => { setSubmitted(false); setFormData({}); setMsg(''); }} style={{ ...btn, marginTop: 20 }}>
           Dobara Submit Karo
         </button>
@@ -255,7 +255,7 @@ function SubmitForm() {
   return (
     <div style={{ maxWidth: 700, margin: '0 auto' }}>
       <h2 style={{ color: gold, marginBottom: 4 }}>📋 Submit Your Work</h2>
-      <p style={{ color: 'var(--text3)', marginBottom: 20, fontSize: 14 }}>Aaj ka kaam yahan submit karo</p>
+      <p style={{ color: '#475569', marginBottom: 20, fontSize: 14 }}>Aaj ka kaam yahan submit karo</p>
 
       {/* Step 1: Select who you are */}
       <div style={card}>
@@ -265,7 +265,7 @@ function SubmitForm() {
             <button key={r.id} onClick={() => { setSelectedRole(r.id); setFormData({}); if (r.name) setEmployeeName(r.name); }}
               style={{
                 padding: '10px 14px', borderRadius: 8, border: `1px solid ${selectedRole === r.id ? gold : 'var(--border2)'}`,
-                background: selectedRole === r.id ? '#c9a96e22' : 'var(--bg)',
+                background: selectedRole === r.id ? '#c9a96e22' : '#0f172a',
                 color: selectedRole === r.id ? gold : '#94a3b8',
                 cursor: 'pointer', fontSize: 13, fontWeight: selectedRole === r.id ? 700 : 400, textAlign: 'left',
               }}>
@@ -339,11 +339,11 @@ function CEOReport() {
     for (const [k, v] of Object.entries(data || {})) {
       if (k === 'notes' || !v || v === '0' || v === 0) continue;
       rows.push(<div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12 }}>
-        <span style={{ color: '#94a3b8' }}>{k.replace(/_/g, ' ')}</span>
+        <span style={{ color: 'var(--text2)' }}>{k.replace(/_/g, ' ')}</span>
         <span style={{ color: 'var(--text)', fontWeight: 600 }}>{v}</span>
       </div>);
     }
-    if (data?.notes) rows.push(<div key="notes" style={{ marginTop: 4, fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>{data.notes}</div>);
+    if (data?.notes) rows.push(<div key="notes" style={{ marginTop: 4, fontSize: 12, color: '#475569', fontStyle: 'italic' }}>{data.notes}</div>);
     return rows;
   };
 
@@ -366,27 +366,27 @@ function CEOReport() {
             {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
         </div>
-        <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 18 }}>{submissions.length} submissions</div>
+        <div style={{ color: 'var(--text2)', fontSize: 13, marginTop: 18 }}>{submissions.length} submissions</div>
       </div>
 
-      {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : submissions.length === 0 ? (
-        <div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>Koi submission nahi mili</div>
+      {loading ? <div style={{ color: 'var(--text2)' }}>Loading...</div> : submissions.length === 0 ? (
+        <div style={{ color: '#475569', textAlign: 'center', padding: 40 }}>Koi submission nahi mili</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {submissions.map(s => (
-            <div key={s.id} style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 14, border: '1px solid #334155' }}>
+            <div key={s.id} style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 14, border: '1px solid var(--border2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--text)' }}>{s.employee_name}</div>
                   <div style={{ fontSize: 11, color: gold }}>{roleLabels[s.role] || s.role}</div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: '#475569', textAlign: 'right' }}>
                   {new Date(s.submission_date).toLocaleDateString('en-PK', { day: '2-digit', month: 'short' })}
                   <br />
                   {new Date(s.created_at).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
-              <div style={{ borderTop: '1px solid #334155', paddingTop: 8 }}>
+              <div style={{ borderTop: '1px solid var(--border2)', paddingTop: 8 }}>
                 {renderData(s.role, s.data)}
               </div>
             </div>
@@ -408,18 +408,18 @@ export default function WorkSubmitPage() {
   const [view, setView] = useState('submit');
 
   return (
-    <div style={{ padding: 24, minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
+    <div style={{ padding: 24, minHeight: '100vh', background: 'var(--bg-section)', color: 'var(--text)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: gold, margin: 0 }}>📋 Daily Work Submit</h1>
-          <p style={{ color: 'var(--text3)', margin: '4px 0 0', fontSize: 13 }}>{new Date().toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
+          <p style={{ color: '#475569', margin: '4px 0 0', fontSize: 13 }}>{new Date().toLocaleDateString('en-PK', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
         </div>
         {canViewOthers && (
           <div style={{ display: 'flex', gap: 8 }}>
             {['submit', 'report'].map(v => (
               <button key={v} onClick={() => setView(v)} style={{
                 padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                background: view === v ? gold : 'var(--bg-section)', color: view === v ? 'var(--bg)' : '#94a3b8',
+                background: view === v ? gold : '#1e293b', color: view === v ? '#0f172a' : '#94a3b8',
               }}>{v === 'submit' ? '📝 Submit' : '📊 Report'}</button>
             ))}
           </div>

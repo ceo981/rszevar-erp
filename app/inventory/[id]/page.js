@@ -26,13 +26,13 @@ import ImagePreviewModal from '../_components/ImagePreviewModal';
 import { calculateSeoScore } from '../../../lib/seo-score';
 
 // ── Theme tokens ────────────────────────────────────────────────────────────
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
-const bgPage = 'var(--bg)';
-const text1 = 'var(--text)';
-const text2 = '#aaa';
-const text3 = '#666';
+const bgPage = '#080808';
+const text1 = '#e5e5e5';
+const text2 = 'var(--text2)';
+const text3 = 'var(--text3)';
 
 // ── UI atoms ───────────────────────────────────────────────────────────────
 function Card({ title, children, right = null, padBody = true }) {
@@ -455,7 +455,7 @@ async function compressImageEdit(file) {
 function StatusBadge({ status }) {
   const config = {
     active:   { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  label: 'Active' },
-    draft:    { color: '#888',    bg: 'rgba(136,136,136,0.12)', label: 'Draft' },
+    draft:    { color: 'var(--text2)',    bg: 'rgba(136,136,136,0.12)', label: 'Draft' },
     archived: { color: '#f87171', bg: 'rgba(248,113,113,0.12)', label: 'Archived' },
   };
   const c = config[status] || config.draft;
@@ -1892,7 +1892,7 @@ export default function ProductEditPage() {
         <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: text3, marginBottom: 18, lineHeight: 1.5 }}>
           Product edit karne ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>inventory.edit</code>{' '}
+          <code style={{ background: 'var(--bg-card)', padding: '2px 6px', borderRadius: 4 }}>inventory.edit</code>{' '}
           permission grant karwane ko bolo.
         </div>
         <Btn onClick={() => router.push('/inventory')}>← Back to Inventory</Btn>
@@ -2271,7 +2271,7 @@ export default function ProductEditPage() {
                           opacity: isDragged ? 0.4 : 1,
                           transition: 'opacity 0.15s, border-color 0.15s',
                         }}>
-                        <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                        <div style={{ position: 'relative', paddingTop: '100%', background: 'var(--bg)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
                           {/* May 2026 — Click on image opens fullscreen preview modal
                               (Shopify-style) with download button that forces original
                               PNG/JPG via /api/images/download proxy. We use a clickable
@@ -2349,7 +2349,7 @@ export default function ProductEditPage() {
                               title="Move left"
                               style={{
                                 flex: '0 0 auto',
-                                background: 'var(--bg-section)',
+                                background: 'var(--bg-card)',
                                 border: `1px solid ${border}`,
                                 color: isFirst ? text3 : text1,
                                 borderRadius: 4,
@@ -2364,7 +2364,7 @@ export default function ProductEditPage() {
                               title="Move right"
                               style={{
                                 flex: '0 0 auto',
-                                background: 'var(--bg-section)',
+                                background: 'var(--bg-card)',
                                 border: `1px solid ${border}`,
                                 color: isLast ? text3 : text1,
                                 borderRadius: 4,
@@ -2379,7 +2379,7 @@ export default function ProductEditPage() {
                                 title="Set as main (first) image"
                                 style={{
                                   flex: 1,
-                                  background: 'var(--bg-section)',
+                                  background: 'var(--bg-card)',
                                   border: `1px solid ${border}`,
                                   color: '#4ade80',
                                   borderRadius: 4,
@@ -2407,7 +2407,7 @@ export default function ProductEditPage() {
                       border: `1px solid rgba(74,222,128,0.4)`,
                       borderRadius: 8, padding: 10,
                     }}>
-                      <div style={{ position: 'relative', paddingTop: '100%', background: '#000', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                      <div style={{ position: 'relative', paddingTop: '100%', background: 'var(--bg)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
                         <img src={img.previewUrl} alt={img.alt || ''}
                           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain' }}
                         />

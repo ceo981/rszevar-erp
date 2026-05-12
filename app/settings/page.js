@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
-const gold = '#c9a96e';
+const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
 const border = 'var(--border)';
 
@@ -21,9 +21,9 @@ const TABS = [
 ];
 
 // ─── Shared styles ────────────────────────────────────────────────────────
-const inputStyle = { width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '10px 14px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
-const labelStyle = { display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontWeight: 600 };
-const helpStyle = { fontSize: 11, color: '#555', marginTop: 6, lineHeight: 1.5 };
+const inputStyle = { width: '100%', background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '10px 14px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
+const labelStyle = { display: 'block', fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontWeight: 600 };
+const helpStyle = { fontSize: 11, color: 'var(--text3)', marginTop: 6, lineHeight: 1.5 };
 const sectionStyle = { background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, marginBottom: 16 };
 
 const timeAgo = iso => {
@@ -49,9 +49,9 @@ function StatusDot({ status }) {
 function KV({ label, value, mono }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${border}` }}>
-      <span style={{ fontSize: 12, color: '#888' }}>{label}</span>
-      <span style={{ fontSize: 12, color: '#ccc', fontFamily: mono ? 'monospace' : 'inherit', textAlign: 'right', maxWidth: '60%', wordBreak: 'break-all' }}>
-        {value ?? <span style={{ color: '#444' }}>—</span>}
+      <span style={{ fontSize: 12, color: 'var(--text2)' }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'var(--text2)', fontFamily: mono ? 'monospace' : 'inherit', textAlign: 'right', maxWidth: '60%', wordBreak: 'break-all' }}>
+        {value ?? <span style={{ color: 'var(--text3)' }}>—</span>}
       </span>
     </div>
   );
@@ -72,7 +72,7 @@ function VercelLink({ envVar }) {
 
 function Toggle({ value, onChange, disabled }) {
   return (
-    <div onClick={() => !disabled && onChange(!value)} style={{ width: 44, height: 24, borderRadius: 12, background: value ? '#22c55e' : 'var(--border2)', position: 'relative', transition: 'all 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, display: 'inline-block' }}>
+    <div onClick={() => !disabled && onChange(!value)} style={{ width: 44, height: 24, borderRadius: 12, background: value ? '#22c55e' : '#333', position: 'relative', transition: 'all 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, display: 'inline-block' }}>
       <div style={{ position: 'absolute', top: 2, left: value ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
     </div>
   );
@@ -107,7 +107,7 @@ function TagsTab({ isSuperAdmin }) {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ tag_key: '', label: '', description: '', category: 'custom', color: '#888', sort_order: 100 });
+  const [form, setForm] = useState({ tag_key: '', label: '', description: '', category: 'custom', color: 'var(--text2)', sort_order: 100 });
   const [editingId, setEditingId] = useState(null);
 
   const load = useCallback(() => {
@@ -124,7 +124,7 @@ function TagsTab({ isSuperAdmin }) {
 
   const openNew = () => {
     setEditingId(null);
-    setForm({ tag_key: '', label: '', description: '', category: 'custom', color: '#888', sort_order: 100 });
+    setForm({ tag_key: '', label: '', description: '', category: 'custom', color: 'var(--text2)', sort_order: 100 });
     setShowForm(true);
   };
 
@@ -175,7 +175,7 @@ function TagsTab({ isSuperAdmin }) {
     } catch (e) { showMsg('error', `✗ ${e.message}`); }
   };
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#555' }}>Loading tags...</div>;
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--text3)' }}>Loading tags...</div>;
 
   const CORE = ['wholesale', 'international', 'walkin', 'kangaroo', 'order_confirmed'];
 
@@ -184,12 +184,12 @@ function TagsTab({ isSuperAdmin }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 16, color: gold }}>🏷️ Tags Management</h3>
-          <p style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
             Define tags that auto-classify orders. These are the exact tags you add in Shopify.
           </p>
         </div>
         {isSuperAdmin && (
-          <button onClick={openNew} style={{ background: 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)', border: `1px solid ${gold}`, color: '#000', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>+ New Tag</button>
+          <button onClick={openNew} style={{ background: 'linear-gradient(135deg, var(--gold) 0%, #b8975d 100%)', border: `1px solid ${gold}`, color: 'var(--text)', borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>+ New Tag</button>
         )}
       </div>
 
@@ -231,8 +231,8 @@ function TagsTab({ isSuperAdmin }) {
             <input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="What is this tag for?" style={inputStyle} />
           </div>
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button onClick={() => setShowForm(false)} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
-            <button onClick={save} style={{ background: gold, border: 'none', color: '#000', borderRadius: 7, padding: '8px 20px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{editingId ? 'Update' : 'Create'}</button>
+            <button onClick={() => setShowForm(false)} style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={save} style={{ background: gold, border: 'none', color: 'var(--text)', borderRadius: 7, padding: '8px 20px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{editingId ? 'Update' : 'Create'}</button>
           </div>
         </div>
       )}
@@ -244,22 +244,22 @@ function TagsTab({ isSuperAdmin }) {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: tag.is_active ? tag.color || gold : '#555' }}>{tag.label}</span>
-                <code style={{ background: 'var(--bg-section)', color: '#888', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag.tag_key}</code>
+                <code style={{ background: 'var(--bg-card)', color: 'var(--text2)', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag.tag_key}</code>
                 <Badge color={tag.category === 'type' ? '#8b5cf6' : tag.category === 'courier' ? '#22d3ee' : tag.category === 'workflow' ? '#3b82f6' : '#888'}>{tag.category}</Badge>
                 {CORE.includes(tag.tag_key) && <Badge color="#f59e0b">core</Badge>}
                 {!tag.is_active && <Badge color="#ef4444">disabled</Badge>}
               </div>
-              {tag.description && <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>{tag.description}</div>}
+              {tag.description && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{tag.description}</div>}
               {tag.auto_action && Object.keys(tag.auto_action).length > 0 && (
-                <div style={{ fontSize: 10, color: '#555', marginTop: 4, fontFamily: 'monospace' }}>auto: {JSON.stringify(tag.auto_action)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, fontFamily: 'monospace' }}>auto: {JSON.stringify(tag.auto_action)}</div>
               )}
             </div>
             {isSuperAdmin && (
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => toggleActive(tag)} title={tag.is_active ? 'Disable' : 'Enable'} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={() => toggleActive(tag)} title={tag.is_active ? 'Disable' : 'Enable'} style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {tag.is_active ? '⏸' : '▶'}
                 </button>
-                <button onClick={() => openEdit(tag)} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                <button onClick={() => openEdit(tag)} style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
                 {!CORE.includes(tag.tag_key) && (
                   <button onClick={() => del(tag)} style={{ background: 'var(--red-dim)', border: '1px solid #660000', color: '#ef4444', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>🗑</button>
                 )}
@@ -289,24 +289,24 @@ function AuditLogTab() {
     }).catch(e => { setError(e.message); setLoading(false); });
   }, []);
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#555' }}>Loading audit log...</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text3)' }}>Loading audit log...</div>;
   if (error) return <div style={{ padding: 20, color: '#ef4444' }}>{error}</div>;
 
   return (
     <div style={sectionStyle}>
       <h3 style={{ margin: '0 0 16px', fontSize: 16, color: gold }}>Recent Settings Changes</h3>
-      {entries.length === 0 && <div style={{ color: '#444', textAlign: 'center', padding: 40, fontSize: 13 }}>No changes recorded yet</div>}
+      {entries.length === 0 && <div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40, fontSize: 13 }}>No changes recorded yet</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {entries.map(e => (
           <div key={e.id} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ fontWeight: 600, color: gold, fontSize: 13 }}>{e.setting_key}</div>
-              <div style={{ fontSize: 11, color: '#555' }}>{fmtDate(e.changed_at)}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtDate(e.changed_at)}</div>
             </div>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>by {e.changed_by_email || 'unknown'}</div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>by {e.changed_by_email || 'unknown'}</div>
             <div style={{ display: 'flex', gap: 10, fontSize: 11, flexWrap: 'wrap' }}>
               <div style={{ background: 'var(--red-dim)', border: '1px solid #330000', color: '#f87171', padding: '4px 10px', borderRadius: 5 }}>from: {JSON.stringify(e.old_value)}</div>
-              <div style={{ background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', padding: '4px 10px', borderRadius: 5 }}>to: {JSON.stringify(e.new_value)}</div>
+              <div style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', padding: '4px 10px', borderRadius: 5 }}>to: {JSON.stringify(e.new_value)}</div>
             </div>
           </div>
         ))}
@@ -355,19 +355,19 @@ function WhatsAppTab({ isSuperAdmin }) {
   }
 
   const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 12 };
-  const label = { fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 };
+  const label = { fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 };
   const value = { fontSize: 14, color: 'var(--text)', fontWeight: 500 };
 
   return (
     <div style={{ padding: 4 }}>
-      <h3 style={{ color: '#c9a96e', marginBottom: 4, fontSize: 16 }}>💬 WhatsApp Status</h3>
-      <p style={{ fontSize: 12, color: '#555', marginBottom: 20 }}>Meta Cloud API connection status aur test messages</p>
+      <h3 style={{ color: 'var(--gold)', marginBottom: 4, fontSize: 16 }}>💬 WhatsApp Status</h3>
+      <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 20 }}>Meta Cloud API connection status aur test messages</p>
 
       {/* Connection Status */}
       <div style={card}>
         <div style={{ ...label }}>Connection</div>
         {!status ? (
-          <div style={{ color: '#555' }}>Checking...</div>
+          <div style={{ color: 'var(--text3)' }}>Checking...</div>
         ) : status.error ? (
           <div style={{ color: '#ef4444' }}>❌ Error: {status.error}</div>
         ) : (
@@ -392,7 +392,7 @@ function WhatsAppTab({ isSuperAdmin }) {
             </div>
           </div>
         )}
-        <button onClick={checkStatus} style={{ marginTop: 12, background: 'var(--bg-section)', border: '1px solid var(--border2)', color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+        <button onClick={checkStatus} style={{ marginTop: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text2)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
           🔄 Refresh Status
         </button>
       </div>
@@ -405,11 +405,11 @@ function WhatsAppTab({ isSuperAdmin }) {
             { name: 'rs_zevar_order_interactive', desc: 'Order confirmation with Yes/Cancel buttons' },
             { name: 'rs_zevar_order_dispatched', desc: 'Dispatch notification with tracking' },
           ].map(t => (
-            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-section)', borderRadius: 6 }}>
+            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-card)', borderRadius: 6 }}>
               <span style={{ color: '#22c55e' }}>✅</span>
               <div>
                 <div style={{ fontSize: 12, color: 'var(--text)' }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: '#555' }}>{t.desc}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{t.desc}</div>
               </div>
             </div>
           ))}
@@ -420,9 +420,9 @@ function WhatsAppTab({ isSuperAdmin }) {
       <div style={card}>
         <div style={label}>Shopify Webhook</div>
         <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 6 }}>
-          <div>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-create</span></div>
-          <div style={{ marginTop: 4 }}>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-fulfilled</span></div>
-          <div style={{ marginTop: 8, fontSize: 11, color: '#555' }}>Shopify Admin → Settings → Notifications → Webhooks mein register karein</div>
+          <div>📍 URL: <span style={{ color: 'var(--gold)' }}>erp.rszevar.com/api/shopify/webhooks/orders-create</span></div>
+          <div style={{ marginTop: 4 }}>📍 URL: <span style={{ color: 'var(--gold)' }}>erp.rszevar.com/api/shopify/webhooks/orders-fulfilled</span></div>
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)' }}>Shopify Admin → Settings → Notifications → Webhooks mein register karein</div>
         </div>
       </div>
 
@@ -435,9 +435,9 @@ function WhatsAppTab({ isSuperAdmin }) {
               value={testPhone}
               onChange={e => setTestPhone(e.target.value)}
               placeholder="03001234567"
-              style={{ flex: 1, background: 'var(--bg-section)', border: '1px solid var(--border2)', color: 'var(--text)', borderRadius: 6, padding: '8px 12px', fontSize: 13 }}
+              style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 12px', fontSize: 13 }}
             />
-            <button onClick={sendTest} disabled={testing || !testPhone} style={{ background: '#c9a96e', color: '#000', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            <button onClick={sendTest} disabled={testing || !testPhone} style={{ background: 'var(--gold)', color: 'var(--text)', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {testing ? 'Sending...' : '📤 Send Test'}
             </button>
           </div>
@@ -446,7 +446,7 @@ function WhatsAppTab({ isSuperAdmin }) {
               {testResult}
             </div>
           )}
-          <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>Test hello_world template message bhejega</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Test hello_world template message bhejega</div>
         </div>
       )}
     </div>
@@ -467,11 +467,11 @@ function DiagnosticsTab({ check, label }) {
     }).catch(e => { setError(e.message); setLoading(false); });
   }, [check, refreshKey]);
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#555' }}>⟳ Running diagnostics…</div>;
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--text3)' }}>⟳ Running diagnostics…</div>;
   if (error) return (
     <div style={sectionStyle}>
       <div style={{ color: '#ef4444' }}>❌ {error}</div>
-      <button onClick={() => setRefreshKey(k => k + 1)} style={{ marginTop: 10, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Retry</button>
+      <button onClick={() => setRefreshKey(k => k + 1)} style={{ marginTop: 10, background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Retry</button>
     </div>
   );
 
@@ -479,7 +479,7 @@ function DiagnosticsTab({ check, label }) {
     <div style={sectionStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 16, color: gold }}>{label}</h3>
-        <button onClick={() => setRefreshKey(k => k + 1)} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>⟳ Refresh</button>
+        <button onClick={() => setRefreshKey(k => k + 1)} style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>⟳ Refresh</button>
       </div>
       {check === 'shopify' && <ShopifyView data={data} />}
       {check === 'leopards' && <LeopardsView data={data} />}
@@ -496,17 +496,17 @@ function ShopifyView({ data }) {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Connection</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Connection</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusDot status={c.status} />
           <span style={{ color: c.status === 'ok' ? '#22c55e' : c.status === 'error' ? '#ef4444' : '#888', fontSize: 13, fontWeight: 600 }}>
             {c.status === 'ok' ? 'Connected' : c.status === 'error' ? `Error: ${c.error}` : 'Not tested'}
           </span>
-          {c.latency_ms != null && <span style={{ fontSize: 11, color: '#555' }}>· {c.latency_ms}ms</span>}
+          {c.latency_ms != null && <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {c.latency_ms}ms</span>}
         </div>
       </div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Credentials</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Credentials</div>
         <KV label="Store Domain" value={data.store_domain} mono />
         <KV label="Access Token" value={data.access_token} mono />
         <KV label="Webhook Secret" value={data.webhook_secret} mono />
@@ -514,7 +514,7 @@ function ShopifyView({ data }) {
       </div>
       {data.shop_info && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Shop Info</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Shop Info</div>
           <KV label="Name" value={data.shop_info.name} />
           <KV label="Email" value={data.shop_info.email} />
           <KV label="Country" value={data.shop_info.country} />
@@ -524,20 +524,20 @@ function ShopifyView({ data }) {
         </div>
       )}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Webhooks ({data.webhooks?.registered || 0})</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Webhooks ({data.webhooks?.registered || 0})</div>
         {data.webhooks?.list?.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {data.webhooks.list.map((w, i) => (
               <div key={i} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 6, padding: '8px 12px', fontSize: 11 }}>
                 <div style={{ color: gold, fontWeight: 600 }}>{w.topic}</div>
-                <div style={{ color: '#666', marginTop: 2, fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all' }}>{w.address}</div>
+                <div style={{ color: 'var(--text3)', marginTop: 2, fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all' }}>{w.address}</div>
               </div>
             ))}
           </div>
-        ) : <div style={{ fontSize: 12, color: '#555' }}>No webhooks registered</div>}
+        ) : <div style={{ fontSize: 12, color: 'var(--text3)' }}>No webhooks registered</div>}
       </div>
       <div>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Sync</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Sync</div>
         <KV label="Last synced at" value={fmtDate(data.last_sync)} />
         <KV label="Total orders" value={data.order_counts?.total ?? 0} />
       </div>
@@ -551,24 +551,24 @@ function LeopardsView({ data }) {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Connection</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Connection</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <StatusDot status={c.status} />
           <span style={{ color: c.status === 'ok' ? '#22c55e' : '#ef4444', fontSize: 13, fontWeight: 600 }}>
             {c.status === 'ok' ? 'Connected' : c.status === 'error' ? `Error: ${c.error}` : 'Not tested'}
           </span>
-          {c.latency_ms != null && <span style={{ fontSize: 11, color: '#555' }}>· {c.latency_ms}ms</span>}
-          {c.today_packets != null && <span style={{ fontSize: 11, color: '#888' }}>· {c.today_packets} packets today</span>}
+          {c.latency_ms != null && <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {c.latency_ms}ms</span>}
+          {c.today_packets != null && <span style={{ fontSize: 11, color: 'var(--text2)' }}>· {c.today_packets} packets today</span>}
         </div>
       </div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Credentials</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Credentials</div>
         <KV label="API Key" value={data.api_key} mono />
         <KV label="API Password" value={data.api_password} mono />
         <div style={{ marginTop: 10 }}><VercelLink envVar="LEOPARDS_API_KEY" /></div>
       </div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Order Counts</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Order Counts</div>
         <KV label="Total" value={data.counts?.total} />
         <KV label="Delivered" value={data.counts?.delivered} />
         <KV label="Paid" value={data.counts?.paid} />
@@ -576,7 +576,7 @@ function LeopardsView({ data }) {
       </div>
       {data.last_status_sync && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Status Sync</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Status Sync</div>
           <KV label="Ran" value={`${timeAgo(data.last_status_sync.created_at)} (${fmtDate(data.last_status_sync.created_at)})`} />
           <KV label="Packets fetched" value={data.last_status_sync.total_fetched} />
           <KV label="Orders matched" value={data.last_status_sync.matched_orders} />
@@ -587,7 +587,7 @@ function LeopardsView({ data }) {
       )}
       {data.last_payment_sync && (
         <div>
-          <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Payment Sync</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Last Payment Sync</div>
           <KV label="Ran" value={`${timeAgo(data.last_payment_sync.created_at)} (${fmtDate(data.last_payment_sync.created_at)})`} />
           <KV label="Marked paid" value={data.last_payment_sync.marked_paid} />
           <KV label="Duration" value={`${data.last_payment_sync.duration_ms}ms`} />
@@ -636,13 +636,13 @@ function SystemView({ data }) {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Supabase</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Supabase</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <StatusDot status={s.connection} />
           <span style={{ color: s.connection === 'ok' ? '#22c55e' : '#ef4444', fontSize: 13, fontWeight: 600 }}>
             {s.connection === 'ok' ? 'Connected' : `Error: ${s.error || 'not tested'}`}
           </span>
-          {s.latency_ms != null && <span style={{ fontSize: 11, color: '#555' }}>· {s.latency_ms}ms</span>}
+          {s.latency_ms != null && <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {s.latency_ms}ms</span>}
         </div>
         {data.db_stats && (
           <>
@@ -653,16 +653,16 @@ function SystemView({ data }) {
         )}
       </div>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Environment Variables</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Environment Variables</div>
         {Object.entries(data.env_vars || {}).map(([k, v]) => (
           <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${border}` }}>
-            <span style={{ fontSize: 11, color: '#ccc', fontFamily: 'monospace' }}>{k}</span>
+            <span style={{ fontSize: 11, color: 'var(--text2)', fontFamily: 'monospace' }}>{k}</span>
             <Badge color={v ? '#22c55e' : '#ef4444'}>{v ? 'SET' : 'MISSING'}</Badge>
           </div>
         ))}
       </div>
       <div>
-        <div style={{ fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recent Sync Runs ({data.recent_syncs?.length || 0})</div>
+        <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Recent Sync Runs ({data.recent_syncs?.length || 0})</div>
         {data.recent_syncs?.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {data.recent_syncs.map((sync, i) => (
@@ -670,19 +670,19 @@ function SystemView({ data }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <div>
                     <Badge color={sync.errors ? '#ef4444' : '#22c55e'}>{sync.courier} {sync.sync_type}</Badge>
-                    <span style={{ marginLeft: 8, color: '#888' }}>{timeAgo(sync.created_at)}</span>
-                    <span style={{ marginLeft: 8, color: '#555' }}>· {sync.triggered_by}</span>
+                    <span style={{ marginLeft: 8, color: 'var(--text2)' }}>{timeAgo(sync.created_at)}</span>
+                    <span style={{ marginLeft: 8, color: 'var(--text3)' }}>· {sync.triggered_by}</span>
                   </div>
-                  <span style={{ color: '#555' }}>{sync.duration_ms}ms</span>
+                  <span style={{ color: 'var(--text3)' }}>{sync.duration_ms}ms</span>
                 </div>
-                <div style={{ color: '#666' }}>
+                <div style={{ color: 'var(--text3)' }}>
                   fetched: {sync.total_fetched} · matched: {sync.matched_orders} · updated: {sync.updated_orders}
                   {sync.marked_paid > 0 && ` · paid: ${sync.marked_paid}`}
                 </div>
               </div>
             ))}
           </div>
-        ) : <div style={{ fontSize: 12, color: '#555' }}>No sync runs recorded yet</div>}
+        ) : <div style={{ fontSize: 12, color: 'var(--text3)' }}>No sync runs recorded yet</div>}
       </div>
     </div>
   );
@@ -766,7 +766,7 @@ export default function SettingsPage() {
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Settings</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text3)' }}>
             Configure your ERP system
             {role && <span style={{ marginLeft: 10, color: isSuperAdmin ? '#22c55e' : '#f87171' }}>· Role: {role}{!isSuperAdmin && ' (read-only)'}</span>}
           </p>
@@ -793,7 +793,7 @@ export default function SettingsPage() {
             <button key={t.id} onClick={() => { setActiveTab(t.id); setDrafts({}); }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
-                background: activeTab === t.id ? 'var(--bg-section)' : 'transparent',
+                background: activeTab === t.id ? '#1a1a1a' : 'transparent',
                 border: 'none', borderLeft: activeTab === t.id ? `3px solid ${gold}` : '3px solid transparent',
                 color: activeTab === t.id ? gold : '#aaa',
                 padding: '11px 14px', fontSize: 13, fontWeight: activeTab === t.id ? 600 : 400,
@@ -803,7 +803,7 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          {loading && <div style={{ textAlign: 'center', padding: 60, color: '#555' }}>Loading settings...</div>}
+          {loading && <div style={{ textAlign: 'center', padding: 60, color: 'var(--text3)' }}>Loading settings...</div>}
           {!loading && tab.kind === 'audit' && <AuditLogTab />}
           {!loading && tab.kind === 'tags' && <TagsTab isSuperAdmin={canTags} />}
           {!loading && tab.kind === 'diagnostics' && <DiagnosticsTab check={tab.check} label={tab.label} />}
@@ -813,13 +813,13 @@ export default function SettingsPage() {
               <div style={sectionStyle}>
                 <div style={{ marginBottom: 20 }}>
                   <h3 style={{ margin: 0, fontSize: 16, color: gold }}>{tab.label}</h3>
-                  <p style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
+                  <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
                     {tab.id === 'store' && 'General store information used across ERP and invoices'}
                     {tab.id === 'business_rules' && 'Control how ERP handles orders, statuses, and automation'}
                     {tab.id === 'notifications' && 'Configure email/WhatsApp alerts (WhatsApp is a future feature)'}
                   </p>
                 </div>
-                {tabSettings.length === 0 && <div style={{ color: '#444', padding: 20, textAlign: 'center', fontSize: 13 }}>No settings in this category yet</div>}
+                {tabSettings.length === 0 && <div style={{ color: 'var(--text3)', padding: 20, textAlign: 'center', fontSize: 13 }}>No settings in this category yet</div>}
                 {tabSettings.map(s => {
                   // Business rules tab gated separately; other settings categories use canEdit
                   const rowEditable = tab.id === 'business_rules' ? canBusinessRules : canEdit;
@@ -832,8 +832,8 @@ export default function SettingsPage() {
                 <div style={{ position: 'sticky', bottom: 16, background: 'var(--bg)', border: `1px solid ${gold}`, borderRadius: 12, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
                   <div style={{ fontSize: 13, color: gold }}>{Object.keys(drafts).length} unsaved change{Object.keys(drafts).length !== 1 ? 's' : ''}</div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={discard} disabled={saving} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 18px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Discard</button>
-                    <button onClick={save} disabled={saving} style={{ background: saving ? 'var(--bg-section)' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)', border: `1px solid ${saving ? border : '#c9a96e'}`, color: saving ? '#888' : '#000', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{saving ? 'Saving...' : '💾 Save Changes'}</button>
+                    <button onClick={discard} disabled={saving} style={{ background: 'transparent', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '9px 18px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Discard</button>
+                    <button onClick={save} disabled={saving} style={{ background: saving ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)', border: `1px solid ${saving ? border: '#c9a96e'}`, color: saving ? '#888' : '#000', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{saving ? 'Saving...' : '💾 Save Changes'}</button>
                   </div>
                 </div>
               )}

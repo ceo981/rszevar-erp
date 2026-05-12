@@ -617,7 +617,7 @@ export default function InventoryPage() {
                     fontSize: 12, padding: '4px 8px',
                     background: 'rgba(251,191,36,0.04)', borderRadius: 4,
                   }}>
-                    <span style={{ color: '#ddd' }}>
+                    <span style={{ color: 'var(--text)' }}>
                       {p.parent_title}
                       {p.sku && <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 11 }}>· {p.sku}</span>}
                     </span>
@@ -685,7 +685,7 @@ export default function InventoryPage() {
           { label: 'Out of Stock', value: stats.out_of_stock || 0, icon: '🚫', color: 'var(--red)' },
           { label: 'Active', value: stats.active || 0, icon: '✅', color: 'var(--cyan)' },
         ].map(card => (
-          <div key={card.label} style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-section) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, position: 'relative', overflow: 'hidden' }}>
+          <div key={card.label} style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg2) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${card.color}55, transparent)` }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
@@ -745,7 +745,7 @@ export default function InventoryPage() {
             <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
               <span><span style={{ color: '#f59e0b', fontWeight: 600 }}>A</span> {abcStats.class_a||0}</span>
               <span><span style={{ color: '#60a5fa', fontWeight: 600 }}>B</span> {abcStats.class_b||0}</span>
-              <span><span style={{ color: '#6b7280', fontWeight: 600 }}>C</span> {abcStats.class_c||0}</span>
+              <span><span style={{ color: 'var(--text2)', fontWeight: 600 }}>C</span> {abcStats.class_c||0}</span>
               <span><span style={{ color: '#f87171', fontWeight: 600 }}>D</span> {abcStats.class_d||0}</span>
               <span style={{ marginLeft: 'auto' }}>Window: {abcWindow}</span>
             </div>
@@ -791,7 +791,7 @@ export default function InventoryPage() {
             { value: 'none',   label: '○ None',   color: 'var(--text3)',dim: 'rgba(138,133,128,0.10)' },
           ].map(sf => (
             <button key={sf.value} onClick={() => { setSeoFilter(sf.value); setPage(1); }}
-              style={{ padding: '7px 12px', background: seoFilter === sf.value ? sf.dim : 'transparent', border: `1px solid ${seoFilter === sf.value ? sf.color : 'var(--border)'}`, borderRadius: 'var(--radius)', color: seoFilter === sf.value ? sf.color : 'var(--text2)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{sf.label}</button>
+              style={{ padding: '7px 12px', background: seoFilter === sf.value ? sf.dim : 'transparent', border: `1px solid ${seoFilter === sf.value ? sf.color: 'var(--border)'}`, borderRadius: 'var(--radius)', color: seoFilter === sf.value ? sf.color: 'var(--text2)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', whiteSpace: 'nowrap' }}>{sf.label}</button>
           ))}
         </div>
       </div>
@@ -892,7 +892,7 @@ export default function InventoryPage() {
                               rel="noopener noreferrer"
                               onClick={e => e.stopPropagation()}
                               title="Open editor in new tab"
-                              style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
                             >↗</a>
                           </div>
                         </td>
@@ -968,7 +968,7 @@ export default function InventoryPage() {
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}
                             title="Open editor in new tab"
-                            style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
                           >↗</a>
                         )}
                       </div>
@@ -1036,7 +1036,7 @@ export default function InventoryPage() {
                       />
                     )}
                     {canViewFinancial && !isGrouped && displayItem[revCol] && (
-                      <span style={{ padding: '3px 9px', borderRadius: 4, background: 'var(--bg-section)', color: 'var(--text2)' }}>
+                      <span style={{ padding: '3px 9px', borderRadius: 4, background: 'var(--bg-card)', color: 'var(--text2)' }}>
                         Rev: Rs {Number(displayItem[revCol]).toLocaleString()}
                       </span>
                     )}

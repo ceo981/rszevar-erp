@@ -24,7 +24,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-const gold    = '#c9a96e';
+const gold    = 'var(--gold)';
 const danger  = '#ef4444';
 const warning = '#f59e0b';
 const success = '#22c55e';
@@ -216,7 +216,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
                 }}>← Back</button>
               <button onClick={handleConfirm} disabled={submitting}
                 style={{
-                  background: gold, color: '#000', border: 'none',
+                  background: gold, color: 'var(--text)', border: 'none',
                   borderRadius: 7, padding: '9px 18px',
                   fontSize: 12, fontFamily: 'inherit', fontWeight: 600,
                   cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,

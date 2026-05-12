@@ -24,13 +24,13 @@ import Link from 'next/link';
 import { useUser } from '../../../../context/UserContext';
 
 // ── Theme tokens (mirrored from /inventory/[id]/page.js) ────────────────────
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const card   = 'var(--bg-card)';
 const border = 'var(--border)';
-const bgPage = 'var(--bg)';
-const text1  = 'var(--text)';
-const text2  = '#aaa';
-const text3  = '#666';
+const bgPage = '#080808';
+const text1  = '#e5e5e5';
+const text2  = 'var(--text2)';
+const text3  = 'var(--text3)';
 
 // ── UI atoms ────────────────────────────────────────────────────────────────
 function Card({ title, children, right = null, padBody = true }) {
@@ -235,7 +235,7 @@ function HistoryRow({ event, isLast }) {
     if (a === 'sku')              return { label: 'SKU',          color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' };
     if (a === 'barcode')          return { label: 'Barcode',      color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' };
     if (a === 'compare_at_price') return { label: 'Compare-at',   color: '#60a5fa', bg: 'rgba(96,165,250,0.12)' };
-    if (a === 'weight')           return { label: 'Weight',       color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' };
+    if (a === 'weight')           return { label: 'Weight',       color: 'var(--text2)', bg: 'rgba(156,163,175,0.12)' };
     if (a === 'order_created')    return { label: 'Order created',    color: '#22c55e', bg: 'rgba(34,197,94,0.10)' };
     if (a === 'order_dispatched') return { label: 'Order dispatched', color: '#fbbf24', bg: 'rgba(251,191,36,0.10)' };
     if (a === 'order_cancelled')  return { label: 'Order cancelled',  color: '#f87171', bg: 'rgba(248,113,113,0.10)' };
@@ -739,8 +739,8 @@ export default function VariantEditPage() {
                         onBlur={e => e.currentTarget.style.borderColor = border}
                       />
                       <div style={{ fontSize: 11, color: text3, marginTop: 6, lineHeight: 1.5 }}>
-                        Multiple options ho to <code style={{ background: 'var(--bg-section)', padding: '1px 5px', borderRadius: 3, color: gold }}>{' / '}</code> se separate karo
-                        (e.g. <code style={{ background: 'var(--bg-section)', padding: '1px 5px', borderRadius: 3 }}>Small / Red</code>).
+                        Multiple options ho to <code style={{ background: 'var(--bg-card)', padding: '1px 5px', borderRadius: 3, color: gold }}>{' / '}</code> se separate karo
+                        (e.g. <code style={{ background: 'var(--bg-card)', padding: '1px 5px', borderRadius: 3 }}>Small / Red</code>).
                         Save par seedha Shopify update hota hai. Option ke <em>name</em> (Size, Color) Shopify admin se hi change hote hain.
                       </div>
                     </>

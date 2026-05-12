@@ -24,7 +24,7 @@ import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import { createClient as createAuthClient } from '@/lib/supabase/client';
 
-const gold    = '#c9a96e';
+const gold    = 'var(--gold)';
 const danger  = '#ef4444';
 const warning = '#f59e0b';
 const success = '#22c55e';
@@ -43,17 +43,17 @@ function formatDate(iso) {
 const FIN_BADGE = {
   paid:           { label: 'Paid',       color: success, bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)' },
   pending:        { label: 'Pending',    color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  voided:         { label: 'Voided',     color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  voided:         { label: 'Voided',     color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
   refunded:       { label: 'Refunded',   color: danger,  bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)' },
   partially_paid: { label: 'Partial',    color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  expired:        { label: 'Expired',    color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  expired:        { label: 'Expired',    color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
 };
 
 const FUL_BADGE = {
   fulfilled:           { label: 'Fulfilled',   color: success, bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)' },
   unfulfilled:         { label: 'Unfulfilled', color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
   partially_fulfilled: { label: 'Partial',     color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  restocked:           { label: 'Restocked',   color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  restocked:           { label: 'Restocked',   color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
 };
 
 export default function HistoricalOrdersPage() {
@@ -159,7 +159,7 @@ function BrowseArchiveTab() {
     { value: 'unfulfilled', label: 'Unfulfilled', color: warning, count: counts.unfulfilled || 0 },
     { value: 'cancelled',   label: 'Cancelled',   color: danger,  count: counts.cancelled || 0 },
     { value: 'paid',        label: 'Paid',        color: success, count: counts.paid || 0 },
-    { value: 'voided',      label: 'Voided',      color: '#888',  count: counts.voided || 0 },
+    { value: 'voided',      label: 'Voided',      color: 'var(--text2)',  count: counts.voided || 0 },
   ];
 
   return (
@@ -191,7 +191,7 @@ function BrowseArchiveTab() {
               style={{
                 background: isActive ? chip.color + '18' : 'transparent',
                 border: isActive ? `1px solid ${chip.color}55` : '1px solid var(--border)',
-                color: isActive ? chip.color : 'var(--text2)',
+                color: isActive ? chip.color: 'var(--text2)',
                 borderRadius: 7, padding: '6px 12px',
                 fontSize: 12, fontWeight: isActive ? 600 : 500,
                 cursor: 'pointer', fontFamily: 'inherit',
@@ -201,7 +201,7 @@ function BrowseArchiveTab() {
               <span style={{
                 fontSize: 10, fontWeight: 600,
                 background: isActive ? chip.color + '22' : 'var(--bg-section)',
-                color: isActive ? chip.color : 'var(--text3)',
+                color: isActive ? chip.color: 'var(--text3)',
                 padding: '1px 6px', borderRadius: 8, minWidth: 18, textAlign: 'center',
               }}>{fmtNum(chip.count)}</span>
             </button>

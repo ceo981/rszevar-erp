@@ -30,7 +30,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
-const gold   = '#c9a96e';
+const gold   = 'var(--gold)';
 const danger = '#ef4444';
 const warning = '#f59e0b';
 const success = '#22c55e';

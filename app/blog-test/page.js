@@ -91,12 +91,12 @@ export default function BlogTestPage() {
       <div style={{ maxWidth: 600, margin: '40px auto', padding: 60, fontFamily: 'system-ui', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
         <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
-        <p style={{ color: '#666', marginBottom: 18, fontSize: 13 }}>
+        <p style={{ color: 'var(--text3)', marginBottom: 18, fontSize: 13 }}>
           Blog page ki ijazat tumhe nahi hai. CEO se{' '}
           <code style={{ background: '#f3f3f3', padding: '2px 6px', borderRadius: 4 }}>blog.view</code>{' '}
           permission grant karwane ko bolo.
         </p>
-        <Link href="/" style={{ background: '#000', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/" style={{ background: 'var(--bg)', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'inline-block' }}>
           ← Dashboard pe wapas
         </Link>
       </div>
@@ -108,11 +108,11 @@ export default function BlogTestPage() {
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
         🧪 Blog Generation Test <span style={{ fontSize: 14, color: '#059669', fontWeight: 500 }}>v3 — Smart Linking</span>
       </h1>
-      <p style={{ color: '#666', marginBottom: 24, fontSize: 14 }}>
+      <p style={{ color: 'var(--text3)', marginBottom: 24, fontSize: 14 }}>
         Now uses REAL collection slugs + bestseller products from Supabase catalog. No more fake URLs.
       </p>
 
-      <div style={{ background: 'var(--text)', padding: 20, borderRadius: 8, marginBottom: 24 }}>
+      <div style={{ background: '#f5f5f5', padding: 20, borderRadius: 8, marginBottom: 24 }}>
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Topic *</label>
           <textarea style={inputStyle} rows={2} value={formData.topic}
@@ -161,12 +161,12 @@ export default function BlogTestPage() {
         </button>
         )}
         {!canGenerate && (
-          <div style={{ fontSize: 12, color: '#999', padding: '10px 0' }}>
+          <div style={{ fontSize: 12, color: 'var(--text2)', padding: '10px 0' }}>
             🔒 Generate karne ki ijazat nahi (need <code>blog.generate</code>).
           </div>
         )}
         {loading && (
-          <p style={{ fontSize: 12, color: '#666', marginTop: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
             Fetching catalog → Claude Sonnet 4.6 writing → 40-100s typical
           </p>
         )}
@@ -233,19 +233,19 @@ export default function BlogTestPage() {
           <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid #ccc' }} />
 
           <h2 style={{ fontSize: 20, margin: '8px 0' }}>{result.post.title}</h2>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>
             <strong>Slug:</strong> /blogs/journal/{result.post.slug}
           </p>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>
             <strong>Meta Title ({result.post.meta_title.length}/70):</strong> {result.post.meta_title}
           </p>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>
             <strong>Meta Description ({result.post.meta_description.length}/160):</strong> {result.post.meta_description}
           </p>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 8 }}>
             <strong>Excerpt:</strong> {result.post.excerpt}
           </p>
-          <p style={{ fontSize: 13, color: '#666', marginBottom: 12 }}>
+          <p style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>
             <strong>Tags:</strong> {Array.isArray(result.post.tags) ? result.post.tags.join(', ') : ''}
           </p>
 
@@ -265,7 +265,7 @@ export default function BlogTestPage() {
               {(result.post.faqs || []).map((faq, i) => (
                 <div key={i} style={{ marginBottom: 12 }}>
                   <p style={{ fontWeight: 600, marginBottom: 4 }}>Q: {faq.question}</p>
-                  <p style={{ color: '#444', fontSize: 14 }}>A: {faq.answer}</p>
+                  <p style={{ color: 'var(--text3)', fontSize: 14 }}>A: {faq.answer}</p>
                 </div>
               ))}
             </div>
@@ -291,7 +291,7 @@ export default function BlogTestPage() {
             </button>
             )}
             {!canPublish && (
-              <div style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
+              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text3)' }}>
                 🔒 Shopify publish ki ijazat nahi (need <code>blog.publish</code>).
               </div>
             )}
@@ -333,14 +333,14 @@ export default function BlogTestPage() {
 function Metric({ label, value }) {
   return (
     <div style={{ background: 'white', padding: 8, borderRadius: 4 }}>
-      <div style={{ fontSize: 11, color: '#666', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 600 }}>{value}</div>
     </div>
   );
 }
 
 const labelStyle = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--border2)',
+  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text3)',
   marginBottom: 4, textTransform: 'uppercase',
 };
 

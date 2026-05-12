@@ -25,7 +25,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
-const gold    = '#c9a96e';
+const gold    = 'var(--gold)';
 const danger  = '#ef4444';
 const warning = '#f59e0b';
 const success = '#22c55e';
@@ -49,16 +49,16 @@ function formatDateTime(iso) {
 const FIN_BADGE = {
   paid:           { label: 'Paid',     color: success, bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)' },
   pending:        { label: 'Pending',  color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  voided:         { label: 'Voided',   color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  voided:         { label: 'Voided',   color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
   refunded:       { label: 'Refunded', color: danger,  bg: 'rgba(239,68,68,0.12)',  border: 'rgba(239,68,68,0.3)' },
   partially_paid: { label: 'Partial',  color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  expired:        { label: 'Expired',  color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  expired:        { label: 'Expired',  color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
 };
 const FUL_BADGE = {
   fulfilled:           { label: 'Fulfilled',   color: success, bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.3)' },
   unfulfilled:         { label: 'Unfulfilled', color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
   partially_fulfilled: { label: 'Partial',     color: warning, bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)' },
-  restocked:           { label: 'Restocked',   color: '#888',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
+  restocked:           { label: 'Restocked',   color: 'var(--text2)',  bg: 'rgba(136,136,136,0.12)', border: 'rgba(136,136,136,0.3)' },
 };
 
 export default function ArchiveOrderDetailPage() {
