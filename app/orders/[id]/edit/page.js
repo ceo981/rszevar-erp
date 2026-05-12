@@ -25,8 +25,8 @@ import { gold, card, border, fmt } from '../../_components/OrderDrawer';
 
 // ─── Style atoms ────────────────────────────────────────────────────────────
 const inpStyle = {
-  width: '100%', padding: '8px 10px', background: '#0a0a0a',
-  border: `1px solid ${border}`, borderRadius: 6, color: '#fff',
+  width: '100%', padding: '8px 10px', background: 'var(--bg)',
+  border: `1px solid ${border}`, borderRadius: 6, color: 'var(--text)',
   fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
 };
 const btnPrimary = {
@@ -57,7 +57,7 @@ function Card({ title, children, right }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           background: 'rgba(201,169,110,0.03)',
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e5e5' }}>{title}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{title}</div>
           {right}
         </div>
       )}
@@ -152,7 +152,7 @@ function ProductPicker({ onClose, onAdd }) {
           padding: '16px 20px', borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>Add products</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Add products</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: '14px 20px', borderBottom: `1px solid ${border}` }}>
@@ -186,7 +186,7 @@ function ProductPicker({ onClose, onAdd }) {
                 {p.image_url ? (
                   <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer', filter: isOutOfStock ? 'grayscale(80%)' : 'none' }} onClick={() => toggle(p)} />
                 ) : (
-                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}>💍</div>
+                  <div onClick={() => toggle(p)} style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-section)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}>💍</div>
                 )}
                 <div style={{ flex: 1, minWidth: 0, cursor: isOutOfStock ? 'not-allowed' : 'pointer' }} onClick={() => toggle(p)}>
                   <div style={{ fontSize: 13, color: isOutOfStock ? '#888' : '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isOutOfStock ? 'line-through' : 'none' }}>
@@ -280,7 +280,7 @@ function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
           padding: '16px 20px', borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
             {isEdit ? 'Edit discount' : 'Add discount'}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -297,7 +297,7 @@ function DiscountModal({ item, existingDiscountAmount = 0, onClose, onApply }) {
               border: '1px solid rgba(74,130,216,0.3)',
               borderRadius: 6, padding: '8px 11px', marginBottom: 14,
             }}>
-              ℹ Naya discount apply hone se purana <strong style={{ color: '#fff' }}>replace</strong> ho jayega.
+              ℹ Naya discount apply hone se purana <strong style={{ color: 'var(--text)' }}>replace</strong> ho jayega.
               Saari baki staged changes (qty, shipping, etc.) preserve rahengi.
             </div>
           )}
@@ -392,7 +392,7 @@ function CustomItemModal({ onClose, onAdd }) {
           padding: '16px 20px', borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Add custom item</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Add custom item</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: 20 }}>
@@ -905,10 +905,10 @@ export default function OrderEditPage() {
     return (
       <div style={{ padding: 40, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
           Order line items edit karne ki ijazat tumhe nahi hai. CEO se request karo
-          ya <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>orders.edit_items</code> permission grant karwane ko bolo.
+          ya <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>orders.edit_items</code> permission grant karwane ko bolo.
         </div>
         <Link href={`/orders/${id}`} style={{ ...btnGhost, display: 'inline-block', textDecoration: 'none' }}>
           ← Order pe wapas jao
@@ -961,7 +961,7 @@ export default function OrderEditPage() {
             padding: '6px 10px', border: `1px solid ${border}`, borderRadius: 6,
           }}>← Back</Link>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>
               Edit order {orderNumber ? `#${orderNumber}` : ''}
             </div>
             <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>
@@ -1037,13 +1037,13 @@ export default function OrderEditPage() {
                         }} />
                       ) : (
                         <div style={{
-                          width: 56, height: 56, borderRadius: 6, background: '#1a1a1a',
+                          width: 56, height: 56, borderRadius: 6, background: 'var(--bg-section)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 22, flexShrink: 0,
                         }}>💍</div>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: '#fff', fontWeight: 500 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>
                           {item.title || item.product_title || 'Unknown product'}
                         </div>
                         <div style={{ fontSize: 11, color: '#666', marginTop: 3 }}>
@@ -1118,7 +1118,7 @@ export default function OrderEditPage() {
                           }}>−</button>
                         <div style={{
                           width: 36, textAlign: 'center', fontSize: 13,
-                          fontWeight: 600, color: '#fff',
+                          fontWeight: 600, color: 'var(--text)',
                         }}>{item.quantity}</div>
                         <button onClick={() => setQty(item, item.quantity + 1)}
                           disabled={busy || locked}
@@ -1156,7 +1156,7 @@ export default function OrderEditPage() {
                   padding: '8px 0',
                 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, color: '#fff' }}>{sl.title || 'Shipping'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text)' }}>{sl.title || 'Shipping'}</div>
                     <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
                       Current: {fmt(sl.price)}
                     </div>
@@ -1222,7 +1222,7 @@ export default function OrderEditPage() {
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
                 paddingTop: 10, marginTop: 6, borderTop: `1px solid ${border}`,
-                fontSize: 14, fontWeight: 600, color: '#fff',
+                fontSize: 14, fontWeight: 600, color: 'var(--text)',
               }}>
                 <span>Total</span>
                 <span style={{ color: gold }}>{fmt(calcOrder.total)}</span>
