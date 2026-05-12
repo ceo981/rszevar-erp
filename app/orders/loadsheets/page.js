@@ -17,10 +17,10 @@ import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const bg = '#0a0a0a';
-const card = '#141414';
-const border = '#222';
-const text1 = '#e5e5e5';
+const bg = 'var(--bg)';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
+const text1 = 'var(--text)';
 const text2 = '#888';
 
 const fmt = (n) => 'Rs ' + Math.round(Number(n || 0)).toLocaleString('en-PK');
@@ -198,7 +198,7 @@ export default function LoadsheetsHistoryPage() {
                   fontSize: 13, color: text1, textDecoration: 'none',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 <div style={{
@@ -242,7 +242,7 @@ export default function LoadsheetsHistoryPage() {
               disabled={page === 0}
               style={{
                 padding: '8px 14px', fontSize: 13,
-                background: '#1a1a1a', color: text1,
+                background: 'var(--bg-section)', color: text1,
                 border: `1px solid ${border}`, borderRadius: 6,
                 cursor: page === 0 ? 'not-allowed' : 'pointer',
                 opacity: page === 0 ? 0.4 : 1,
@@ -258,7 +258,7 @@ export default function LoadsheetsHistoryPage() {
               disabled={page >= totalPages - 1}
               style={{
                 padding: '8px 14px', fontSize: 13,
-                background: '#1a1a1a', color: text1,
+                background: 'var(--bg-section)', color: text1,
                 border: `1px solid ${border}`, borderRadius: 6,
                 cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer',
                 opacity: page >= totalPages - 1 ? 0.4 : 1,
