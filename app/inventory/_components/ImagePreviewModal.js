@@ -25,8 +25,8 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const gold   = '#c9a96e';
-const border = '#222';
-const bg     = '#0a0a0a';
+const border = 'var(--border)';
+const bg     = 'var(--bg)';
 
 export default function ImagePreviewModal({
   images,
@@ -94,7 +94,7 @@ export default function ImagePreviewModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           padding: '14px 22px',
-          background: '#0a0a0a',
+          background: 'var(--bg)',
           borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           gap: 16, flexWrap: 'wrap',
@@ -109,7 +109,7 @@ export default function ImagePreviewModal({
               lineHeight: 1,
             }}>←</button>
           <div>
-            <div style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>
+            <div style={{ color: 'var(--text)', fontSize: 14, fontWeight: 600 }}>
               {productTitle || 'Image preview'}
             </div>
             <div style={{ color: '#666', fontSize: 11, marginTop: 2 }}>
@@ -185,7 +185,7 @@ export default function ImagePreviewModal({
                 style={{
                   position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
                   background: 'rgba(0,0,0,0.6)', border: `1px solid ${border}`,
-                  color: '#fff', borderRadius: '50%',
+                  color: 'var(--text)', borderRadius: '50%',
                   width: 44, height: 44, fontSize: 22,
                   cursor: 'pointer', fontFamily: 'inherit',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -197,7 +197,7 @@ export default function ImagePreviewModal({
                 style={{
                   position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
                   background: 'rgba(0,0,0,0.6)', border: `1px solid ${border}`,
-                  color: '#fff', borderRadius: '50%',
+                  color: 'var(--text)', borderRadius: '50%',
                   width: 44, height: 44, fontSize: 22,
                   cursor: 'pointer', fontFamily: 'inherit',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -224,7 +224,7 @@ export default function ImagePreviewModal({
           onClick={(e) => e.stopPropagation()}
           style={{
             width: 280, flexShrink: 0,
-            background: '#0a0a0a',
+            background: 'var(--bg)',
             borderLeft: `1px solid ${border}`,
             padding: 20, overflowY: 'auto',
             fontSize: 12,
@@ -290,7 +290,7 @@ export default function ImagePreviewModal({
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
-            background: '#0a0a0a',
+            background: 'var(--bg)',
             borderTop: `1px solid ${border}`,
             padding: '10px 14px',
             display: 'flex', gap: 6, overflowX: 'auto',
