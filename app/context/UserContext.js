@@ -1,70 +1,66 @@
 'use client';
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext } from 'react';
 
 // ============================================================================
-// RS ZEVAR ERP — ThemeContext
+// RS ZEVAR ERP — UserContext
 // ----------------------------------------------------------------------------
-// Dark ↔ Light theme switcher with localStorage persistence + no-flash SSR.
+// Provides current user, profile, role, AND granular permission checks to
+// every client component via useUser().
 //
-// How it works:
-//   • Default theme = 'dark' (matches legacy brand look)
-//   • User preference saved in localStorage('rszevar-theme')
-//   • A tiny inline script in app/layout.js sets `document.documentElement
-//     .dataset.theme` BEFORE React hydrates → no dark-flash on light page load
-//   • This context just syncs React state with that attribute and writes back
-//     on toggle
+// May 2 2026 — Added `permissions` (Set<string>) and `can(key)` helper for
+// the granular DB-driven permission system. Components can now do:
 //
-// Usage in any client component:
-//   const { theme, toggleTheme, setTheme } = useTheme();
+//   const { can, isSuperAdmin } = useUser();
+//   if (can('orders.cancel')) { ... }
 //
-// Theme values:  'dark' | 'light'
+// `can()` automatically returns true for super_admin without DB lookup.
+// AppShell populates the actual values; this file just declares the shape.
 // ============================================================================
 
-const ThemeContext = createContext({
-  theme: 'dark',
-  toggleTheme: () => {},
-  setTheme: () => {},
+export const UserContext = createContext({
+  profile: null,
+  userEmail: null,
+  userRole: null,
+  isSuperAdmin: false,
+  canViewFinancial: false,
+
+  // ── Granular permissions (May 2 2026) ─────────────────────────────────────
+  // Set of permission keys the current user has, e.g.
+  // new Set(['orders.view', 'orders.cancel', 'inventory.view'])
+  permissions: new Set(),
+
+  // can(key) — primary permission check. Always use this in components
+  // instead of poking permissions.has() directly. Reasons:
+  //   • super_admin auto-bypasses (returns true for everything)
+  //   • Future auditing / logging hooks can be added in one place
+  //   • Defaults to false safely if context not yet hydrated
+  //
+  // Examples:
+  //   can('orders.cancel')       → bool
+  //   can('inventory.edit_cost') → bool
+  //
+  // The default implementation here returns false so a component that
+  // accidentally renders before AppShell hydrates fails CLOSED (safe default).
+  can: () => false,
+
+  // Shared-login support:
+  activeUser: null,        // { id, name } when a packer picked themselves on a shared phone
+  setActiveUser: () => {}, // call to change "who is using the phone"
+
+  // Single source of truth for "who did this action" — use this for logs.
+  performer: 'Staff',
 });
 
-export function ThemeProvider({ children }) {
-  // Initial state: read from <html data-theme="..."> which the no-flash script
-  // already set. Fallback to 'dark'. We use lazy init to avoid hydration mismatch.
-  const [theme, setThemeState] = useState(() => {
-    if (typeof document === 'undefined') return 'dark';
-    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  });
-
-  // Apply theme to <html> + persist to localStorage whenever state changes.
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem('rszevar-theme', theme);
-    } catch {
-      // localStorage might be blocked (private browsing) — just skip
-    }
-    // Also update the browser theme-color meta so iOS status bar matches
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) {
-      meta.setAttribute('content', theme === 'light' ? '#faf7f0' : '#080c16');
-    }
-  }, [theme]);
-
-  const setTheme = useCallback((next) => {
-    if (next === 'light' || next === 'dark') setThemeState(next);
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    setThemeState((t) => (t === 'dark' ? 'light' : 'dark'));
-  }, []);
-
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+export function useUser() {
+  return useContext(UserContext);
 }
 
-export function useTheme() {
-  return useContext(ThemeContext);
+// Convenience hook: useCan() — pull just the can() function.
+// Use this when a component only needs perm checks, not the full user object.
+//
+// Example:
+//   const can = useCan();
+//   {can('orders.dispatch') && <DispatchButton />}
+export function useCan() {
+  return useContext(UserContext).can;
 }
