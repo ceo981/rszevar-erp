@@ -19,9 +19,9 @@
 import { useState, useEffect } from 'react';
 
 const gold   = '#c9a96e';
-const card   = '#141414';
-const border = '#222';
-const bg     = '#0a0a0a';
+const card   = 'var(--bg-card)';
+const border = 'var(--border)';
+const bg     = 'var(--bg)';
 
 // Major Pakistani cities for quick-select. Customer can still type any city.
 const COMMON_CITIES = [
@@ -110,7 +110,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#0f0f0f',
+          background: 'var(--bg-section)',
           border: `1px solid ${border}`,
           borderRadius: 12,
           width: '100%', maxWidth: 540,
@@ -122,7 +122,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
           padding: '16px 22px', borderBottom: `1px solid ${border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
             📍 Edit shipping address
           </div>
           <button onClick={onClose} disabled={saving}
@@ -141,7 +141,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
               Country / region
             </label>
             <div style={{
-              padding: '10px 12px', background: '#0a0a0a',
+              padding: '10px 12px', background: 'var(--bg)',
               border: `1px solid ${border}`, borderRadius: 7,
               color: '#888', fontSize: 13,
             }}>🇵🇰 Pakistan</div>
@@ -163,7 +163,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                 width: '100%', boxSizing: 'border-box',
                 background: bg, border: `1px solid ${border}`,
                 borderRadius: 7, padding: '10px 12px',
-                color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
                 outline: 'none', resize: 'vertical',
               }}
               onFocus={e => e.target.style.borderColor = gold}
@@ -187,7 +187,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                 width: '100%', boxSizing: 'border-box',
                 background: bg, border: `1px solid ${border}`,
                 borderRadius: 7, padding: '10px 12px',
-                color: '#fff', fontSize: 14, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 14, fontFamily: 'inherit',
                 outline: 'none',
               }}
               onFocus={e => e.target.style.borderColor = gold}
@@ -204,7 +204,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                   onClick={() => setCity(c)}
                   disabled={saving}
                   style={{
-                    background: city === c ? gold + '22' : '#1a1a1a',
+                    background: city === c ? gold + '22' : 'var(--bg-section)',
                     border: `1px solid ${city === c ? gold : border}`,
                     color: city === c ? gold : '#888',
                     borderRadius: 5, padding: '4px 10px', fontSize: 11,
@@ -221,7 +221,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                 Phone <span style={{ color: '#555', fontWeight: 400 }}>(edit via "Edit contact" option)</span>
               </label>
               <div style={{
-                padding: '10px 12px', background: '#0a0a0a',
+                padding: '10px 12px', background: 'var(--bg)',
                 border: `1px solid ${border}`, borderRadius: 7,
                 color: '#888', fontSize: 13,
               }}>{order.customer_phone}</div>
@@ -243,7 +243,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
                 width: '100%', boxSizing: 'border-box',
                 background: bg, border: `1px solid ${border}`,
                 borderRadius: 7, padding: '10px 12px',
-                color: '#fff', fontSize: 13, fontFamily: 'inherit',
+                color: 'var(--text)', fontSize: 13, fontFamily: 'inherit',
                 outline: 'none',
               }}
               onFocus={e => e.target.style.borderColor = gold}
@@ -254,7 +254,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
           {error && (
             <div style={{
               padding: '10px 12px', marginBottom: 14,
-              background: '#1a0000', border: '1px solid #330000',
+              background: 'var(--red-dim)', border: '1px solid #330000',
               borderRadius: 7, color: '#ef4444', fontSize: 12,
             }}>
               ❌ {error}
@@ -290,7 +290,7 @@ export default function EditShippingModal({ order, performer, userEmail, onClose
             onClick={handleSave}
             disabled={saving || !dirty}
             style={{
-              background: (saving || !dirty) ? '#1a1a1a' : gold,
+              background: (saving || !dirty) ? 'var(--bg-section)' : gold,
               border: `1px solid ${(saving || !dirty) ? border : gold}`,
               color: (saving || !dirty) ? '#555' : '#000',
               borderRadius: 7,
