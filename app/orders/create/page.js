@@ -23,14 +23,14 @@ import { useUser } from '@/context/UserContext';
 import { formatWeight } from '../../../lib/order-line-items';
 
 const gold   = '#c9a96e';
-const border = '#222';
-const card   = '#0f0f0f';
+const border = 'var(--border)';
+const card   = 'var(--bg-section)';
 const danger = '#ef4444';
 const success = '#22c55e';
 
 const inpStyle = {
-  width: '100%', background: '#1a1a1a', border: `1px solid ${border}`,
-  color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13,
+  width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`,
+  color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13,
   boxSizing: 'border-box', fontFamily: 'inherit',
 };
 
@@ -120,7 +120,7 @@ function ProductPicker({ onClose, onAdd }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, width: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>Select products</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>Select products</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ padding: '14px 20px', borderBottom: `1px solid ${border}` }}>
@@ -158,7 +158,7 @@ function ProductPicker({ onClose, onAdd }) {
                 {p.image_url ? (
                   <img src={p.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0, filter: isOutOfStock ? 'grayscale(80%)' : 'none' }} />
                 ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>💍</div>
+                  <div style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-section)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>💍</div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, color: isOutOfStock ? '#888' : '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textDecoration: isOutOfStock ? 'line-through' : 'none' }}>
@@ -188,7 +188,7 @@ function ProductPicker({ onClose, onAdd }) {
             <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
             <button onClick={confirm} disabled={Object.keys(selected).length === 0}
               style={{
-                background: Object.keys(selected).length === 0 ? '#1a1a1a' : gold,
+                background: Object.keys(selected).length === 0 ? 'var(--bg-section)' : gold,
                 border: `1px solid ${gold}`,
                 color: Object.keys(selected).length === 0 ? '#444' : '#000',
                 borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600,
@@ -245,7 +245,7 @@ function CustomerSearch({ onSelect, onCreateNew }) {
       {showDropdown && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-          background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 8,
+          background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8,
           maxHeight: 280, overflowY: 'auto', zIndex: 100,
           boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
         }}>
@@ -256,10 +256,10 @@ function CustomerSearch({ onSelect, onCreateNew }) {
           {loading && <div style={{ padding: 12, color: '#666', fontSize: 12, textAlign: 'center' }}>Searching...</div>}
           {!loading && results.map((c, i) => (
             <div key={i} onClick={() => { onSelect(c); setShowDropdown(false); setQuery(''); }}
-              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: i < results.length - 1 ? `1px solid #222` : 'none' }}
+              style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: i < results.length - 1 ? `1px solid var(--border)` : 'none' }}
               onMouseEnter={e => e.currentTarget.style.background = '#252525'}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              <div style={{ fontSize: 13, color: '#fff', fontWeight: 500 }}>{c.name || 'Unknown'}</div>
+              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{c.name || 'Unknown'}</div>
               <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{c.phone} • {c.city || 'No city'} • {c.orders} orders</div>
             </div>
           ))}
@@ -296,7 +296,7 @@ function DiscountModal({ initial, onClose, onSave, label }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 420 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{label || 'Add discount'}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{label || 'Add discount'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ marginBottom: 12 }}>
@@ -368,7 +368,7 @@ function ManualItemModal({ onClose, onAdd }) {
       <div onClick={(e) => e.stopPropagation()}
         style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>✏️ Add manual item</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>✏️ Add manual item</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
@@ -414,7 +414,7 @@ function ManualItemModal({ onClose, onAdd }) {
           <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
           <button onClick={save} disabled={!canSave}
             style={{
-              background: canSave ? gold : '#1a1a1a',
+              background: canSave ? gold : 'var(--bg-section)',
               border: `1px solid ${canSave ? gold : border}`,
               color: canSave ? '#000' : '#555',
               borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 600,
@@ -692,12 +692,12 @@ export default function CreateOrderPage() {
   // ── Access denied (no orders.create permission) ──
   if (!canCreate) {
     return (
-      <div style={{ padding: 40, maxWidth: 600, margin: '40px auto', textAlign: 'center', color: '#fff', fontFamily: 'inherit' }}>
+      <div style={{ padding: 40, maxWidth: 600, margin: '40px auto', textAlign: 'center', color: 'var(--text)', fontFamily: 'inherit' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 18, lineHeight: 1.5 }}>
           Manual order create karne ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>orders.create</code>{' '}
+          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>orders.create</code>{' '}
           permission grant karwane ko bolo.
         </div>
         <Link href="/orders" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
@@ -708,7 +708,7 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto', color: '#fff', fontFamily: 'inherit' }}>
+    <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto', color: 'var(--text)', fontFamily: 'inherit' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
@@ -727,7 +727,7 @@ export default function CreateOrderPage() {
           }}
           style={{ color: '#888', fontSize: 13, textDecoration: 'none' }}
         >← Orders</Link>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#fff' }}>Create order</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>Create order</div>
       </div>
 
       {error && (
@@ -743,15 +743,15 @@ export default function CreateOrderPage() {
 
           {/* Products card */}
           <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 12 }}>Products</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Products</div>
 
             <div style={{ display: 'flex', gap: 10, marginBottom: items.length > 0 ? 16 : 0 }}>
               <button onClick={() => setShowProductPicker(true)}
-                style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ flex: 1, background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 🔍 Search & add products
               </button>
               <button onClick={() => setShowProductPicker(true)}
-                style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Browse
               </button>
               {/* May 2 2026 — Manual item button (custom/non-Shopify items).
@@ -781,10 +781,10 @@ export default function CreateOrderPage() {
                         {item.image_url ? (
                           <img src={item.image_url} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
                         ) : (
-                          <div style={{ width: 44, height: 44, borderRadius: 6, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>💍</div>
+                          <div style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-section)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>💍</div>
                         )}
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, lineHeight: 1.3, wordBreak: 'break-word', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             <span>{item.title}</span>
                             {item.is_manual && (
                               <span style={{
@@ -821,19 +821,19 @@ export default function CreateOrderPage() {
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <button onClick={() => setItems(a => a.map((it, i) => i === idx ? { ...it, quantity: Math.max(1, it.quantity - 1) } : it))}
-                          style={{ width: 24, height: 24, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 5, cursor: 'pointer', fontSize: 14, padding: 0 }}>−</button>
+                          style={{ width: 24, height: 24, background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 5, cursor: 'pointer', fontSize: 14, padding: 0 }}>−</button>
                         <input type="number" min="1" value={item.quantity}
                           onChange={e => setItems(a => a.map((it, i) => i === idx ? { ...it, quantity: parseInt(e.target.value) || 1 } : it))}
-                          style={{ width: 38, textAlign: 'center', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 5, padding: '4px', fontSize: 12, fontFamily: 'inherit' }} />
+                          style={{ width: 38, textAlign: 'center', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 5, padding: '4px', fontSize: 12, fontFamily: 'inherit' }} />
                         <button onClick={() => setItems(a => a.map((it, i) => i === idx ? { ...it, quantity: it.quantity + 1 } : it))}
-                          style={{ width: 24, height: 24, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 5, cursor: 'pointer', fontSize: 14, padding: 0 }}>+</button>
+                          style={{ width: 24, height: 24, background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 5, cursor: 'pointer', fontSize: 14, padding: 0 }}>+</button>
                       </div>
 
                       <div style={{ textAlign: 'right' }}>
                         {item.discount && lineTotal !== lineSub && (
                           <div style={{ fontSize: 10, color: '#666', textDecoration: 'line-through' }}>{fmt(lineSub)}</div>
                         )}
-                        <div style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>{fmt(lineTotal)}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{fmt(lineTotal)}</div>
                       </div>
 
                       <button onClick={() => setItems(a => a.filter((_, i) => i !== idx))}
@@ -847,7 +847,7 @@ export default function CreateOrderPage() {
 
           {/* Payment summary card */}
           <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 18 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 12 }}>Payment</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Payment</div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#bbb' }}>
@@ -922,7 +922,7 @@ export default function CreateOrderPage() {
                 </div>
                 <span style={{ color: '#bbb', alignSelf: 'center' }}>{fmt(parseFloat(shippingAmt) || 0)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${border}`, paddingTop: 10, marginTop: 4, fontSize: 14, fontWeight: 700, color: '#fff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${border}`, paddingTop: 10, marginTop: 4, fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
                 <span>Total</span>
                 <span>{fmt(total)}</span>
               </div>
@@ -947,12 +947,12 @@ export default function CreateOrderPage() {
 
           {/* Customer card */}
           <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 10 }}>Customer</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Customer</div>
             {!customer ? (
               <CustomerSearch onSelect={handleCustomerSelect} onCreateNew={handleCustomerCreate} />
             ) : (
               <div>
-                <div style={{ background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 7, padding: 12, fontSize: 13 }}>
+                <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 7, padding: 12, fontSize: 13 }}>
                   <div style={{ color: gold, fontWeight: 600 }}>{customer.first_name} {customer.last_name}</div>
                   <div style={{ color: '#888', marginTop: 4, fontSize: 12 }}>📞 {customer.phone}</div>
                   {customer.address1 && <div style={{ color: '#888', marginTop: 3, fontSize: 12 }}>📍 {customer.address1}, {customer.city}</div>}
@@ -974,7 +974,7 @@ export default function CreateOrderPage() {
           {/* Shipping address (only if customer added) */}
           {customer && (
             <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 10 }}>Shipping address</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Shipping address</div>
               <div style={{ marginBottom: 8 }}>
                 <div style={labelStyle}>Address</div>
                 <input value={customer.address1 || ''} onChange={e => setCustomer(c => ({...c, address1: e.target.value}))}
@@ -989,7 +989,7 @@ export default function CreateOrderPage() {
 
           {/* Tags + Source */}
           <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', marginBottom: 10 }}>Tags & Source</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Tags & Source</div>
             <div style={{ marginBottom: 8 }}>
               <div style={labelStyle}>Source</div>
               <select value={source} onChange={e => setSource(e.target.value)} style={inpStyle}>
@@ -1015,7 +1015,7 @@ export default function CreateOrderPage() {
           <button onClick={handleSubmit} disabled={creating || items.length === 0 || !customer}
             style={{
               background: creating || items.length === 0 || !customer
-                ? '#1a1a1a'
+                ? 'var(--bg-section)'
                 : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)',
               border: `1px solid ${gold}`,
               color: creating || items.length === 0 || !customer ? '#444' : '#000',
@@ -1055,7 +1055,7 @@ export default function CreateOrderPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, width: 500, maxHeight: '85vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#fff' }}>{customer ? 'Edit customer' : 'New customer'}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{customer ? 'Edit customer' : 'New customer'}</div>
               <button onClick={() => setShowCustomerForm(false)} style={{ background: 'none', border: 'none', color: '#666', fontSize: 20, cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
