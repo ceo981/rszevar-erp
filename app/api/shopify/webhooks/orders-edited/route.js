@@ -17,7 +17,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyShopifyWebhook } from '@/lib/shopify-webhook';
-import { transformLineItems } from '@/lib/shopify';
+import { transformLineItems, buildImageLookupMaps } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,18 +58,9 @@ export async function POST(request) {
       return NextResponse.json({ received: true, skipped: 'not in ERP' });
     }
 
-    // Pre-fetch SKU → image map for line item enrichment
-    let skuImageMap = {};
-    try {
-      const { data: productImages } = await supabase
-        .from('products')
-        .select('sku, image_url')
-        .not('sku', 'is', null)
-        .not('image_url', 'is', null);
-      for (const p of productImages || []) {
-        if (p.sku && p.image_url && !skuImageMap[p.sku]) skuImageMap[p.sku] = p.image_url;
-      }
-    } catch {}
+    // Pre-fetch image lookup maps for line item enrichment.
+    // FIX May 2026 — Both sku + variant_id maps (variant_id-aware lookup).
+    const { skuImageMap, variantImageMap } = await buildImageLookupMaps(supabase);
 
     // FIX May 2026 — Post-edit totals: use `current_*` fields FIRST.
     // Shopify ke saath orders edit hone ke baad:
@@ -92,7 +83,7 @@ export async function POST(request) {
     const total = parseFloat(so.current_total_price ?? so.total_price ?? 0);
 
     // Replace order_items with Shopify truth
-    const newItems = transformLineItems(so, skuImageMap).map(i => ({
+    const newItems = transformLineItems(so, skuImageMap, variantImageMap).map(i => ({
       ...i,
       order_id: order.id,
     }));
