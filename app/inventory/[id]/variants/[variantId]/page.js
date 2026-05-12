@@ -25,10 +25,10 @@ import { useUser } from '../../../../context/UserContext';
 
 // ── Theme tokens (mirrored from /inventory/[id]/page.js) ────────────────────
 const gold   = '#c9a96e';
-const card   = '#141414';
-const border = '#222';
-const bgPage = '#080808';
-const text1  = '#e5e5e5';
+const card   = 'var(--bg-card)';
+const border = 'var(--border)';
+const bgPage = 'var(--bg)';
+const text1  = 'var(--text)';
 const text2  = '#aaa';
 const text3  = '#666';
 
@@ -739,8 +739,8 @@ export default function VariantEditPage() {
                         onBlur={e => e.currentTarget.style.borderColor = border}
                       />
                       <div style={{ fontSize: 11, color: text3, marginTop: 6, lineHeight: 1.5 }}>
-                        Multiple options ho to <code style={{ background: '#1a1a1a', padding: '1px 5px', borderRadius: 3, color: gold }}>{' / '}</code> se separate karo
-                        (e.g. <code style={{ background: '#1a1a1a', padding: '1px 5px', borderRadius: 3 }}>Small / Red</code>).
+                        Multiple options ho to <code style={{ background: 'var(--bg-section)', padding: '1px 5px', borderRadius: 3, color: gold }}>{' / '}</code> se separate karo
+                        (e.g. <code style={{ background: 'var(--bg-section)', padding: '1px 5px', borderRadius: 3 }}>Small / Red</code>).
                         Save par seedha Shopify update hota hai. Option ke <em>name</em> (Size, Color) Shopify admin se hi change hote hain.
                       </div>
                     </>
