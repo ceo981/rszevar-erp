@@ -86,7 +86,7 @@ export default function DashboardPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 28 }}>
             {cards.map(card => (
               <div key={card.label} style={{
-                background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)',
+                background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-section) 100%)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-lg)', padding: '16px 18px',
                 position: 'relative', overflow: 'hidden',
@@ -110,7 +110,7 @@ export default function DashboardPage() {
             <ActionButton icon="📋" label="View All Orders" desc={`${s.total || 0} total orders`} href="/orders" color="var(--blue)" />
             <ActionButton icon="⏳" label="Pending Orders" desc={`${s.pending || 0} need confirmation`} href="/orders" color="var(--orange)" />
           </div>
-          <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
+          <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-section) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Recent Orders</h3>
               <Link href="/orders" style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none' }}>View All →</Link>
