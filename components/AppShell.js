@@ -461,7 +461,7 @@ function AuthenticatedShell({ pathname, router, children }) {
         {isMobile && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, height: 52,
-            background: theme === 'light' ? 'rgba(250,247,240,0.97)' : 'rgba(13,22,38,0.97)',
+            background: 'var(--topbar-bg)',
             borderBottom: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', padding: '0 14px', gap: 12,
             zIndex: 200, backdropFilter: 'blur(10px)',
@@ -495,7 +495,7 @@ function AuthenticatedShell({ pathname, router, children }) {
             peeche chhup jata. Desktop pe z-index 150 hi theek hai (modals ~1000). */}
         <aside style={{
           width: isMobile ? 260 : (sidebarOpen ? 224 : 60),
-          background: 'linear-gradient(180deg, var(--bg2) 0%, var(--bg) 100%)',
+          background: 'linear-gradient(180deg, var(--sidebar-bg-1) 0%, var(--sidebar-bg-2) 100%)',
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column',
           transition: isMobile ? 'transform 0.25s ease' : 'width 0.2s ease',
@@ -511,7 +511,7 @@ function AuthenticatedShell({ pathname, router, children }) {
               : '18px 8px',
             borderBottom: '1px solid var(--border)',
             textAlign: 'center',
-            background: 'rgba(74,130,216,0.04)',
+            background: 'var(--sidebar-tint)',
             position: 'relative',
           }}>
             {(sidebarOpen || isMobile) ? (
@@ -571,7 +571,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                       {(sidebarOpen || isMobile) && mod.id === 'messages' && unreadTotal > 0 && (
                         <span style={{
                           fontSize: 10, fontWeight: 700,
-                          background: '#22c55e', color: '#000',
+                          background: '#22c55e', color: 'var(--text)',
                           padding: '2px 7px', borderRadius: 10,
                           minWidth: 18, textAlign: 'center',
                           marginLeft: 'auto',
@@ -672,7 +672,7 @@ function AuthenticatedShell({ pathname, router, children }) {
               padding: '12px 0',
               borderTop: '1px solid var(--border)',
               display: 'flex', justifyContent: 'center',
-              background: 'rgba(74,130,216,0.04)',
+              background: 'var(--sidebar-tint)',
             }}>
               <button
                 onClick={toggleTheme}
@@ -704,7 +704,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                   : '12px 14px',
                 borderTop: '1px solid var(--border)',
                 display: 'flex', alignItems: 'center', gap: 10,
-                background: 'rgba(74,130,216,0.04)',
+                background: 'var(--sidebar-tint)',
               }}>
                 <div onClick={() => { setProfileNameInput(profile.full_name || ''); setShowProfileModal(true); }}
                   title="Profile edit karo"
@@ -716,7 +716,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                     fontSize: 13, fontWeight: 700, flexShrink: 0, cursor: 'pointer',
                   }}>{(profile.full_name || '?').charAt(0).toUpperCase()}</div>
                 <div style={{ flex: 1, minWidth: 0 }} onClick={() => { setProfileNameInput(profile.full_name || ''); setShowProfileModal(true); }} title="Profile edit karo">
-                  <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{profile.full_name || <span style={{ color: '#555', fontStyle: 'italic' }}>Name set karo</span>}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{profile.full_name || <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Name set karo</span>}</div>
                   <div style={{ fontSize: 9, color: 'var(--sapphire)', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 2 }}>
                     {(profile.role || '').replace(/_/g, ' ')}
                   </div>
@@ -759,8 +759,8 @@ function AuthenticatedShell({ pathname, router, children }) {
               first-login name setup). */}
           {profile && showProfileModal && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 340 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e', marginBottom: 6 }}>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 340 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>
                   {!profile?.full_name ? '👋 Welcome — Naam set karo' : '✏️ Profile Update'}
                 </div>
                 {!profile?.full_name && (
@@ -769,9 +769,9 @@ function AuthenticatedShell({ pathname, router, children }) {
                     mein tumhara naam save hoga. Ye kaam kiye bagair ERP use nahi kar sakte.
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: '#555', marginBottom: 6, marginTop: profile?.full_name ? 10 : 0 }}>Email (change nahi hoga)</div>
-                <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
-                <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Full Name</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, marginTop: profile?.full_name ? 10 : 0 }}>Email (change nahi hoga)</div>
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: 'var(--text3)', marginBottom: 12 }}>{user?.email}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>Full Name</div>
                 <input
                   value={profileNameInput}
                   onChange={e => setProfileNameInput(e.target.value)}
@@ -779,17 +779,17 @@ function AuthenticatedShell({ pathname, router, children }) {
                   placeholder="e.g. Sharjeel Ahmed"
                   autoFocus
                   maxLength={80}
-                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: 'var(--text)', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
+                  style={{ width: '100%', background: 'var(--bg-card)', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: 'var(--text)', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
                 />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={saveProfileName} disabled={profileSaving || !profileNameInput.trim()}
-                    style={{ flex: 1, background: '#c9a96e', color: '#000', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: profileNameInput.trim() ? 'pointer' : 'not-allowed', opacity: profileNameInput.trim() ? 1 : 0.4 }}>
+                    style={{ flex: 1, background: 'var(--gold)', color: 'var(--text)', border: 'none', borderRadius: 7, padding: '9px', fontSize: 13, fontWeight: 700, cursor: profileNameInput.trim() ? 'pointer' : 'not-allowed', opacity: profileNameInput.trim() ? 1 : 0.4 }}>
                     {profileSaving ? 'Saving...' : '💾 Save'}
                   </button>
                   {/* Cancel is only shown if user already has a name (i.e., they're just editing) */}
                   {profile?.full_name && (
                     <button onClick={() => setShowProfileModal(false)}
-                      style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
+                      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
                       Cancel
                     </button>
                   )}
@@ -837,7 +837,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                 style={{
                   background: '#22c55e',
                   border: 'none',
-                  color: '#000',
+                  color: 'var(--text)',
                   borderRadius: 6,
                   padding: '6px 14px',
                   fontSize: 12,
