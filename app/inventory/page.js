@@ -685,7 +685,7 @@ export default function InventoryPage() {
           { label: 'Out of Stock', value: stats.out_of_stock || 0, icon: '🚫', color: 'var(--red)' },
           { label: 'Active', value: stats.active || 0, icon: '✅', color: 'var(--cyan)' },
         ].map(card => (
-          <div key={card.label} style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, #0f1e38 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, position: 'relative', overflow: 'hidden' }}>
+          <div key={card.label} style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-section) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${card.color}55, transparent)` }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
@@ -892,7 +892,7 @@ export default function InventoryPage() {
                               rel="noopener noreferrer"
                               onClick={e => e.stopPropagation()}
                               title="Open editor in new tab"
-                              style={{ background: '#1a1a1a', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                              style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
                             >↗</a>
                           </div>
                         </td>
@@ -968,7 +968,7 @@ export default function InventoryPage() {
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}
                             title="Open editor in new tab"
-                            style={{ background: '#1a1a1a', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
+                            style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: 'var(--text3)', borderRadius: 4, padding: '3px 7px', fontSize: 11, textDecoration: 'none', lineHeight: 1 }}
                           >↗</a>
                         )}
                       </div>
@@ -1036,7 +1036,7 @@ export default function InventoryPage() {
                       />
                     )}
                     {canViewFinancial && !isGrouped && displayItem[revCol] && (
-                      <span style={{ padding: '3px 9px', borderRadius: 4, background: '#1a1a1a', color: 'var(--text2)' }}>
+                      <span style={{ padding: '3px 9px', borderRadius: 4, background: 'var(--bg-section)', color: 'var(--text2)' }}>
                         Rev: Rs {Number(displayItem[revCol]).toLocaleString()}
                       </span>
                     )}
