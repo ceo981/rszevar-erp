@@ -118,17 +118,17 @@ export default function AIAdvisorFloat() {
       {open && (
         <div className="ai-float-chat" style={{
           position: 'fixed', bottom: 160, right: 24, width: 370, height: 500,
-          background: '#0d1117', border: '1px solid #374151', borderRadius: 16,
+          background: 'var(--bg-card)', border: '1px solid var(--border2)', borderRadius: 16,
           display: 'flex', flexDirection: 'column', zIndex: 1000,
           boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
           fontFamily: 'Inter, sans-serif',
         }}>
           {/* Header */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0d1117', borderRadius: '16px 16px 0 0' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', borderRadius: '16px 16px 0 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💎</div>
               <div>
-                <div style={{ fontWeight: 700, color: '#fff', fontSize: 14 }}>RS ZEVAR AI</div>
+                <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>RS ZEVAR AI</div>
                 <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
                   Live ERP Connected
@@ -148,9 +148,9 @@ export default function AIAdvisorFloat() {
                 <div style={{
                   maxWidth: '82%', padding: '8px 12px', fontSize: 13, lineHeight: 1.55,
                   borderRadius: msg.role === 'user' ? '14px 14px 3px 14px' : '14px 14px 14px 3px',
-                  background: msg.role === 'user' ? 'linear-gradient(135deg, #c9a96e, #a07840)' : '#1f2937',
-                  color: msg.role === 'user' ? '#000' : '#e5e5e5',
-                  border: msg.role === 'user' ? 'none' : '1px solid #374151',
+                  background: msg.role === 'user' ? 'linear-gradient(135deg, #c9a96e, #a07840)' : 'var(--bg-hover)',
+                  color: msg.role === 'user' ? '#000' : 'var(--text)',
+                  border: msg.role === 'user' ? 'none' : '1px solid var(--border2)',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
                   {msg.content}
@@ -164,7 +164,7 @@ export default function AIAdvisorFloat() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {quickQuestions.map((q, i) => (
                   <button key={i} onClick={() => sendMessage(q)}
-                    style={{ padding: '5px 10px', background: '#111827', color: '#c9a96e', border: '1px solid #374151', borderRadius: 12, cursor: 'pointer', fontSize: 11 }}>
+                    style={{ padding: '5px 10px', background: 'var(--bg-section)', color: '#c9a96e', border: '1px solid var(--border2)', borderRadius: 12, cursor: 'pointer', fontSize: 11 }}>
                     {q}
                   </button>
                 ))}
@@ -175,7 +175,7 @@ export default function AIAdvisorFloat() {
 
           {/* Input */}
           <div style={{ padding: '10px 12px', borderTop: '1px solid #1f2937' }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#111827', border: '1px solid #374151', borderRadius: 10, padding: '8px 12px' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-section)', border: '1px solid var(--border2)', borderRadius: 10, padding: '8px 12px' }}>
               <input
                 ref={inputRef}
                 value={input}
@@ -183,14 +183,14 @@ export default function AIAdvisorFloat() {
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(); } }}
                 placeholder="Sawaal poochein..."
                 disabled={loading}
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#e5e5e5', fontSize: 13, fontFamily: 'inherit' }}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit' }}
               />
               <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
-                style={{ width: 30, height: 30, borderRadius: '50%', background: loading || !input.trim() ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                style={{ width: 30, height: 30, borderRadius: '50%', background: loading || !input.trim() ? 'var(--border2)' : 'linear-gradient(135deg, #c9a96e, #a07840)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
                 {loading ? '⏳' : '➤'}
               </button>
             </div>
-            <div style={{ fontSize: 10, color: '#374151', textAlign: 'center', marginTop: 6 }}>RS ZEVAR AI — Live ERP Data</div>
+            <div style={{ fontSize: 10, color: 'var(--border2)', textAlign: 'center', marginTop: 6 }}>RS ZEVAR AI — Live ERP Data</div>
           </div>
         </div>
       )}
@@ -198,7 +198,7 @@ export default function AIAdvisorFloat() {
       {/* Floating Button — higher position */}
       <button onClick={() => setOpen(o => !o)} style={{
         position: 'fixed', bottom: 100, right: 24, width: 56, height: 56,
-        borderRadius: '50%', background: open ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)',
+        borderRadius: '50%', background: open ? 'var(--border2)' : 'linear-gradient(135deg, #c9a96e, #a07840)',
         border: 'none', cursor: 'pointer', zIndex: 1001,
         boxShadow: '0 4px 24px rgba(201,169,110,0.5)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
