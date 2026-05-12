@@ -118,15 +118,15 @@ export default function AIAdvisorFloat() {
       {open && (
         <div className="ai-float-chat" style={{
           position: 'fixed', bottom: 160, right: 24, width: 370, height: 500,
-          background: 'var(--bg-card)', border: '1px solid var(--border2)', borderRadius: 16,
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16,
           display: 'flex', flexDirection: 'column', zIndex: 1000,
           boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
           fontFamily: 'Inter, sans-serif',
         }}>
           {/* Header */}
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', borderRadius: '16px 16px 0 0' }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', borderRadius: '16px 16px 0 0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💎</div>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💎</div>
               <div>
                 <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 14 }}>RS ZEVAR AI</div>
                 <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -135,7 +135,7 @@ export default function AIAdvisorFloat() {
                 </div>
               </div>
             </div>
-            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
           </div>
 
           {/* Messages */}
@@ -143,18 +143,18 @@ export default function AIAdvisorFloat() {
             {messages.map((msg, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
                 {msg.role === 'assistant' && (
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, #c9a96e, #a07840)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginRight: 6, marginTop: 2 }}>💎</div>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold), var(--gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginRight: 6, marginTop: 2 }}>💎</div>
                 )}
                 <div style={{
                   maxWidth: '82%', padding: '8px 12px', fontSize: 13, lineHeight: 1.55,
                   borderRadius: msg.role === 'user' ? '14px 14px 3px 14px' : '14px 14px 14px 3px',
-                  background: msg.role === 'user' ? 'linear-gradient(135deg, #c9a96e, #a07840)' : 'var(--bg-hover)',
-                  color: msg.role === 'user' ? '#000' : 'var(--text)',
-                  border: msg.role === 'user' ? 'none' : '1px solid var(--border2)',
+                  background: msg.role === 'user' ? 'linear-gradient(135deg, #c9a96e, #a07840)' : '#1f2937',
+                  color: msg.role === 'user' ? '#000' : '#e5e5e5',
+                  border: msg.role === 'user' ? 'none' : '1px solid #374151',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
                   {msg.content}
-                  {msg.streaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: '#c9a96e', borderRadius: 2, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+                  {msg.streaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: 'var(--gold)', borderRadius: 2, marginLeft: 3, animation: 'blink 1s infinite' }} />}
                 </div>
               </div>
             ))}
@@ -164,7 +164,7 @@ export default function AIAdvisorFloat() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {quickQuestions.map((q, i) => (
                   <button key={i} onClick={() => sendMessage(q)}
-                    style={{ padding: '5px 10px', background: 'var(--bg-section)', color: '#c9a96e', border: '1px solid var(--border2)', borderRadius: 12, cursor: 'pointer', fontSize: 11 }}>
+                    style={{ padding: '5px 10px', background: 'var(--bg-section)', color: 'var(--gold)', border: '1px solid var(--border)', borderRadius: 12, cursor: 'pointer', fontSize: 11 }}>
                     {q}
                   </button>
                 ))}
@@ -174,8 +174,8 @@ export default function AIAdvisorFloat() {
           </div>
 
           {/* Input */}
-          <div style={{ padding: '10px 12px', borderTop: '1px solid #1f2937' }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-section)', border: '1px solid var(--border2)', borderRadius: 10, padding: '8px 12px' }}>
+          <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border2)' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px' }}>
               <input
                 ref={inputRef}
                 value={input}
@@ -186,11 +186,11 @@ export default function AIAdvisorFloat() {
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 13, fontFamily: 'inherit' }}
               />
               <button onClick={() => sendMessage()} disabled={loading || !input.trim()}
-                style={{ width: 30, height: 30, borderRadius: '50%', background: loading || !input.trim() ? 'var(--border2)' : 'linear-gradient(135deg, #c9a96e, #a07840)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                style={{ width: 30, height: 30, borderRadius: '50%', background: loading || !input.trim() ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
                 {loading ? '⏳' : '➤'}
               </button>
             </div>
-            <div style={{ fontSize: 10, color: 'var(--border2)', textAlign: 'center', marginTop: 6 }}>RS ZEVAR AI — Live ERP Data</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'center', marginTop: 6 }}>RS ZEVAR AI — Live ERP Data</div>
           </div>
         </div>
       )}
@@ -198,7 +198,7 @@ export default function AIAdvisorFloat() {
       {/* Floating Button — higher position */}
       <button onClick={() => setOpen(o => !o)} style={{
         position: 'fixed', bottom: 100, right: 24, width: 56, height: 56,
-        borderRadius: '50%', background: open ? 'var(--border2)' : 'linear-gradient(135deg, #c9a96e, #a07840)',
+        borderRadius: '50%', background: open ? '#374151' : 'linear-gradient(135deg, #c9a96e, #a07840)',
         border: 'none', cursor: 'pointer', zIndex: 1001,
         boxShadow: '0 4px 24px rgba(201,169,110,0.5)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
