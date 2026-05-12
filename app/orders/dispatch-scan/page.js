@@ -25,10 +25,10 @@ import { useUser } from '@/context/UserContext';
 
 // Theme tokens (matching existing pages)
 const gold = '#c9a96e';
-const bg = '#0a0a0a';
-const card = '#141414';
-const border = '#222';
-const text1 = '#e5e5e5';
+const bg = 'var(--bg)';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
+const text1 = 'var(--text)';
 const text2 = '#888';
 const success = '#22c55e';
 const danger = '#ef4444';
@@ -568,7 +568,7 @@ export default function DispatchScanPage() {
               disabled={busy || generating}
               style={{
                 padding: '14px 18px', fontSize: 14, fontWeight: 600,
-                background: cameraOpen ? gold : '#1a1a1a',
+                background: cameraOpen ? gold : 'var(--bg-section)',
                 color: cameraOpen ? '#000' : text1,
                 border: `1.5px solid ${gold}`, borderRadius: 6,
                 cursor: 'pointer', whiteSpace: 'nowrap',
@@ -854,7 +854,7 @@ export default function DispatchScanPage() {
                   fontSize: 12, color: text1, textDecoration: 'none',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#1a1a1a'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-section)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 <div>
@@ -904,7 +904,7 @@ export default function DispatchScanPage() {
               onClick={() => setCameraOpen(false)}
               style={{
                 padding: '8px 16px', fontSize: 14, fontWeight: 600,
-                background: '#1a1a1a', color: text1,
+                background: 'var(--bg-section)', color: text1,
                 border: `1px solid ${border}`, borderRadius: 6, cursor: 'pointer',
               }}
             >
@@ -927,7 +927,7 @@ export default function DispatchScanPage() {
                 feedback.type === 'success' ? success :
                 feedback.type === 'warn'    ? warn :
                                               danger,
-              background: '#0a0a0a', borderTop: `1px solid ${border}`,
+              background: 'var(--bg)', borderTop: `1px solid ${border}`,
             }}>
               {feedback.text}
             </div>
