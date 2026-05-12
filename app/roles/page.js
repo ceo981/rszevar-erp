@@ -424,12 +424,12 @@ export default function RolesPage() {
                         }}
                       >
                         {isSaving ? (
-                          <span style={{ fontSize: 10, color: '#000' }}>⟳</span>
+                          <span style={{ fontSize: 10, color: 'var(--text)' }}>⟳</span>
                         ) : isOn ? (
                           <span
                             style={{
                               fontSize: 12,
-                              color: '#000',
+                              color: 'var(--text)',
                               fontWeight: 900,
                             }}
                           >

@@ -102,7 +102,7 @@ export default function LoginForm() {
         style={{
           width: '100%',
           background: 'var(--gold)',
-          color: '#000',
+          color: 'var(--text)',
           border: 'none',
           borderRadius: 'var(--radius)',
           padding: '11px',

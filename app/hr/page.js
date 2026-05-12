@@ -127,7 +127,7 @@ function AttendanceTab({ employees }) {
       </div>
 
       {/* Add form */}
-      <div ref={formRef} style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+      <div ref={formRef} style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
         <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Add Attendance</h3>
         <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} style={inputStyle} required>
@@ -153,7 +153,7 @@ function AttendanceTab({ employees }) {
       {/* Edit Modal */}
       {editRecord && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#1e293b', borderRadius: 12, padding: 24, width: 480, border: '1px solid #334155' }}>
+          <div style={{ background: 'var(--bg-section)', borderRadius: 12, padding: 24, width: 480, border: '1px solid #334155' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ color: '#c9a96e', margin: 0 }}>Edit Attendance</h3>
               <button onClick={() => setEditRecord(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -161,11 +161,11 @@ function AttendanceTab({ employees }) {
             <form onSubmit={handleEdit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Employee</div>
-                <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{empMap[String(editRecord.employee_id)] || '—'}</div>
+                <div style={{ color: 'var(--text)', fontWeight: 600 }}>{empMap[String(editRecord.employee_id)] || '—'}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Date</div>
-                <div style={{ color: '#e2e8f0' }}>{editRecord.date}</div>
+                <div style={{ color: 'var(--text)' }}>{editRecord.date}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Status</div>
@@ -191,7 +191,7 @@ function AttendanceTab({ employees }) {
               </div>
               <div style={{ gridColumn: '1/-1', display: 'flex', gap: 8 }}>
                 <button type="submit" style={{ ...btnStyle, flex: 1 }}>💾 Save Changes</button>
-                <button type="button" onClick={() => handleDelete(editRecord.id)} style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>🗑 Delete</button>
+                <button type="button" onClick={() => handleDelete(editRecord.id)} style={{ background: 'var(--red-dim)', border: '1px solid #330000', color: '#ef4444', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>🗑 Delete</button>
               </div>
             </form>
           </div>
@@ -207,7 +207,7 @@ function AttendanceTab({ employees }) {
             <thead>
               {/* Day-of-week row */}
               <tr style={{ borderBottom: '1px solid #1e293b' }}>
-                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: '#0d1117', width: 130, minWidth: 130, padding: '6px 14px', textAlign: 'left', color: '#475569', fontSize: 11, fontWeight: 500 }}>
+                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-card)', width: 130, minWidth: 130, padding: '6px 14px', textAlign: 'left', color: 'var(--text3)', fontSize: 11, fontWeight: 500 }}>
                   EMPLOYEE
                 </th>
                 {days.map(d => {
@@ -215,18 +215,18 @@ function AttendanceTab({ employees }) {
                   const isToday = d === todayDay;
                   const isSun = dow === 0;
                   return (
-                    <th key={d} style={{ width: 36, minWidth: 36, padding: '5px 2px', textAlign: 'center', color: isToday ? '#c9a96e' : isSun ? '#475569' : '#334155', fontSize: 10, fontWeight: 500, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                    <th key={d} style={{ width: 36, minWidth: 36, padding: '5px 2px', textAlign: 'center', color: isToday ? '#c9a96e' : isSun ? 'var(--text3)' : 'var(--border2)', fontSize: 10, fontWeight: 500, background: isToday ? '#c9a96e11' : 'var(--bg-card)', borderLeft: '1px solid #1a1a2e' }}>
                       {DOW[dow]}
                     </th>
                   );
                 })}
-                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#22c55e', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>P</th>
-                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#ef4444', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>A</th>
-                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#f59e0b', fontSize: 10, background: '#0d1117', borderLeft: '1px solid #1e293b' }}>L/Lt</th>
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#22c55e', fontSize: 10, background: 'var(--bg-card)', borderLeft: '1px solid #1e293b' }}>P</th>
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#ef4444', fontSize: 10, background: 'var(--bg-card)', borderLeft: '1px solid #1e293b' }}>A</th>
+                <th style={{ width: 36, minWidth: 36, padding: '5px 4px', textAlign: 'center', color: '#f59e0b', fontSize: 10, background: 'var(--bg-card)', borderLeft: '1px solid #1e293b' }}>L/Lt</th>
               </tr>
               {/* Date number row */}
               <tr style={{ borderBottom: '2px solid #334155' }}>
-                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: '#0d1117', padding: '6px 14px', textAlign: 'left', color: '#64748b', fontSize: 11 }}>
+                <th style={{ position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-card)', padding: '6px 14px', textAlign: 'left', color: '#64748b', fontSize: 11 }}>
                   {month}
                 </th>
                 {days.map(d => {
@@ -234,21 +234,21 @@ function AttendanceTab({ employees }) {
                   const dow = new Date(year, mon - 1, d).getDay();
                   const isSun = dow === 0;
                   return (
-                    <th key={d} style={{ width: 36, padding: '4px 2px', textAlign: 'center', fontWeight: isToday ? 700 : 500, color: isToday ? '#c9a96e' : isSun ? '#334155' : '#475569', fontSize: 12, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                    <th key={d} style={{ width: 36, padding: '4px 2px', textAlign: 'center', fontWeight: isToday ? 700 : 500, color: isToday ? '#c9a96e' : isSun ? 'var(--border2)' : 'var(--text3)', fontSize: 12, background: isToday ? '#c9a96e11' : 'var(--bg-card)', borderLeft: '1px solid #1a1a2e' }}>
                       {d}
                     </th>
                   );
                 })}
-                <th colSpan={3} style={{ background: '#0d1117', borderLeft: '1px solid #1e293b' }} />
+                <th colSpan={3} style={{ background: 'var(--bg-card)', borderLeft: '1px solid #1e293b' }} />
               </tr>
             </thead>
             <tbody>
               {employees.map((emp, ei) => {
                 const sum = getSummary(emp.id);
                 return (
-                  <tr key={emp.id} style={{ borderBottom: '1px solid #1e293b', background: ei % 2 === 0 ? '#0f172a' : '#0d1117' }}>
+                  <tr key={emp.id} style={{ borderBottom: '1px solid #1e293b', background: ei % 2 === 0 ? 'var(--bg)' : 'var(--bg-card)' }}>
                     {/* Sticky employee name */}
-                    <td style={{ position: 'sticky', left: 0, zIndex: 1, background: ei % 2 === 0 ? '#0f172a' : '#0d1117', padding: '6px 14px', color: '#e2e8f0', fontWeight: 500, fontSize: 13, whiteSpace: 'nowrap', borderRight: '1px solid #1e293b' }}>
+                    <td style={{ position: 'sticky', left: 0, zIndex: 1, background: ei % 2 === 0 ? 'var(--bg)' : 'var(--bg-card)', padding: '6px 14px', color: 'var(--text)', fontWeight: 500, fontSize: 13, whiteSpace: 'nowrap', borderRight: '1px solid #1e293b' }}>
                       {emp.name}
                     </td>
                     {/* Day cells */}
@@ -277,20 +277,20 @@ function AttendanceTab({ employees }) {
                           {cfg ? (
                             <span style={{ color: cfg.color, fontSize: 11, fontWeight: 700, letterSpacing: -0.5 }}>{cfg.label}</span>
                           ) : (
-                            <span style={{ color: '#1e293b', fontSize: 14, lineHeight: 1 }}>·</span>
+                            <span style={{ color: 'var(--bg-section)', fontSize: 14, lineHeight: 1 }}>·</span>
                           )}
                         </td>
                       );
                     })}
                     {/* Summary */}
                     <td style={{ padding: '5px 4px', textAlign: 'center', color: '#22c55e', fontSize: 12, fontWeight: 600, borderLeft: '1px solid #1e293b' }}>{sum.p || '—'}</td>
-                    <td style={{ padding: '5px 4px', textAlign: 'center', color: sum.a > 0 ? '#ef4444' : '#334155', fontSize: 12, fontWeight: sum.a > 0 ? 700 : 400, borderLeft: '1px solid #1e293b' }}>{sum.a || '—'}</td>
-                    <td style={{ padding: '5px 4px', textAlign: 'center', color: (sum.l + sum.lt) > 0 ? '#f59e0b' : '#334155', fontSize: 12, fontWeight: (sum.l + sum.lt) > 0 ? 600 : 400, borderLeft: '1px solid #1e293b' }}>{(sum.l + sum.lt) || '—'}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'center', color: sum.a > 0 ? '#ef4444' : 'var(--border2)', fontSize: 12, fontWeight: sum.a > 0 ? 700 : 400, borderLeft: '1px solid #1e293b' }}>{sum.a || '—'}</td>
+                    <td style={{ padding: '5px 4px', textAlign: 'center', color: (sum.l + sum.lt) > 0 ? '#f59e0b' : 'var(--border2)', fontSize: 12, fontWeight: (sum.l + sum.lt) > 0 ? 600 : 400, borderLeft: '1px solid #1e293b' }}>{(sum.l + sum.lt) || '—'}</td>
                   </tr>
                 );
               })}
               {employees.length === 0 && (
-                <tr><td colSpan={daysInMonth + 4} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No employees found</td></tr>
+                <tr><td colSpan={daysInMonth + 4} style={{ padding: 20, color: 'var(--text3)', textAlign: 'center' }}>No employees found</td></tr>
               )}
             </tbody>
           </table>
@@ -305,7 +305,7 @@ function AttendanceTab({ employees }) {
             {k.replace('_', ' ')}
           </span>
         ))}
-        <span style={{ fontSize: 12, color: '#334155' }}>· = no record (click to add)</span>
+        <span style={{ fontSize: 12, color: 'var(--border2)' }}>· = no record (click to add)</span>
       </div>
     </div>
   );
@@ -377,12 +377,12 @@ function AdvancesTab({ employees }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 20px' }}>
+        <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: '12px 20px' }}>
           <div style={{ color: '#94a3b8', fontSize: 12 }}>This Month Outstanding</div>
           <div style={{ color: '#ef4444', fontSize: 20, fontWeight: 700 }}>Rs. {fmt(monthOutstanding)}</div>
-          <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>(filtered month ke pending only)</div>
+          <div style={{ color: 'var(--text3)', fontSize: 10, marginTop: 2 }}>(filtered month ke pending only)</div>
         </div>
-        <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 20px' }}>
+        <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: '12px 20px' }}>
           <div style={{ color: '#94a3b8', fontSize: 12 }}>Total Outstanding (All Time)</div>
           <div style={{ color: '#f59e0b', fontSize: 20, fontWeight: 700 }}>Rs. {fmt(pendingTotal)}</div>
         </div>
@@ -397,7 +397,7 @@ function AdvancesTab({ employees }) {
         </div>
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+      <div style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
         <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Give Advance</h3>
         <form onSubmit={handleAdd} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} style={inputStyle} required>
@@ -426,7 +426,7 @@ function AdvancesTab({ employees }) {
           <tbody>
             {filteredAdvances.map(a => (
               <tr key={a.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{a.employees?.name}</td>
+                <td style={{ padding: '8px 12px', color: 'var(--text)' }}>{a.employees?.name}</td>
                 <td style={{ padding: '8px 12px', color: '#ef4444', fontWeight: 600 }}>Rs. {fmt(a.amount)}</td>
                 <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.given_date ? new Date(a.given_date).toLocaleDateString('en-PK', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                 <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{a.deduct_month || '-'}</td>
@@ -447,7 +447,7 @@ function AdvancesTab({ employees }) {
                 </td>
               </tr>
             ))}
-            {filteredAdvances.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>{advances.length === 0 ? 'No advances yet' : `No advances in ${filterMonth}`}</td></tr>}
+            {filteredAdvances.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: 'var(--text3)', textAlign: 'center' }}>{advances.length === 0 ? 'No advances yet' : `No advances in ${filterMonth}`}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -497,7 +497,7 @@ function LeavesTab({ employees }) {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {['leaves', 'holidays'].map(v => (
-          <button key={v} onClick={() => setView(v)} style={{ ...btnStyle, background: view === v ? '#c9a96e' : '#1e293b', color: view === v ? '#0f172a' : '#94a3b8' }}>
+          <button key={v} onClick={() => setView(v)} style={{ ...btnStyle, background: view === v ? '#c9a96e' : 'var(--bg-section)', color: view === v ? 'var(--bg)' : '#94a3b8' }}>
             {v === 'leaves' ? '🌴 Leaves' : '📅 Holidays'}
           </button>
         ))}
@@ -505,7 +505,7 @@ function LeavesTab({ employees }) {
 
       {view === 'leaves' && (
         <>
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+          <div style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
             <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Add Leave</h3>
             <form onSubmit={handleAddLeave} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
               <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} style={inputStyle} required>
@@ -537,7 +537,7 @@ function LeavesTab({ employees }) {
             <tbody>
               {leaves.map(l => (
                 <tr key={l.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                  <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{l.employees?.name}</td>
+                  <td style={{ padding: '8px 12px', color: 'var(--text)' }}>{l.employees?.name}</td>
                   <td style={{ padding: '8px 12px' }}>
                     <span style={{ background: (leaveTypeColor[l.leave_type] || '#94a3b8') + '22', color: leaveTypeColor[l.leave_type] || '#94a3b8', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>
                       {l.leave_type}
@@ -545,14 +545,14 @@ function LeavesTab({ employees }) {
                   </td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{l.start_date}</td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{l.end_date}</td>
-                  <td style={{ padding: '8px 12px', color: '#e2e8f0', fontWeight: 600 }}>{l.days}</td>
+                  <td style={{ padding: '8px 12px', color: 'var(--text)', fontWeight: 600 }}>{l.days}</td>
                   <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{l.reason || '-'}</td>
                   <td style={{ padding: '8px 12px' }}>
                     <button onClick={async () => { await fetch('/api/hr/leaves', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_leave', id: l.id }) }); load(); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>
                   </td>
                 </tr>
               ))}
-              {leaves.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No leaves recorded</td></tr>}
+              {leaves.length === 0 && <tr><td colSpan={7} style={{ padding: 20, color: 'var(--text3)', textAlign: 'center' }}>No leaves recorded</td></tr>}
             </tbody>
           </table>
         </>
@@ -560,7 +560,7 @@ function LeavesTab({ employees }) {
 
       {view === 'holidays' && (
         <>
-          <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+          <div style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
             <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Add Holiday</h3>
             <form onSubmit={handleAddHoliday} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <input value={holidayForm.title} onChange={e => setHolidayForm(f => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Holiday name" required />
@@ -576,9 +576,9 @@ function LeavesTab({ employees }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
             {holidays.map(h => (
-              <div key={h.id} style={{ background: '#1e293b', borderRadius: 8, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div key={h.id} style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{h.title}</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600 }}>{h.title}</div>
                   <div style={{ color: '#94a3b8', fontSize: 12 }}>{h.date} · {h.type}</div>
                 </div>
                 <button onClick={async () => { await fetch('/api/hr/leaves', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_holiday', id: h.id }) }); load(); }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>🗑️</button>
@@ -622,13 +622,13 @@ function OvertimeTab({ employees }) {
     <div>
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
-        <div style={{ background: '#1e293b', borderRadius: 8, padding: '8px 16px' }}>
+        <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: '8px 16px' }}>
           <span style={{ color: '#94a3b8', fontSize: 12 }}>Total Hours: </span>
           <span style={{ color: '#c9a96e', fontWeight: 700 }}>{totalHours} hrs</span>
         </div>
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+      <div style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
         <h3 style={{ color: '#c9a96e', marginBottom: 16, fontSize: 16 }}>Log Overtime</h3>
         <form onSubmit={handleAdd} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} style={inputStyle} required>
@@ -654,7 +654,7 @@ function OvertimeTab({ employees }) {
         <tbody>
           {records.map(r => (
             <tr key={r.id} style={{ borderBottom: '1px solid #1e293b' }}>
-              <td style={{ padding: '8px 12px', color: '#e2e8f0' }}>{r.employees?.name}</td>
+              <td style={{ padding: '8px 12px', color: 'var(--text)' }}>{r.employees?.name}</td>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.date}</td>
               <td style={{ padding: '8px 12px', color: '#c9a96e', fontWeight: 600 }}>{r.hours} hrs</td>
               <td style={{ padding: '8px 12px', color: '#94a3b8' }}>{r.reason || '-'}</td>
@@ -663,7 +663,7 @@ function OvertimeTab({ employees }) {
               </td>
             </tr>
           ))}
-          {records.length === 0 && <tr><td colSpan={5} style={{ padding: 20, color: '#475569', textAlign: 'center' }}>No overtime this month</td></tr>}
+          {records.length === 0 && <tr><td colSpan={5} style={{ padding: 20, color: 'var(--text3)', textAlign: 'center' }}>No overtime this month</td></tr>}
         </tbody>
       </table>
     </div>
@@ -826,7 +826,7 @@ function SalaryTab({ employees, allEmployees }) {
 
       {/* Preview panel */}
       {preview && (
-        <div style={{ background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 20, border: '1px solid #c9a96e' }}>
+        <div style={{ background: 'var(--bg-section)', borderRadius: 10, padding: 20, marginBottom: 20, border: '1px solid #c9a96e' }}>
           <h3 style={{ color: '#c9a96e', marginBottom: 12 }}>📊 Salary Preview — {preview.emp?.name}</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             {[
@@ -841,31 +841,31 @@ function SalaryTab({ employees, allEmployees }) {
               ['Absent Deduction', `- Rs. ${fmt(preview.calculation.absent_deduction)}`],
               ['Advance Deduction', `- Rs. ${fmt(preview.calculation.advance_deduction)}`],
             ].map(([k, v]) => (
-              <div key={k} style={{ background: '#0f172a', borderRadius: 6, padding: 10 }}>
+              <div key={k} style={{ background: 'var(--bg)', borderRadius: 6, padding: 10 }}>
                 <div style={{ color: '#94a3b8', fontSize: 11 }}>{k}</div>
-                <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{v}</div>
+                <div style={{ color: 'var(--text)', fontWeight: 600 }}>{v}</div>
               </div>
             ))}
           </div>
 
           {/* Yearly leave balance card (May 6 2026) */}
           {preview.calculation.yearly_leaves && (
-            <div style={{ marginTop: 14, padding: 12, background: '#0f172a', border: '1px solid #c9a96e44', borderRadius: 8 }}>
+            <div style={{ marginTop: 14, padding: 12, background: 'var(--bg)', border: '1px solid #c9a96e44', borderRadius: 8 }}>
               <div style={{ color: '#c9a96e', fontSize: 12, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 🌴 Yearly Leave Balance (Office Year)
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, fontSize: 12 }}>
                 <div>
                   <div style={{ color: '#94a3b8' }}>Allowed</div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.allowed} days</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.allowed} days</div>
                 </div>
                 <div>
                   <div style={{ color: '#94a3b8' }}>Used (before ERP)</div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.opening_used}</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.opening_used}</div>
                 </div>
                 <div>
                   <div style={{ color: '#94a3b8' }}>Used in ERP</div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.erp_used_this_year}</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 16 }}>{preview.calculation.yearly_leaves.erp_used_this_year}</div>
                 </div>
                 <div>
                   <div style={{ color: '#94a3b8' }}>Remaining</div>
@@ -887,11 +887,11 @@ function SalaryTab({ employees, allEmployees }) {
             (preview.calculation.bonus_breakdown.leaderboard > 0 ||
              preview.calculation.bonus_breakdown.time_bonus > 0 ||
              preview.calculation.bonus_breakdown.manual > 0) && (
-              <div style={{ marginTop: 14, padding: 12, background: '#0f172a', border: '1px solid #c9a96e33', borderRadius: 8 }}>
+              <div style={{ marginTop: 14, padding: 12, background: 'var(--bg)', border: '1px solid #c9a96e33', borderRadius: 8 }}>
                 <div style={{ color: '#c9a96e', fontSize: 12, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Bonus Breakdown</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
                   {preview.calculation.bonus_breakdown.leaderboard > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
                       <span>
                         {preview.calculation.bonus_breakdown.leaderboard_rank === '1st' ? '🏆' : '🥈'} Leaderboard Bonus ({preview.calculation.bonus_breakdown.leaderboard_rank} Place)
                       </span>
@@ -899,13 +899,13 @@ function SalaryTab({ employees, allEmployees }) {
                     </div>
                   )}
                   {preview.calculation.bonus_breakdown.time_bonus > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
                       <span>⏰ Time Bonus (good attendance)</span>
                       <strong style={{ color: '#22c55e' }}>Rs. {fmt(preview.calculation.bonus_breakdown.time_bonus)}</strong>
                     </div>
                   )}
                   {preview.calculation.bonus_breakdown.manual > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text)' }}>
                       <span>✋ Manual Bonus</span>
                       <strong style={{ color: '#22c55e' }}>Rs. {fmt(preview.calculation.bonus_breakdown.manual)}</strong>
                     </div>
@@ -920,13 +920,13 @@ function SalaryTab({ employees, allEmployees }) {
             )
           )}
 
-          <div style={{ marginTop: 16, padding: '12px 16px', background: '#0f172a', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: '#94a3b8' }}>NET SALARY</span>
             <span style={{ color: '#22c55e', fontSize: 22, fontWeight: 700 }}>Rs. {fmt(preview.calculation.net_salary)}</span>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
             <button onClick={saveSalary} style={btnStyle}>💾 Save Salary</button>
-            <button onClick={() => setPreview(null)} style={{ ...btnStyle, background: '#334155' }}>Cancel</button>
+            <button onClick={() => setPreview(null)} style={{ ...btnStyle, background: 'var(--border2)' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -936,10 +936,10 @@ function SalaryTab({ employees, allEmployees }) {
         {employees.filter(e => e.status === 'active').map(emp => {
           const saved = records.find(r => r.employee_id === emp.id);
           return (
-            <div key={emp.id} style={{ background: '#1e293b', borderRadius: 8, padding: 14 }}>
+            <div key={emp.id} style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                 <div>
-                  <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{emp.name}</div>
+                  <div style={{ color: 'var(--text)', fontWeight: 600 }}>{emp.name}</div>
                   <div style={{ color: '#94a3b8', fontSize: 12 }}>{emp.role}</div>
                 </div>
                 {saved && (
@@ -954,7 +954,7 @@ function SalaryTab({ employees, allEmployees }) {
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={() => printSlip(saved)} style={{ ...btnStyle, fontSize: 11, padding: '4px 10px', background: '#1e3a5f' }}>🖨️ Print Slip</button>
                     {saved.status !== 'paid' && <button onClick={() => markPaid(saved.id)} style={{ ...btnStyle, fontSize: 11, padding: '4px 10px', background: '#166534' }}>✅ Mark Paid</button>}
-                    <button onClick={() => calculate(emp)} style={{ ...btnStyle, fontSize: 11, padding: '4px 10px', background: '#334155' }}>🔄 Recalculate</button>
+                    <button onClick={() => calculate(emp)} style={{ ...btnStyle, fontSize: 11, padding: '4px 10px', background: 'var(--border2)' }}>🔄 Recalculate</button>
                   </div>
                 </div>
               ) : (
@@ -1038,14 +1038,14 @@ function LeaderboardTab() {
         {data && isSuperAdmin && (
           <span style={{ color: '#94a3b8', fontSize: 14 }}>
             Bonuses: <strong style={{ color: '#c9a96e' }}>1st Rs. {Number(bonus1st).toLocaleString()}</strong>
-            <span style={{ color: '#475569', margin: '0 6px' }}>·</span>
+            <span style={{ color: 'var(--text3)', margin: '0 6px' }}>·</span>
             <strong style={{ color: '#94a3b8' }}>2nd Rs. {Number(bonus2nd).toLocaleString()}</strong>
           </span>
         )}
       </div>
 
       {loading ? <div style={{ color: '#94a3b8' }}>Loading...</div> : !data?.leaderboard?.length ? (
-        <div style={{ color: '#475569', textAlign: 'center', padding: 40 }}>Is month mein koi packing log nahi hai</div>
+        <div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>Is month mein koi packing log nahi hai</div>
       ) : (
         <div>
           {/* Winner + Runner-up cards */}
@@ -1060,10 +1060,10 @@ function LeaderboardTab() {
                     {isSuperAdmin && (
                       <>
                         <strong style={{ color: '#22c55e' }}>Rs. {Number(data.winner.total_amount || 0).toLocaleString()}</strong>
-                        <span style={{ color: '#475569' }}> · </span>
+                        <span style={{ color: 'var(--text3)' }}> · </span>
                       </>
                     )}
-                    <span style={{ color: isSuperAdmin ? '#475569' : '#94a3b8' }}>{data.winner.total_items} items · {data.winner.total_orders} orders</span>
+                    <span style={{ color: isSuperAdmin ? 'var(--text3)' : '#94a3b8' }}>{data.winner.total_items} items · {data.winner.total_orders} orders</span>
                   </div>
                   {isSuperAdmin && (
                     <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus1st).toLocaleString()} Bonus (salary mein auto-add)</div>
@@ -1081,10 +1081,10 @@ function LeaderboardTab() {
                     {isSuperAdmin && (
                       <>
                         <strong style={{ color: '#22c55e' }}>Rs. {Number(data.runner_up.total_amount || 0).toLocaleString()}</strong>
-                        <span style={{ color: '#475569' }}> · </span>
+                        <span style={{ color: 'var(--text3)' }}> · </span>
                       </>
                     )}
-                    <span style={{ color: isSuperAdmin ? '#475569' : '#94a3b8' }}>{data.runner_up.total_items} items · {data.runner_up.total_orders} orders</span>
+                    <span style={{ color: isSuperAdmin ? 'var(--text3)' : '#94a3b8' }}>{data.runner_up.total_items} items · {data.runner_up.total_orders} orders</span>
                   </div>
                   {isSuperAdmin && (
                     <div style={{ marginTop: 6, color: '#22c55e', fontWeight: 600, fontSize: 13 }}>+ Rs. {Number(bonus2nd).toLocaleString()} Bonus (salary mein auto-add)</div>
@@ -1095,7 +1095,7 @@ function LeaderboardTab() {
           </div>
 
           {/* Full leaderboard */}
-          <div style={{ background: '#1e293b', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--bg-section)', borderRadius: 10, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #334155' }}>
@@ -1108,7 +1108,7 @@ function LeaderboardTab() {
                 {data.leaderboard.map((row, i) => {
                   const bonus = bonusForRank(i);
                   const rowBg = i === 0 ? '#c9a96e11' : i === 1 ? '#94a3b80f' : 'transparent';
-                  const nameColor = i === 0 ? '#c9a96e' : i === 1 ? '#cbd5e1' : '#e2e8f0';
+                  const nameColor = i === 0 ? '#c9a96e' : i === 1 ? '#cbd5e1' : 'var(--text)';
                   const isExpanded = expandedEmp === row.employee_id;
                   const cacheKey = `${row.employee_id}_${month}`;
                   const drillData = empOrdersCache[cacheKey];
@@ -1130,7 +1130,7 @@ function LeaderboardTab() {
                         <td style={{ padding: '12px 16px', fontSize: 18 }}>{medals[i] || `#${i + 1}`}</td>
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ fontWeight: 600, color: nameColor }}>{row.name}</div>
-                          <div style={{ fontSize: 11, color: '#475569' }}>{row.role}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{row.role}</div>
                         </td>
                         {isSuperAdmin && (
                           <td style={{ padding: '12px 16px', fontWeight: 700, color: '#22c55e', fontSize: 16 }}>
@@ -1140,7 +1140,7 @@ function LeaderboardTab() {
                         <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 14 }}>{row.total_items}</td>
                         <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{row.total_orders}</td>
                         {isSuperAdmin && (
-                          <td style={{ padding: '12px 16px', color: bonus > 0 ? '#22c55e' : '#475569', fontWeight: bonus > 0 ? 700 : 400 }}>
+                          <td style={{ padding: '12px 16px', color: bonus > 0 ? '#22c55e' : 'var(--text3)', fontWeight: bonus > 0 ? 700 : 400 }}>
                             {bonus > 0 ? `Rs. ${Number(bonus).toLocaleString()} ${i === 0 ? '🏆' : '🥈'}` : '—'}
                           </td>
                         )}
@@ -1164,7 +1164,7 @@ function LeaderboardTab() {
               </tbody>
             </table>
           </div>
-          <p style={{ color: '#475569', fontSize: 12, marginTop: 12 }}>
+          <p style={{ color: 'var(--text3)', fontSize: 12, marginTop: 12 }}>
             {isSuperAdmin
               ? '* Top 2 ka bonus salary calculate karte waqt automatically add ho jayega (bonus_breakdown mein "leaderboard" line aayegi). Row pe click kar ke us employee ke orders + ZEVAR-XXXXXX drill-down dekh sakte ho.'
               : '* Row pe click kar ke us employee ke packed orders dekh sakte ho — har order pe click se order detail page khulega.'}
@@ -1197,18 +1197,18 @@ function EmployeeOrdersDetail({ employeeName, month, drill }) {
   return (
     <div style={{ padding: '12px 0 4px' }}>
       {/* Summary strip — aggregate Rs hidden for non-super_admin (API returns null) */}
-      <div style={{ display: 'flex', gap: 16, padding: '10px 14px', background: '#1e293b', borderRadius: 8, marginBottom: 10, flexWrap: 'wrap', fontSize: 13 }}>
-        <span style={{ color: '#94a3b8' }}><strong style={{ color: '#e2e8f0' }}>{employeeName}</strong> — {month}</span>
-        <span style={{ color: '#475569' }}>·</span>
-        <span style={{ color: '#94a3b8' }}>Orders: <strong style={{ color: '#e2e8f0' }}>{totals.total_orders}</strong></span>
-        <span style={{ color: '#94a3b8' }}>Items: <strong style={{ color: '#e2e8f0' }}>{totals.total_items}</strong></span>
+      <div style={{ display: 'flex', gap: 16, padding: '10px 14px', background: 'var(--bg-section)', borderRadius: 8, marginBottom: 10, flexWrap: 'wrap', fontSize: 13 }}>
+        <span style={{ color: '#94a3b8' }}><strong style={{ color: 'var(--text)' }}>{employeeName}</strong> — {month}</span>
+        <span style={{ color: 'var(--text3)' }}>·</span>
+        <span style={{ color: '#94a3b8' }}>Orders: <strong style={{ color: 'var(--text)' }}>{totals.total_orders}</strong></span>
+        <span style={{ color: '#94a3b8' }}>Items: <strong style={{ color: 'var(--text)' }}>{totals.total_items}</strong></span>
         {totals.total_amount != null && (
           <span style={{ color: '#94a3b8' }}>Amount: <strong style={{ color: '#22c55e' }}>Rs. {Number(totals.total_amount).toLocaleString()}</strong></span>
         )}
       </div>
 
       {orders.length === 0 ? (
-        <div style={{ color: '#475569', fontSize: 13, padding: '10px 14px' }}>Is month mein koi order pack nahi hua</div>
+        <div style={{ color: 'var(--text3)', fontSize: 13, padding: '10px 14px' }}>Is month mein koi order pack nahi hua</div>
       ) : (
         <div style={{ background: '#111a2b', borderRadius: 8, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1229,7 +1229,7 @@ function EmployeeOrdersDetail({ employeeName, month, drill }) {
                       <Link href={`/orders/${o.order_id}`} style={{ color: '#c9a96e', textDecoration: 'none', fontWeight: 600, fontFamily: 'monospace' }}>
                         {o.order_number}
                       </Link>
-                      {o.is_shared && <span style={{ marginLeft: 6, fontSize: 10, color: '#64748b', background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>SHARED</span>}
+                      {o.is_shared && <span style={{ marginLeft: 6, fontSize: 10, color: '#64748b', background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>SHARED</span>}
                     </td>
                     <td style={{ padding: '10px 14px', color: '#cbd5e1', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.customer_name}</td>
                     <td style={{ padding: '10px 14px' }}>
@@ -1282,7 +1282,7 @@ function PolicyTab() {
   }
 
   const Field = ({ label, k, suffix = '', type = 'number', help = '' }) => (
-    <div style={{ background: '#0f172a', borderRadius: 8, padding: 14 }}>
+    <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14 }}>
       <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input
@@ -1291,9 +1291,9 @@ function PolicyTab() {
           onChange={e => setPolicy(p => ({ ...p, [k]: e.target.value }))}
           style={{ ...inputStyle, width: 100, textAlign: 'center', fontSize: 16, fontWeight: 700 }}
         />
-        {suffix && <span style={{ color: '#475569', fontSize: 13 }}>{suffix}</span>}
+        {suffix && <span style={{ color: 'var(--text3)', fontSize: 13 }}>{suffix}</span>}
       </div>
-      {help && <div style={{ color: '#334155', fontSize: 11, marginTop: 4 }}>{help}</div>}
+      {help && <div style={{ color: 'var(--border2)', fontSize: 11, marginTop: 4 }}>{help}</div>}
     </div>
   );
 
@@ -1316,7 +1316,7 @@ function PolicyTab() {
       </div>
 
       <h3 style={{ color: '#c9a96e', marginBottom: 20 }}>Bonuses</h3>
-      <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>* Time Bonus har employee ka alag alag hai — Team section mein employee edit karke set karo. Leaderboard ranking <strong style={{ color: '#c9a96e' }}>amount ke hisaab se</strong> hoti hai (items ki count tiebreaker hai).</p>
+      <p style={{ color: 'var(--text3)', fontSize: 13, marginBottom: 12 }}>* Time Bonus har employee ka alag alag hai — Team section mein employee edit karke set karo. Leaderboard ranking <strong style={{ color: '#c9a96e' }}>amount ke hisaab se</strong> hoti hai (items ki count tiebreaker hai).</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
         <Field label="🏆 1st Place Bonus" k="leaderboard_bonus_1st" suffix="Rs" help="Top packer ko (highest amount packed)" />
         <Field label="🥈 2nd Place Bonus" k="leaderboard_bonus_2nd" suffix="Rs" help="Runner-up packer ko" />
@@ -1327,7 +1327,7 @@ function PolicyTab() {
         <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour rate" />
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
+      <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13, color: '#94a3b8', lineHeight: 1.7 }}>
         <strong style={{ color: '#c9a96e', fontSize: 14 }}>📋 Late Rule Summary:</strong>
         <div style={{ marginTop: 8 }}>
           • <strong>{policy.office_start_time}</strong> – <strong>{(() => {
@@ -1365,7 +1365,7 @@ function PolicyTab() {
             const upto = lastDay.toISOString().slice(0, 10);
             window.open(`/api/hr/print-report?upto=${upto}`, '_blank');
           }}
-          style={{ ...btnStyle, background: '#1e293b', color: '#c9a96e', border: '1px solid #c9a96e44' }}
+          style={{ ...btnStyle, background: 'var(--bg-section)', color: '#c9a96e', border: '1px solid #c9a96e44' }}
         >
           📄 Print HR Rules + Leave Report
         </button>
@@ -1397,10 +1397,10 @@ export default function HRPage() {
   const staffEmployees = activeEmployees.filter(e => String(e.role || '').toLowerCase() !== 'super_admin');
 
   return (
-    <div style={{ padding: '24px', minHeight: '100vh', background: '#0f172a', color: '#e2e8f0' }}>
+    <div style={{ padding: '24px', minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: '#c9a96e', margin: 0 }}>👥 HR & Payroll</h1>
-        <p style={{ color: '#475569', margin: '4px 0 0', fontSize: 14 }}>Attendance, Leaves, Advances, Overtime & Salary</p>
+        <p style={{ color: 'var(--text3)', margin: '4px 0 0', fontSize: 14 }}>Attendance, Leaves, Advances, Overtime & Salary</p>
       </div>
 
       {/* Tabs */}
@@ -1408,8 +1408,8 @@ export default function HRPage() {
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
             padding: '10px 18px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 500,
-            background: activeTab === tab.id ? '#c9a96e' : '#1e293b',
-            color: activeTab === tab.id ? '#0f172a' : '#94a3b8',
+            background: activeTab === tab.id ? '#c9a96e' : 'var(--bg-section)',
+            color: activeTab === tab.id ? 'var(--bg)' : '#94a3b8',
             transition: 'all 0.2s',
           }}>
             {tab.label}
@@ -1418,7 +1418,7 @@ export default function HRPage() {
       </div>
 
       {/* Tab content */}
-      <div style={{ background: '#0f172a' }}>
+      <div style={{ background: 'var(--bg)' }}>
         {activeTab === 'attendance' && <AttendanceTab employees={staffEmployees} />}
         {activeTab === 'advances'   && <AdvancesTab   employees={activeEmployees} />}
         {activeTab === 'leaves'     && <LeavesTab     employees={activeEmployees} />}
@@ -1433,11 +1433,11 @@ export default function HRPage() {
 
 // ─── Shared styles ────────────────────────────
 const inputStyle = {
-  background: '#0f172a', border: '1px solid #334155', borderRadius: 6,
-  color: '#e2e8f0', padding: '8px 12px', fontSize: 14, outline: 'none',
+  background: 'var(--bg)', border: '1px solid #334155', borderRadius: 6,
+  color: 'var(--text)', padding: '8px 12px', fontSize: 14, outline: 'none',
 };
 
 const btnStyle = {
-  background: '#c9a96e', color: '#0f172a', border: 'none', borderRadius: 6,
+  background: '#c9a96e', color: 'var(--bg)', border: 'none', borderRadius: 6,
   padding: '8px 16px', cursor: 'pointer', fontWeight: 600, fontSize: 14,
 };

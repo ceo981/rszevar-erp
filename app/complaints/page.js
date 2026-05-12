@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold  = '#c9a96e';
-const card  = '#141414';
-const border = '#222';
+const card  = 'var(--bg-card)';
+const border = 'var(--border)';
 
 const CATEGORIES = [
   'Wrong Item', 'Missing Item', 'Damaged', 'Late Delivery',
@@ -80,11 +80,11 @@ function AddModal({ onClose, onSave }) {
     setSaving(false);
   };
 
-  const inp = { background: '#1a1a1a', border: '1px solid #222', color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', width: '100%' };
+  const inp = { background: 'var(--bg-section)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', width: '100%' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f0f', border: '1px solid #222', borderRadius: 12, padding: 28, width: 480, maxHeight: '92vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 480, maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: '#ef4444' }}>📢 Log Complaint</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -133,14 +133,14 @@ function AddModal({ onClose, onSave }) {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                 {images.map((src, i) => (
                   <div key={i} style={{ position: 'relative' }}>
-                    <img src={src} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 7, border: '1px solid #222' }} />
-                    <button onClick={() => setImages(p => p.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -7, right: -7, width: 20, height: 20, borderRadius: '50%', background: '#ef4444', border: 'none', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                    <img src={src} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 7, border: '1px solid var(--border)' }} />
+                    <button onClick={() => setImages(p => p.filter((_, j) => j !== i))} style={{ position: 'absolute', top: -7, right: -7, width: 20, height: 20, borderRadius: '50%', background: '#ef4444', border: 'none', color: 'var(--text)', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>✕</button>
                   </div>
                 ))}
               </div>
             )}
             {images.length < 4 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#1a1a1a', border: '1px dashed #333', borderRadius: 8, padding: '10px 14px', cursor: imgLoading ? 'not-allowed' : 'pointer', fontSize: 13, color: imgLoading ? '#555' : '#888' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-section)', border: '1px dashed #333', borderRadius: 8, padding: '10px 14px', cursor: imgLoading ? 'not-allowed' : 'pointer', fontSize: 13, color: imgLoading ? '#555' : '#888' }}>
                 <span style={{ fontSize: 18 }}>{imgLoading ? '⟳' : '📷'}</span>
                 <span>{imgLoading ? 'Compressing...' : `Photo add karo (${images.length}/4)`}</span>
                 <input type="file" accept="image/*" multiple onChange={handleImages} disabled={imgLoading} style={{ display: 'none' }} />
@@ -150,14 +150,14 @@ function AddModal({ onClose, onSave }) {
 
           {/* Mistake By — strict rule: packer only when you are sure */}
           <div>
-            <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>⚠️ Mistake Kiski Hai? <span style={{ color: '#333', fontWeight: 400 }}>(Packer select karne se uski negative rating jayegi)</span></div>
+            <div style={{ fontSize: 11, color: '#555', marginBottom: 8 }}>⚠️ Mistake Kiski Hai? <span style={{ color: 'var(--border2)', fontWeight: 400 }}>(Packer select karne se uski negative rating jayegi)</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {MISTAKE_BY.map(m => (
                 <button key={m.value} onClick={() => setForm(f => ({...f, mistake_by: m.value}))} style={{
                   padding: '10px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
                   fontSize: 12, fontWeight: form.mistake_by === m.value ? 700 : 400,
                   textAlign: 'left',
-                  background: form.mistake_by === m.value ? m.color + '18' : '#0a0a0a',
+                  background: form.mistake_by === m.value ? m.color + '18' : 'var(--bg)',
                   border: `1px solid ${form.mistake_by === m.value ? m.color + '66' : border}`,
                   color: form.mistake_by === m.value ? m.color : '#555',
                 }}>
@@ -170,7 +170,7 @@ function AddModal({ onClose, onSave }) {
 
           {msg && <div style={{ color: '#ef4444', fontSize: 12 }}>{msg}</div>}
 
-          <button onClick={save} disabled={saving || imgLoading} style={{ background: saving ? '#7f2222' : '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer' }}>
+          <button onClick={save} disabled={saving || imgLoading} style={{ background: saving ? '#7f2222' : '#ef4444', color: 'var(--text)', border: 'none', borderRadius: 8, padding: '11px', fontWeight: 700, fontSize: 14, cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? 'Saving...' : '+ Log Complaint'}
           </button>
         </div>
@@ -216,20 +216,20 @@ function ComplaintPanel({ complaint, onClose, onSave }) {
           <div style={{ position: 'absolute', top: 18, right: 20, display: 'flex', gap: 8 }}>
             {imgs.length > 1 && (
               <>
-                <button onClick={e => { e.stopPropagation(); setLightbox(l => (l - 1 + imgs.length) % imgs.length); }} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontSize: 18 }}>‹</button>
-                <button onClick={e => { e.stopPropagation(); setLightbox(l => (l + 1) % imgs.length); }} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontSize: 18 }}>›</button>
+                <button onClick={e => { e.stopPropagation(); setLightbox(l => (l - 1 + imgs.length) % imgs.length); }} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: 'var(--text)', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontSize: 18 }}>‹</button>
+                <button onClick={e => { e.stopPropagation(); setLightbox(l => (l + 1) % imgs.length); }} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: 'var(--text)', borderRadius: 6, padding: '6px 16px', cursor: 'pointer', fontSize: 18 }}>›</button>
               </>
             )}
-            <button onClick={() => setLightbox(null)} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>✕</button>
+            <button onClick={() => setLightbox(null)} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: 'var(--text)', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
         </div>
       )}
 
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />
-      <div style={{ width: 420, background: '#0f0f0f', borderLeft: '1px solid #222', overflowY: 'auto' }}>
-        <div style={{ padding: '18px 22px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ width: 420, background: 'var(--bg-section)', borderLeft: '1px solid var(--border)', overflowY: 'auto' }}>
+        <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', marginBottom: 4 }}>{complaint.category}</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>{complaint.category}</div>
             <div style={{ fontSize: 12, color: '#555' }}>{complaint.customer_name} · {complaint.customer_phone}</div>
             {complaint.order_number && (
               <div
@@ -248,7 +248,7 @@ function ComplaintPanel({ complaint, onClose, onSave }) {
         </div>
 
         <div style={{ padding: '20px 22px' }}>
-          <div style={{ background: '#141414', border: '1px solid #222', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>COMPLAINT DETAILS</div>
             <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>{complaint.description}</div>
           </div>
@@ -261,7 +261,7 @@ function ComplaintPanel({ complaint, onClose, onSave }) {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {imgs.map((src, i) => (
                   <img key={i} src={src} alt="" onClick={() => setLightbox(i)}
-                    style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid #222', cursor: 'zoom-in' }}
+                    style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'zoom-in' }}
                     onMouseEnter={e => e.target.style.opacity = '0.75'}
                     onMouseLeave={e => e.target.style.opacity = '1'}
                   />
@@ -275,7 +275,7 @@ function ComplaintPanel({ complaint, onClose, onSave }) {
           </div>
 
           {canDelete && (
-          <button onClick={del} disabled={deleting} style={{ width: '100%', background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={del} disabled={deleting} style={{ width: '100%', background: 'var(--red-dim)', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {deleting ? '...' : '🗑️ Delete Complaint'}
           </button>
           )}
@@ -312,7 +312,7 @@ function LeaderboardTab() {
           ['Dispatcher Mistakes', board.filter(e => e.role === 'Dispatcher' && e.count > 0).reduce((s, e) => s + e.count, 0), '#a855f7'],
           ['Courier Mistakes', data?.courier_mistakes || 0, '#3b82f6'],
         ].map(([label, val, color]) => (
-          <div key={label} style={{ background: card, border: '1px solid #222', borderRadius: 9, padding: '12px 16px', minWidth: 120 }}>
+          <div key={label} style={{ background: card, border: '1px solid var(--border)', borderRadius: 9, padding: '12px 16px', minWidth: 120 }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</div>
             <div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div>
           </div>
@@ -323,7 +323,7 @@ function LeaderboardTab() {
         <>
           <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>⚠️ Mistakes Found</div>
           {withComplaints.map((emp, i) => (
-            <div key={emp.name} style={{ background: card, border: `1px solid ${i === 0 ? '#ef444433' : '#222'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 8 }}>
+            <div key={emp.name} style={{ background: card, border: `1px solid ${i === 0 ? '#ef444433' : 'var(--border)'}`, borderRadius: 10, padding: '14px 18px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 14, color: i === 0 ? '#ef4444' : '#ccc' }}>{emp.name}</span>
@@ -335,7 +335,7 @@ function LeaderboardTab() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {emp.complaints.slice(0, 8).map((c, j) => (
-                  <span key={j} style={{ fontSize: 10, background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#666', padding: '2px 8px', borderRadius: 4 }}>
+                  <span key={j} style={{ fontSize: 10, background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#666', padding: '2px 8px', borderRadius: 4 }}>
                     {c.order} · {c.category}
                   </span>
                 ))}
@@ -351,7 +351,7 @@ function LeaderboardTab() {
           <div style={{ fontSize: 11, color: '#22c55e', marginBottom: 10, marginTop: 20, textTransform: 'uppercase', letterSpacing: 1 }}>✅ Clean Record</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {clean.map(emp => (
-              <div key={emp.name} style={{ background: '#001a0a', border: '1px solid #003300', borderRadius: 8, padding: '8px 14px', fontSize: 12 }}>
+              <div key={emp.name} style={{ background: 'var(--green-dim)', border: '1px solid #003300', borderRadius: 8, padding: '8px 14px', fontSize: 12 }}>
                 <span style={{ color: '#22c55e', fontWeight: 600 }}>{emp.name}</span>
                 <span style={{ color: '#555', marginLeft: 6, fontSize: 11 }}>{emp.role}</span>
               </div>
@@ -405,7 +405,7 @@ export default function ComplaintsPage() {
   };
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff' }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)' }}>
       {showAdd && <AddModal onClose={() => setShowAdd(false)} onSave={load} />}
       {selected && <ComplaintPanel complaint={selected} onClose={() => setSelected(null)} onSave={load} />}
 
@@ -415,7 +415,7 @@ export default function ComplaintsPage() {
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Customer complaints record karo</p>
         </div>
         {canCreate && (
-        <button onClick={() => setShowAdd(true)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        <button onClick={() => setShowAdd(true)} style={{ background: '#ef4444', color: 'var(--text)', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
           + Log Complaint
         </button>
         )}
@@ -424,12 +424,12 @@ export default function ComplaintsPage() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 20 }}>
         {[
-          { label: 'Total',             value: summary.total || 0,              color: '#fff' },
+          { label: 'Total',             value: summary.total || 0,              color: 'var(--text)' },
           { label: 'Packer Mistakes',   value: summary.packer_mistakes || 0,    color: '#f59e0b' },
           { label: 'Dispatcher',        value: summary.dispatcher_mistakes || 0,color: '#a855f7' },
           { label: 'Courier',           value: summary.courier_mistakes || 0,   color: '#3b82f6' },
         ].map(s => (
-          <div key={s.label} style={{ background: card, border: '1px solid #222', borderRadius: 9, padding: '14px 16px' }}>
+          <div key={s.label} style={{ background: card, border: '1px solid var(--border)', borderRadius: 9, padding: '14px 16px' }}>
             <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{s.label}</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
@@ -437,7 +437,7 @@ export default function ComplaintsPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #222', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
         {[['complaints', '📋 All Complaints'], ['leaderboard', '⚠️ Mistake Leaderboard']].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             background: 'transparent', border: 'none', borderBottom: tab === id ? `2px solid ${gold}` : '2px solid transparent',
@@ -453,15 +453,15 @@ export default function ComplaintsPage() {
         <>
           {/* Filters */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-            <select value={categoryFilter} onChange={e => setCatF(e.target.value)} style={{ background: '#1a1a1a', border: '1px solid #222', color: '#888', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontFamily: 'inherit' }}>
+            <select value={categoryFilter} onChange={e => setCatF(e.target.value)} style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#888', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontFamily: 'inherit' }}>
               <option value="all">All Categories</option>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select value={mistakeFilter} onChange={e => setMistF(e.target.value)} style={{ background: '#1a1a1a', border: '1px solid #222', color: '#888', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontFamily: 'inherit' }}>
+            <select value={mistakeFilter} onChange={e => setMistF(e.target.value)} style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#888', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontFamily: 'inherit' }}>
               <option value="all">All Mistakes</option>
               {MISTAKE_BY.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search order, customer, phone..." style={{ background: card, border: '1px solid #222', color: '#fff', borderRadius: 7, padding: '7px 12px', fontSize: 12, minWidth: 200, flex: 1 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search order, customer, phone..." style={{ background: card, border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 7, padding: '7px 12px', fontSize: 12, minWidth: 200, flex: 1 }} />
           </div>
 
           {/* List */}
@@ -478,10 +478,10 @@ export default function ComplaintsPage() {
               const hasPhotos = Array.isArray(c.image_urls) && c.image_urls.length > 0;
               return (
                 <div key={i} onClick={() => setSelected(c)}
-                  style={{ background: card, border: `1px solid ${c.mistake_by === 'packer' ? '#f59e0b22' : '#222'}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+                  style={{ background: card, border: `1px solid ${c.mistake_by === 'packer' ? '#f59e0b22' : 'var(--border)'}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>{c.category}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{c.category}</span>
                       {c.mistake_by && c.mistake_by !== 'unknown' && (
                         <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: mc + '22', color: mc, fontWeight: 600 }}>
                           {mistakeLabel(c.mistake_by)}

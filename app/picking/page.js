@@ -22,8 +22,8 @@ import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 
 // Status display config — kis status mein hai pata chal jaye
 const STATUS_DISPLAY = {
@@ -38,7 +38,7 @@ const STATUS_DISPLAY = {
 };
 
 function StatusPill({ status }) {
-  const s = STATUS_DISPLAY[status] || { label: status || 'Unknown', color: '#888', bg: '#1a1a1a' };
+  const s = STATUS_DISPLAY[status] || { label: status || 'Unknown', color: '#888', bg: 'var(--bg-section)' };
   return (
     <span style={{
       fontSize: 11, padding: '4px 12px', borderRadius: 4,
@@ -77,10 +77,10 @@ export default function PickingPage() {
     return (
       <div style={{ padding: 60, textAlign: 'center', maxWidth: 500, margin: '40px auto', fontFamily: 'Inter, sans-serif' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
           Picking page ki ijazat tumhe nahi hai. CEO se{' '}
-          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4 }}>picking.view</code>{' '}
+          <code style={{ background: 'var(--bg-section)', padding: '2px 6px', borderRadius: 4 }}>picking.view</code>{' '}
           permission grant karwane ko bolo.
         </div>
         <Link href="/" style={{ background: 'transparent', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
@@ -155,10 +155,10 @@ export default function PickingPage() {
   return (
     <div style={{
       fontFamily: 'Inter, sans-serif',
-      background: '#0a0a0a',
+      background: 'var(--bg)',
       minHeight: '100vh',
       padding: '24px 16px 60px',
-      color: '#fff',
+      color: 'var(--text)',
       maxWidth: 520,
       margin: '0 auto',
     }}>
@@ -184,8 +184,8 @@ export default function PickingPage() {
             style={{
               flex: 1,
               background: card,
-              border: `2px solid ${orderNum ? gold : '#2a2a2a'}`,
-              color: '#fff',
+              border: `2px solid ${orderNum ? gold : 'var(--border)'}`,
+              color: 'var(--text)',
               borderRadius: 10,
               padding: '16px 14px',
               fontSize: 18,
@@ -198,7 +198,7 @@ export default function PickingPage() {
             onClick={search}
             disabled={searching || !orderNum}
             style={{
-              background: searching || !orderNum ? '#1a1a1a' : gold,
+              background: searching || !orderNum ? 'var(--bg-section)' : gold,
               color: searching || !orderNum ? '#444' : '#000',
               border: 'none',
               borderRadius: 10,
@@ -216,7 +216,7 @@ export default function PickingPage() {
         {msg && !order && (
           <div style={{
             marginTop: 12,
-            background: msg.startsWith('❌') ? '#1a0000' : '#1a1000',
+            background: msg.startsWith('❌') ? 'var(--red-dim)' : '#1a1000',
             border: '1px solid ' + (msg.startsWith('❌') ? '#ef4444' : '#f59e0b'),
             borderRadius: 8,
             padding: 12,
@@ -256,8 +256,8 @@ export default function PickingPage() {
                 onClick={reset}
                 title="Clear & search again"
                 style={{
-                  background: '#1a1a1a',
-                  border: '1px solid #333',
+                  background: 'var(--bg-section)',
+                  border: '1px solid var(--border2)',
                   color: '#888',
                   borderRadius: 8,
                   padding: '8px 14px',
@@ -300,7 +300,7 @@ export default function PickingPage() {
                     onClick={() => togglePicked(i)}
                     style={{
                       background: isPicked ? 'rgba(34,197,94,0.08)' : card,
-                      border: `2px solid ${isPicked ? '#22c55e' : '#2a2a2a'}`,
+                      border: `2px solid ${isPicked ? '#22c55e' : 'var(--border)'}`,
                       borderRadius: 12,
                       padding: 12,
                       cursor: 'pointer',
@@ -321,7 +321,7 @@ export default function PickingPage() {
                           style={{
                             width: 64, height: 64, objectFit: 'cover',
                             borderRadius: 8, flexShrink: 0,
-                            border: '1px solid #2a2a2a',
+                            border: '1px solid var(--border)',
                             opacity: isPicked ? 0.6 : 1,
                           }}
                         />
@@ -386,7 +386,7 @@ export default function PickingPage() {
           ) : (
             <div style={{
               background: card,
-              border: '1px solid #2a2a2a',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 20,
               textAlign: 'center',
@@ -404,7 +404,7 @@ export default function PickingPage() {
             disabled={!allPicked}
             style={{
               width: '100%',
-              background: allPicked ? gold : '#1a1a1a',
+              background: allPicked ? gold : 'var(--bg-section)',
               color: allPicked ? '#000' : '#555',
               border: allPicked ? 'none' : '2px dashed #333',
               borderRadius: 12,

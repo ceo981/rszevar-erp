@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const timeAgo = iso => {
   if (!iso) return '—';
@@ -67,7 +67,7 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' }}>
       <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,0.7)' }} />
-      <div style={{ width: 460, background: '#0f0f0f', borderLeft: `1px solid ${border}`, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: 460, background: 'var(--bg-section)', borderLeft: `1px solid ${border}`, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
@@ -87,7 +87,7 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, borderBottom: `1px solid ${border}` }}>
           {[
-            { label: 'Total Orders', value: customer.orders, color: '#fff' },
+            { label: 'Total Orders', value: customer.orders, color: 'var(--text)' },
             { label: 'Total Spend', value: fmt(customer.total_spend), color: gold },
             { label: 'Delivered', value: customer.delivered, color: '#22c55e' },
             { label: 'RTO', value: customer.rto, color: '#ef4444' },
@@ -106,20 +106,20 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
           {canBlacklist && (
           <div style={{ marginBottom: 20 }}>
             {customer.is_blacklisted ? (
-              <button onClick={unblacklist} style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button onClick={unblacklist} style={{ background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                 ✅ Remove from Blacklist
               </button>
             ) : (
               <div>
                 {!showBlacklistForm ? (
-                  <button onClick={() => setShowBlacklistForm(true)} style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <button onClick={() => setShowBlacklistForm(true)} style={{ background: 'var(--red-dim)', border: '1px solid #330000', color: '#ef4444', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     ⛔ Blacklist Customer
                   </button>
                 ) : (
-                  <div style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '14px' }}>
+                  <div style={{ background: 'var(--red-dim)', border: '1px solid #330000', borderRadius: 8, padding: '14px' }}>
                     <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>Blacklist karne ki wajah:</div>
                     <input value={blacklistReason} onChange={e => setBlacklistReason(e.target.value)}
-                      placeholder="e.g. COD refuse kiya, fake order..." style={{ width: '100%', background: '#0a0a0a', border: `1px solid #330000`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 12, boxSizing: 'border-box', marginBottom: 8 }} />
+                      placeholder="e.g. COD refuse kiya, fake order..." style={{ width: '100%', background: 'var(--bg)', border: `1px solid #330000`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 12, boxSizing: 'border-box', marginBottom: 8 }} />
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={blacklist} style={{ background: '#ef444422', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Confirm Blacklist</button>
                       <button onClick={() => setShowBlacklistForm(false)} style={{ background: 'none', border: `1px solid ${border}`, color: '#555', borderRadius: 6, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
@@ -148,7 +148,7 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
                         <div style={{ fontSize: 11, color: '#555', marginTop: 2 }}>{timeAgo(o.created_at)}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{fmt(o.total_amount)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fmt(o.total_amount)}</div>
                         <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: sc.bg, color: sc.color }}>{sc.label}</span>
                       </div>
                     </div>
@@ -161,7 +161,7 @@ function CustomerDrawer({ customer, onClose, onRefresh }) {
                 <>
                   <div style={{ fontWeight: 600, fontSize: 13, margin: '16px 0 10px', color: '#ef4444' }}>Complaints ({detail.complaints.length})</div>
                   {detail.complaints.map((c, i) => (
-                    <div key={i} style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', marginBottom: 6, fontSize: 12 }}>
+                    <div key={i} style={{ background: 'var(--red-dim)', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', marginBottom: 6, fontSize: 12 }}>
                       <div style={{ color: '#f87171', fontWeight: 600 }}>{c.category}</div>
                       <div style={{ color: '#888', marginTop: 2 }}>{c.description}</div>
                     </div>
@@ -210,7 +210,7 @@ export default function CustomersPage() {
   ];
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: 24 }}>
       {selected && <CustomerDrawer customer={selected} onClose={() => setSelected(null)} onRefresh={load} />}
 
       <div style={{ marginBottom: 20 }}>
@@ -221,7 +221,7 @@ export default function CustomersPage() {
       {/* Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
-          { label: 'Total Customers', value: summary.total || 0, color: '#fff' },
+          { label: 'Total Customers', value: summary.total || 0, color: 'var(--text)' },
           { label: 'Repeat Buyers', value: summary.repeat || 0, color: '#3b82f6' },
           { label: 'VIP (3+ orders)', value: summary.vip || 0, color: gold },
           { label: 'Had RTO', value: summary.rto_customers || 0, color: '#ef4444' },
@@ -238,13 +238,13 @@ export default function CustomersPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         {filters.map(f => (
           <button key={f.id} onClick={() => { setFilter(f.id); setPage(1); }}
-            style={{ padding: '7px 14px', background: filter === f.id ? '#1e1e1e' : 'transparent', border: `1px solid ${filter === f.id ? '#333' : border}`, borderRadius: 8, fontSize: 12, color: filter === f.id ? gold : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '7px 14px', background: filter === f.id ? 'var(--bg-hover)' : 'transparent', border: `1px solid ${filter === f.id ? 'var(--border2)' : border}`, borderRadius: 8, fontSize: 12, color: filter === f.id ? gold : '#555', cursor: 'pointer', fontFamily: 'inherit' }}>
             {f.label} {f.count !== undefined && <span style={{ opacity: 0.6 }}>({f.count || 0})</span>}
           </button>
         ))}
       </div>
       <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search name, phone, city..."
-        style={{ width: '100%', maxWidth: 380, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
+        style={{ width: '100%', maxWidth: 380, background: card, border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '9px 14px', fontSize: 13, marginBottom: 16, boxSizing: 'border-box' }} />
 
       {/* Table — mobile pe cards dikhte hain (CSS .mobile-card-table) */}
       <div className="mobile-card-table" style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -253,7 +253,7 @@ export default function CustomersPage() {
             <thead>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
                 {['Customer', 'Phone', 'City', 'Orders', 'Total Spend', 'Delivered', 'RTO', 'Last Order', 'Tag'].map(h => (
-                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, background: '#0a0a0a' }}>{h}</th>
+                  <th key={h} style={{ padding: '11px 14px', textAlign: 'left', color: '#555', fontWeight: 500, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, background: 'var(--bg)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -261,13 +261,13 @@ export default function CustomersPage() {
               {loading && <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</td></tr>}
               {!loading && customers.length === 0 && <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#444' }}>No customers found</td></tr>}
               {customers.map((c, i) => (
-                <tr key={i} onClick={() => setSelected(c)} style={{ borderBottom: '1px solid #1a1a1a', cursor: 'pointer', background: c.is_blacklisted ? '#1a000088' : 'transparent' }}>
+                <tr key={i} onClick={() => setSelected(c)} style={{ borderBottom: '1px solid var(--bg-section)', cursor: 'pointer', background: c.is_blacklisted ? '#1a000088' : 'transparent' }}>
                   <td style={{ padding: '11px 14px', color: c.is_blacklisted ? '#ef4444' : '#fff', fontWeight: 500 }}>
                     {c.is_blacklisted && '⛔ '}{c.name}
                   </td>
                   <td style={{ padding: '11px 14px', color: '#666', fontSize: 12 }}>{c.phone}</td>
                   <td style={{ padding: '11px 14px', color: '#888' }}>{c.city || '—'}</td>
-                  <td style={{ padding: '11px 14px', color: '#fff', fontWeight: 600 }}>{c.orders}</td>
+                  <td style={{ padding: '11px 14px', color: 'var(--text)', fontWeight: 600 }}>{c.orders}</td>
                   <td style={{ padding: '11px 14px', color: gold, fontWeight: 600 }}>{fmt(c.total_spend)}</td>
                   <td style={{ padding: '11px 14px', color: '#22c55e' }}>{c.delivered}</td>
                   <td style={{ padding: '11px 14px', color: c.rto > 0 ? '#ef4444' : '#555' }}>{c.rto}</td>
@@ -276,7 +276,7 @@ export default function CustomersPage() {
                     {c.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
                     {c.is_repeat && !c.is_vip && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#3b82f622', color: '#3b82f6' }}>🔄 Repeat</span>}
                     {c.is_blacklisted && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#ef444422', color: '#ef4444' }}>⛔</span>}
-                    {!c.is_vip && !c.is_repeat && !c.is_blacklisted && <span style={{ color: '#333', fontSize: 11 }}>New</span>}
+                    {!c.is_vip && !c.is_repeat && !c.is_blacklisted && <span style={{ color: 'var(--border2)', fontSize: 11 }}>New</span>}
                   </td>
                 </tr>
               ))}
@@ -310,7 +310,7 @@ export default function CustomersPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 11 }}>
-                <span style={{ padding: '2px 8px', borderRadius: 4, background: '#1a1a1a', color: '#fff' }}>{c.orders} orders</span>
+                <span style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--bg-section)', color: 'var(--text)' }}>{c.orders} orders</span>
                 <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(74,222,128,0.12)', color: '#22c55e' }}>✓ {c.delivered}</span>
                 {c.rto > 0 && <span style={{ padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>RTO {c.rto}</span>}
                 {c.is_vip && <span style={{ padding: '2px 8px', borderRadius: 4, background: gold+'22', color: gold }}>⭐ VIP</span>}
@@ -323,9 +323,9 @@ export default function CustomersPage() {
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#555' }}>{total} customers</span>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: page===1?'#333':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: page===1?'not-allowed':'pointer' }}>← Prev</button>
+            <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: page===1?'var(--border2)':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: page===1?'not-allowed':'pointer' }}>← Prev</button>
             <span style={{ fontSize: 12, color: '#555', padding: '5px 10px' }}>Page {page}</span>
-            <button onClick={() => setPage(p => p+1)} disabled={customers.length < 30} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: customers.length<30?'#333':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: customers.length<30?'not-allowed':'pointer' }}>Next →</button>
+            <button onClick={() => setPage(p => p+1)} disabled={customers.length < 30} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: customers.length<30?'var(--border2)':'#888', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: customers.length<30?'not-allowed':'pointer' }}>Next →</button>
           </div>
         </div>
       </div>

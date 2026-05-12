@@ -63,7 +63,7 @@ export default function HistoricalOrdersPage() {
   return (
     <div style={{ padding: '28px 28px 60px', maxWidth: 1240, margin: '0 auto' }}>
       <div style={{ marginBottom: 18 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: '#fff', letterSpacing: '-0.01em' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: 'var(--text)', letterSpacing: '-0.01em' }}>
           📦 Historical Orders <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 400, marginLeft: 8 }}>archive · read-only</span>
         </h1>
         <p style={{ fontSize: 13, color: 'var(--text2)', margin: '6px 0 0' }}>
@@ -174,7 +174,7 @@ function BrowseArchiveTab() {
           style={{
             width: '100%', boxSizing: 'border-box',
             background: 'var(--bg-card)', border: '1px solid var(--border)',
-            color: '#fff', borderRadius: 8, padding: '11px 14px',
+            color: 'var(--text)', borderRadius: 8, padding: '11px 14px',
             fontSize: 13, fontFamily: 'inherit', outline: 'none',
           }}
         />
@@ -250,7 +250,7 @@ function BrowseArchiveTab() {
         {!loading && orders.length === 0 && !error && (
           <div style={{ padding: '50px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
-            <div style={{ fontSize: 14, color: '#fff', fontWeight: 500 }}>
+            <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500 }}>
               {debounced || statusFilter !== 'all' ? 'Koi matching order nahi mila' : 'Archive khali hai'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
@@ -281,7 +281,7 @@ function BrowseArchiveTab() {
                   {formatDate(o.created_at)}
                 </div>
               </div>
-              <div style={{ minWidth: 0, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ minWidth: 0, fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {o.customer_name || '—'}
                 {o.customer_phone && (
                   <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'monospace', marginTop: 2 }}>
@@ -455,7 +455,7 @@ function ImportCsvTab() {
         {stage === 'idle' && (
           <>
             <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }}>
-              <strong style={{ color: '#fff' }}>Shopify CSV file select karo</strong> (zip se extract karke)
+              <strong style={{ color: 'var(--text)' }}>Shopify CSV file select karo</strong> (zip se extract karke)
             </div>
             <label style={{
               display: 'block', cursor: 'pointer',
@@ -470,7 +470,7 @@ function ImportCsvTab() {
               {file ? (
                 <>
                   <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-                  <div style={{ fontSize: 14, color: '#fff', fontWeight: 500 }}>{file.name}</div>
+                  <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500 }}>{file.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{fmtMB(file.size)} · click to change</div>
                 </>
               ) : (
@@ -496,7 +496,7 @@ function ImportCsvTab() {
         {(stage === 'uploading' || stage === 'importing') && (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <div style={{ fontSize: 14, color: '#fff', fontWeight: 500, marginBottom: 6 }}>{progress?.step || 'Working…'}</div>
+            <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500, marginBottom: 6 }}>{progress?.step || 'Working…'}</div>
             <div style={{ fontSize: 11, color: 'var(--text3)' }}>{progress?.detail || ''}</div>
           </div>
         )}

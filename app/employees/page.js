@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 
 const ROLES = [
@@ -116,25 +116,25 @@ function EmployeeModal({ emp, onClose, onSave }) {
       <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>{label}</div>
       {opts.select ? (
         <select value={form[key] || ''} onChange={e => setForm(f => ({...f, [key]: e.target.value}))}
-          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit' }}>
+          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit' }}>
           {opts.options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
         <input type={type} value={form[key] || ''} onChange={e => setForm(f => ({...f, [key]: e.target.value}))} placeholder={opts.placeholder || ''}
-          style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }} />
+          style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }} />
       )}
     </div>
   );
 
   const sectionTitle = (title) => (
-    <div style={{ fontSize: 11, color: gold, fontWeight: 700, letterSpacing: 1, marginTop: 8, paddingBottom: 6, borderBottom: `1px solid #222` }}>
+    <div style={{ fontSize: 11, color: gold, fontWeight: 700, letterSpacing: 1, marginTop: 8, paddingBottom: 6, borderBottom: `1px solid var(--border)` }}>
       {title}
     </div>
   );
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: gold }}>{emp?.id ? 'Edit Employee' : 'Add Employee'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -158,7 +158,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
               value={form.salary || ''}
               onChange={e => handleSalaryChange(e.target.value)}
               placeholder="e.g. 25000"
-              style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
             />
           </div>
           <div>
@@ -171,7 +171,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
               value={form.advance_limit || ''}
               onChange={e => handleAdvanceChange(e.target.value)}
               placeholder="Auto calculated"
-              style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
+              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, boxSizing: 'border-box' }}
             />
           </div>
 
@@ -180,12 +180,12 @@ function EmployeeModal({ emp, onClose, onSave }) {
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Start Time</div>
               <input type="time" value={form.office_start || '11:00'} onChange={e => setForm(f => ({...f, office_start: e.target.value}))}
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>End Time</div>
               <input type="time" value={form.office_end || '21:00'} onChange={e => setForm(f => ({...f, office_end: e.target.value}))}
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -195,7 +195,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
               </div>
               <input type="number" value={form.time_bonus_amount || ''} onChange={e => setForm(f => ({...f, time_bonus_amount: e.target.value}))}
                 placeholder="e.g. 500"
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#c9a96e', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 5 }}>Yearly Leaves Allowed
@@ -203,7 +203,7 @@ function EmployeeModal({ emp, onClose, onSave }) {
               </div>
               <input type="number" value={form.yearly_leaves_allowed || '14'} onChange={e => setForm(f => ({...f, yearly_leaves_allowed: e.target.value}))}
                 placeholder="e.g. 14"
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
 
@@ -213,13 +213,13 @@ function EmployeeModal({ emp, onClose, onSave }) {
             </div>
             <input type="number" value={form.leaves_opening_used || '0'} onChange={e => setForm(f => ({...f, leaves_opening_used: e.target.value}))}
               placeholder="0"
-              style={{ width: '100%', background: '#1a1a1a', border: `1px solid #ef444444`, color: '#ef4444', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid #ef444444`, color: '#ef4444', borderRadius: 7, padding: '9px 10px', fontSize: 13, boxSizing: 'border-box' }} />
           </div>
 
           {sectionTitle('NOTES')}
           <div>
             <textarea value={form.notes || ''} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={2} placeholder="Optional..."
-              style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
           </div>
 
           {msg && <div style={{ color: '#ef4444', fontSize: 12 }}>{msg}</div>}
@@ -261,7 +261,7 @@ function SalaryPanel({ emp, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, padding: 28, width: 440, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: gold }}>{emp.name} — Salary</div>
@@ -277,16 +277,16 @@ function SalaryPanel({ emp, onClose }) {
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Amount (Rs)</div>
               <input type="number" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))}
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
             <div>
               <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>Month</div>
               <input type="month" value={form.month} onChange={e => setForm(f => ({...f, month: e.target.value}))}
-                style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+                style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
           </div>
           <input type="text" placeholder="Notes (optional)" value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))}
-            style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', marginBottom: 10 }} />
+            style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', marginBottom: 10 }} />
           <button onClick={pay} disabled={saving} style={{ background: gold, color: '#000', border: 'none', borderRadius: 7, padding: '9px 20px', fontWeight: 700, fontSize: 13, cursor: 'pointer', width: '100%' }}>
             {saving ? 'Saving...' : '+ Record Payment'}
           </button>
@@ -298,7 +298,7 @@ function SalaryPanel({ emp, onClose }) {
         {payments.length === 0 ? (
           <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 20 }}>No payments recorded yet</div>
         ) : payments.map((p, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid #1a1a1a`, fontSize: 13 }}>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid var(--bg-section)`, fontSize: 13 }}>
             <div>
               <div style={{ color: '#ccc' }}>{p.month}</div>
               {p.notes && <div style={{ fontSize: 11, color: '#555' }}>{p.notes}</div>}
@@ -376,7 +376,7 @@ function TerminationModal({ emp, onClose, onSaved }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: 22, cursor: 'pointer' }}>✕</button>
         </div>
 
-        <div style={{ background: '#1a1a1a', border: `1px solid ${border}`, borderRadius: 8, padding: 12, fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.6 }}>
+        <div style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 8, padding: 12, fontSize: 11, color: '#888', marginBottom: 18, lineHeight: 1.6 }}>
           ⚠️ <strong>Permanent exit record.</strong> Status inactive ho jayega, assign list se gayab. Past records (packing log, attendance, salary) safe rahenge — ek "Ex-Employees" section mein dikhega.
         </div>
 
@@ -385,7 +385,7 @@ function TerminationModal({ emp, onClose, onSaved }) {
           <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Last Working Day *</label>
           <input type="date" value={terminationDate} max={today}
             onChange={e => setTerminationDate(e.target.value)}
-            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
         </div>
 
         {/* Reason */}
@@ -418,7 +418,7 @@ function TerminationModal({ emp, onClose, onSaved }) {
           <label style={{ display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, fontWeight: 600 }}>Final Settlement Amount (Rs)</label>
           <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
             placeholder="e.g. 15000"
-            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }} />
           <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
             💡 Auto-calculated as pro-rata salary based on last working day. Manually override karo agar advances/dues adjust karne hain.
           </div>
@@ -436,7 +436,7 @@ function TerminationModal({ emp, onClose, onSaved }) {
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Mutual agreement, notice period, performance issues..."
             rows={3}
-            style={{ width: '100%', background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }} />
+            style={{ width: '100%', background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }} />
         </div>
 
         {err && (
@@ -568,7 +568,7 @@ export default function EmployeesPage() {
   const active = employees.filter(e => e.status === 'active').length;
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: 24 }}>
       {showModal && <EmployeeModal emp={editEmp} onClose={() => { setShowModal(false); setEditEmp(null); }} onSave={load} />}
       {salaryEmp && <SalaryPanel emp={salaryEmp} onClose={() => setSalaryEmp(null)} />}
       {terminateEmp && (
@@ -586,7 +586,7 @@ export default function EmployeesPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {canCreate && employees.length === 0 && (
-            <button onClick={seedTeam} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={seedTeam} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
               📥 Load My Team
             </button>
           )}
@@ -599,13 +599,13 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {msg && <div style={{ marginBottom: 14, padding: '10px 16px', background: '#001a0a', border: '1px solid #003300', borderRadius: 8, fontSize: 12, color: '#22c55e' }}>{msg}</div>}
+      {msg && <div style={{ marginBottom: 14, padding: '10px 16px', background: 'var(--green-dim)', border: '1px solid #003300', borderRadius: 8, fontSize: 12, color: '#22c55e' }}>{msg}</div>}
 
       {/* Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           // Total now means active+on-leave (excludes ex-employees) — meaningful current strength
-          { label: 'Total Staff', value: employees.filter(e => e.status !== 'inactive').length, color: '#fff' },
+          { label: 'Total Staff', value: employees.filter(e => e.status !== 'inactive').length, color: 'var(--text)' },
           { label: 'Active', value: active, color: '#22c55e' },
           { label: 'On Leave', value: employees.filter(e => e.status === 'on_leave').length, color: '#f97316' },
           { label: 'Monthly Payroll', value: canViewSalary ? fmt(totalSalary) : '••••', color: gold },
@@ -630,7 +630,7 @@ export default function EmployeesPage() {
       {/* Search + Inactive toggle */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or role..."
-          style={{ flex: 1, maxWidth: 360, background: card, border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px 14px', fontSize: 13, boxSizing: 'border-box' }} />
+          style={{ flex: 1, maxWidth: 360, background: card, border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '9px 14px', fontSize: 13, boxSizing: 'border-box' }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#888', cursor: 'pointer', userSelect: 'none' }}>
           <input
             type="checkbox"
@@ -639,7 +639,7 @@ export default function EmployeesPage() {
             style={{ cursor: 'pointer' }}
           />
           Show inactive {employees.filter(e => e.status === 'inactive').length > 0 && (
-            <span style={{ background: '#1a1a1a', color: '#888', borderRadius: 10, padding: '1px 8px', fontSize: 10 }}>
+            <span style={{ background: 'var(--bg-section)', color: '#888', borderRadius: 10, padding: '1px 8px', fontSize: 10 }}>
               {employees.filter(e => e.status === 'inactive').length}
             </span>
           )}
@@ -667,7 +667,7 @@ export default function EmployeesPage() {
           {filtered.map(emp => (
             <div key={emp.id} style={{
               background: card,
-              border: `1px solid ${emp.status === 'inactive' ? '#330000' : border}`,
+              border: `1px solid ${emp.status === 'inactive' ? 'var(--red-dim)' : border}`,
               borderRadius: 10,
               padding: '16px 18px',
               opacity: emp.status === 'inactive' ? 0.55 : 1,
@@ -676,7 +676,7 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                 <Avatar name={emp.name} role={emp.role} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#fff', marginBottom: 3 }}>{emp.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)', marginBottom: 3 }}>{emp.name}</div>
                   <RoleBadge role={emp.role} />
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -713,7 +713,7 @@ export default function EmployeesPage() {
                 )}
               </div>
 
-              {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: '#1a1a1a', borderRadius: 6 }}>{emp.notes}</div>}
+              {emp.notes && <div style={{ fontSize: 11, color: '#555', marginBottom: 12, padding: '6px 10px', background: 'var(--bg-section)', borderRadius: 6 }}>{emp.notes}</div>}
 
               {/* Termination info — shown for ex-employees (May 2 2026) */}
               {emp.termination_date && (
@@ -749,13 +749,13 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {canEdit && (
                 <button onClick={() => { setEditEmp(emp); setShowModal(true); }}
-                  style={{ flex: 1, minWidth: 70, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   ✏️ Edit
                 </button>
                 )}
                 {canViewSalary && (
                 <button onClick={() => setSalaryEmp(emp)}
-                  style={{ flex: 1, minWidth: 70, background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ flex: 1, minWidth: 70, background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                   💰 Salary
                 </button>
                 )}
@@ -779,14 +779,14 @@ export default function EmployeesPage() {
                 {canDelete && emp.name !== 'Abdul Rehman' && emp.status !== 'inactive' && !emp.termination_date && (
                   <button onClick={() => deleteEmp(emp.id, emp.name)}
                     title="Temporary deactivate — long leave / hold ke liye. Permanent exit ke liye 'Mark as Left' use karo"
-                    style={{ background: '#1a0000', border: '1px solid #330000', color: '#ef4444', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ background: 'var(--red-dim)', border: '1px solid #330000', color: '#ef4444', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     🚫 Deactivate
                   </button>
                 )}
                 {canDelete && emp.status === 'inactive' && !emp.termination_date && (
                   <button onClick={() => reactivateEmp(emp.id, emp.name)}
                     title="Wapas active karo"
-                    style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', borderRadius: 7, padding: '7px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                     ✅ Reactivate
                   </button>
                 )}

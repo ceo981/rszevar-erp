@@ -96,7 +96,7 @@ export default function BlogTestPage() {
           <code style={{ background: '#f3f3f3', padding: '2px 6px', borderRadius: 4 }}>blog.view</code>{' '}
           permission grant karwane ko bolo.
         </p>
-        <Link href="/" style={{ background: '#000', color: '#fff', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/" style={{ background: '#000', color: 'var(--text)', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 500, textDecoration: 'none', display: 'inline-block' }}>
           ← Dashboard pe wapas
         </Link>
       </div>
@@ -112,7 +112,7 @@ export default function BlogTestPage() {
         Now uses REAL collection slugs + bestseller products from Supabase catalog. No more fake URLs.
       </p>
 
-      <div style={{ background: '#f5f5f5', padding: 20, borderRadius: 8, marginBottom: 24 }}>
+      <div style={{ background: 'var(--text)', padding: 20, borderRadius: 8, marginBottom: 24 }}>
         <div style={{ marginBottom: 14 }}>
           <label style={labelStyle}>Topic *</label>
           <textarea style={inputStyle} rows={2} value={formData.topic}
@@ -340,7 +340,7 @@ function Metric({ label, value }) {
 }
 
 const labelStyle = {
-  display: 'block', fontSize: 12, fontWeight: 600, color: '#333',
+  display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--border2)',
   marginBottom: 4, textTransform: 'uppercase',
 };
 

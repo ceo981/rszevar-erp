@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const dark = '#0f0f0f';
-const card = '#141414';
-const border = '#222';
+const dark = 'var(--bg-section)';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 
 // ─── Helpers ──────────────────────────────────────────────────
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
@@ -98,7 +98,7 @@ function SyncTab() {
       <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, padding: '20px 24px', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ fontWeight: 600, fontSize: 15, color: '#fff', marginBottom: 4 }}>Courier Sync</div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>Courier Sync</div>
             <div style={{ fontSize: 12, color: '#555' }}>
               Last sync: <span style={{ color: '#888' }}>{timeAgo(data?.lastSync)}</span>
             </div>
@@ -106,19 +106,19 @@ function SyncTab() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {['PostEx', 'Leopards', 'Kangaroo'].map(c => (
               <button key={c} onClick={() => runSync(c)} disabled={syncing}
-                style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#aaa', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+                style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#aaa', borderRadius: 7, padding: '8px 14px', fontSize: 12, cursor: syncing ? 'not-allowed' : 'pointer' }}>
                 Sync {c}
               </button>
             ))}
             <button onClick={() => runSync(null)} disabled={syncing}
-              style={{ background: syncing ? '#1a1a1a' : gold, color: syncing ? '#555' : '#000', border: 'none', borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer' }}>
+              style={{ background: syncing ? 'var(--bg-section)' : gold, color: syncing ? '#555' : '#000', border: 'none', borderRadius: 7, padding: '8px 18px', fontSize: 12, fontWeight: 700, cursor: syncing ? 'not-allowed' : 'pointer' }}>
               {syncing ? '⟳ Syncing...' : '⟳ Sync All'}
             </button>
           </div>
         </div>
 
         {syncResult && (
-          <div style={{ marginTop: 16, padding: '12px 16px', background: syncResult.error ? '#1a0000' : '#001a0a', borderRadius: 8, border: `1px solid ${syncResult.error ? '#330000' : '#003300'}` }}>
+          <div style={{ marginTop: 16, padding: '12px 16px', background: syncResult.error ? 'var(--red-dim)' : 'var(--green-dim)', borderRadius: 8, border: `1px solid ${syncResult.error ? 'var(--red-dim)' : '#003300'}` }}>
             {syncResult.error ? (
               <span style={{ color: '#ef4444', fontSize: 12 }}>Error: {syncResult.error}</span>
             ) : (
@@ -164,12 +164,12 @@ function SyncTab() {
             </thead>
             <tbody>
               {(data?.activeShipments || []).slice(0, 100).map((s, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid #1a1a1a` }}>
+                <tr key={i} style={{ borderBottom: `1px solid var(--bg-section)` }}>
                   <td style={{ padding: '10px 14px', color: gold, fontFamily: 'monospace' }}>{s.tracking_number}</td>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{s.courier_name}</td>
                   <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.customer_name}</td>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{s.city}</td>
-                  <td style={{ padding: '10px 14px', color: '#fff' }}>{fmt(s.cod_amount)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(s.cod_amount)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ color: statusColor(s.status), fontSize: 11, background: statusColor(s.status) + '22', padding: '3px 8px', borderRadius: 4 }}>
                       {statusLabel(s.status)}
@@ -246,12 +246,12 @@ function RTOTab() {
                   <td style={{ padding: '10px 14px', color: '#ccc' }}>{r.customer_name}</td>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{r.customer_phone}</td>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{r.city}</td>
-                  <td style={{ padding: '10px 14px', color: '#fff' }}>{fmt(r.cod_amount)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(r.cod_amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#ef4444', fontSize: 11 }}>{r.courier_status_raw}</td>
                   <td style={{ padding: '10px 14px', color: '#555' }}>{timeAgo(r.updated_at)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <button onClick={() => acknowledge(r.id)}
-                      style={{ background: '#1a0000', border: '1px solid #440000', color: '#f87171', borderRadius: 5, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                      style={{ background: 'var(--red-dim)', border: '1px solid #440000', color: '#f87171', borderRadius: 5, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
                       ✓ Acknowledge
                     </button>
                   </td>
@@ -284,7 +284,7 @@ function RTOTab() {
                   <td style={{ padding: '10px 14px', color: '#888' }}>{s.courier_name}</td>
                   <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.customer_name}</td>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{s.city}</td>
-                  <td style={{ padding: '10px 14px', color: '#fff' }}>{fmt(s.cod_amount)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text)' }}>{fmt(s.cod_amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#f97316' }}>{timeAgo(s.last_tracked_at)}</td>
                 </tr>
               ))}
@@ -346,7 +346,7 @@ function SettlementsTab() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                 <span style={{ color: '#555' }}>Total COD</span>
-                <span style={{ color: '#fff', fontWeight: 600 }}>{fmt(s.total_cod)}</span>
+                <span style={{ color: 'var(--text)', fontWeight: 600 }}>{fmt(s.total_cod)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                 <span style={{ color: '#555' }}>Pending</span>
@@ -375,7 +375,7 @@ function SettlementsTab() {
           <div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Courier</div>
             <select value={markForm.courier} onChange={e => setMarkForm(f => ({...f, courier: e.target.value}))}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%' }}>
+              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%' }}>
               <option value="">Select...</option>
               {['PostEx', 'Leopards', 'Kangaroo'].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -383,12 +383,12 @@ function SettlementsTab() {
           <div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Amount Received</div>
             <input type="number" placeholder="Rs amount" value={markForm.amount} onChange={e => setMarkForm(f => ({...f, amount: e.target.value}))}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
           </div>
           <div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Reference (optional)</div>
             <input type="text" placeholder="Bank ref / transaction ID" value={markForm.reference} onChange={e => setMarkForm(f => ({...f, reference: e.target.value}))}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
           </div>
           <button onClick={markDisbursed} disabled={marking}
             style={{ background: gold, color: '#000', border: 'none', borderRadius: 7, padding: '9px 18px', fontWeight: 700, fontSize: 13, cursor: marking ? 'not-allowed' : 'pointer' }}>
@@ -422,28 +422,28 @@ export default function CourierSyncPage() {
     return (
       <div style={{ fontFamily: 'Inter, sans-serif', padding: 60, textAlign: 'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
-        <div style={{ fontSize: 16, color: '#fff', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
+        <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#666' }}>Courier Sync ke kisi tab ki ijazat tumhe nahi hai.</div>
       </div>
     );
   }
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: '0' }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: '0' }}>
       <div style={{ marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#fff' }}>Courier Sync</h2>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Courier Sync</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>
           Auto-pull from PostEx, Leopards & Kangaroo — real-time status, RTO alerts, COD tracking
         </p>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#0a0a0a', padding: 4, borderRadius: 9, width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg)', padding: 4, borderRadius: 9, width: 'fit-content' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
-              background: tab === t.id ? '#1e1e1e' : 'transparent',
-              border: `1px solid ${tab === t.id ? '#2a2a2a' : 'transparent'}`,
+              background: tab === t.id ? 'var(--bg-hover)' : 'transparent',
+              border: `1px solid ${tab === t.id ? 'var(--border)' : 'transparent'}`,
               borderRadius: 7, padding: '7px 16px', cursor: 'pointer',
               fontSize: 13, color: tab === t.id ? gold : '#555',
               fontWeight: tab === t.id ? 600 : 400, fontFamily: 'inherit',

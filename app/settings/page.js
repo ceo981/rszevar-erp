@@ -3,8 +3,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 
 const TABS = [
   { id: 'store',          label: '🏪 Store Info',      category: 'store',          ready: true, kind: 'settings' },
@@ -21,7 +21,7 @@ const TABS = [
 ];
 
 // ─── Shared styles ────────────────────────────────────────────────────────
-const inputStyle = { width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
+const inputStyle = { width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '10px 14px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
 const labelStyle = { display: 'block', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, fontWeight: 600 };
 const helpStyle = { fontSize: 11, color: '#555', marginTop: 6, lineHeight: 1.5 };
 const sectionStyle = { background: card, border: `1px solid ${border}`, borderRadius: 12, padding: 24, marginBottom: 16 };
@@ -72,7 +72,7 @@ function VercelLink({ envVar }) {
 
 function Toggle({ value, onChange, disabled }) {
   return (
-    <div onClick={() => !disabled && onChange(!value)} style={{ width: 44, height: 24, borderRadius: 12, background: value ? '#22c55e' : '#333', position: 'relative', transition: 'all 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, display: 'inline-block' }}>
+    <div onClick={() => !disabled && onChange(!value)} style={{ width: 44, height: 24, borderRadius: 12, background: value ? '#22c55e' : 'var(--border2)', position: 'relative', transition: 'all 0.2s', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, display: 'inline-block' }}>
       <div style={{ position: 'absolute', top: 2, left: value ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
     </div>
   );
@@ -200,7 +200,7 @@ function TagsTab({ isSuperAdmin }) {
       )}
 
       {showForm && (
-        <div style={{ background: '#0a0a0a', border: `1px solid ${gold}`, borderRadius: 10, padding: 20, marginBottom: 16 }}>
+        <div style={{ background: 'var(--bg)', border: `1px solid ${gold}`, borderRadius: 10, padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: gold, fontWeight: 600, marginBottom: 12 }}>{editingId ? 'Edit Tag' : 'New Tag'}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div>
@@ -240,11 +240,11 @@ function TagsTab({ isSuperAdmin }) {
       {/* Tags list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {tags.map(tag => (
-          <div key={tag.id} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={tag.id} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: tag.is_active ? tag.color || gold : '#555' }}>{tag.label}</span>
-                <code style={{ background: '#1a1a1a', color: '#888', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag.tag_key}</code>
+                <code style={{ background: 'var(--bg-section)', color: '#888', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{tag.tag_key}</code>
                 <Badge color={tag.category === 'type' ? '#8b5cf6' : tag.category === 'courier' ? '#22d3ee' : tag.category === 'workflow' ? '#3b82f6' : '#888'}>{tag.category}</Badge>
                 {CORE.includes(tag.tag_key) && <Badge color="#f59e0b">core</Badge>}
                 {!tag.is_active && <Badge color="#ef4444">disabled</Badge>}
@@ -256,12 +256,12 @@ function TagsTab({ isSuperAdmin }) {
             </div>
             {isSuperAdmin && (
               <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => toggleActive(tag)} title={tag.is_active ? 'Disable' : 'Enable'} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={() => toggleActive(tag)} title={tag.is_active ? 'Disable' : 'Enable'} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                   {tag.is_active ? '⏸' : '▶'}
                 </button>
-                <button onClick={() => openEdit(tag)} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                <button onClick={() => openEdit(tag)} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: gold, borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
                 {!CORE.includes(tag.tag_key) && (
-                  <button onClick={() => del(tag)} style={{ background: '#1a0000', border: '1px solid #660000', color: '#ef4444', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>🗑</button>
+                  <button onClick={() => del(tag)} style={{ background: 'var(--red-dim)', border: '1px solid #660000', color: '#ef4444', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>🗑</button>
                 )}
               </div>
             )}
@@ -298,15 +298,15 @@ function AuditLogTab() {
       {entries.length === 0 && <div style={{ color: '#444', textAlign: 'center', padding: 40, fontSize: 13 }}>No changes recorded yet</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {entries.map(e => (
-          <div key={e.id} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 8, padding: '14px 16px' }}>
+          <div key={e.id} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '14px 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ fontWeight: 600, color: gold, fontSize: 13 }}>{e.setting_key}</div>
               <div style={{ fontSize: 11, color: '#555' }}>{fmtDate(e.changed_at)}</div>
             </div>
             <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>by {e.changed_by_email || 'unknown'}</div>
             <div style={{ display: 'flex', gap: 10, fontSize: 11, flexWrap: 'wrap' }}>
-              <div style={{ background: '#1a0000', border: '1px solid #330000', color: '#f87171', padding: '4px 10px', borderRadius: 5 }}>from: {JSON.stringify(e.old_value)}</div>
-              <div style={{ background: '#001a0a', border: '1px solid #003300', color: '#22c55e', padding: '4px 10px', borderRadius: 5 }}>to: {JSON.stringify(e.new_value)}</div>
+              <div style={{ background: 'var(--red-dim)', border: '1px solid #330000', color: '#f87171', padding: '4px 10px', borderRadius: 5 }}>from: {JSON.stringify(e.old_value)}</div>
+              <div style={{ background: 'var(--green-dim)', border: '1px solid #003300', color: '#22c55e', padding: '4px 10px', borderRadius: 5 }}>to: {JSON.stringify(e.new_value)}</div>
             </div>
           </div>
         ))}
@@ -354,9 +354,9 @@ function WhatsAppTab({ isSuperAdmin }) {
     setTesting(false);
   }
 
-  const card = { background: '#141414', border: '1px solid #222', borderRadius: 10, padding: '16px 20px', marginBottom: 12 };
+  const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 12 };
   const label = { fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 };
-  const value = { fontSize: 14, color: '#e2e8f0', fontWeight: 500 };
+  const value = { fontSize: 14, color: 'var(--text)', fontWeight: 500 };
 
   return (
     <div style={{ padding: 4 }}>
@@ -392,7 +392,7 @@ function WhatsAppTab({ isSuperAdmin }) {
             </div>
           </div>
         )}
-        <button onClick={checkStatus} style={{ marginTop: 12, background: '#1a1a1a', border: '1px solid #333', color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+        <button onClick={checkStatus} style={{ marginTop: 12, background: 'var(--bg-section)', border: '1px solid var(--border2)', color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
           🔄 Refresh Status
         </button>
       </div>
@@ -405,10 +405,10 @@ function WhatsAppTab({ isSuperAdmin }) {
             { name: 'rs_zevar_order_interactive', desc: 'Order confirmation with Yes/Cancel buttons' },
             { name: 'rs_zevar_order_dispatched', desc: 'Dispatch notification with tracking' },
           ].map(t => (
-            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#0f0f0f', borderRadius: 6 }}>
+            <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-section)', borderRadius: 6 }}>
               <span style={{ color: '#22c55e' }}>✅</span>
               <div>
-                <div style={{ fontSize: 12, color: '#e2e8f0' }}>{t.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text)' }}>{t.name}</div>
                 <div style={{ fontSize: 11, color: '#555' }}>{t.desc}</div>
               </div>
             </div>
@@ -419,7 +419,7 @@ function WhatsAppTab({ isSuperAdmin }) {
       {/* Webhook Status */}
       <div style={card}>
         <div style={label}>Shopify Webhook</div>
-        <div style={{ fontSize: 13, color: '#e2e8f0', marginTop: 6 }}>
+        <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 6 }}>
           <div>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-create</span></div>
           <div style={{ marginTop: 4 }}>📍 URL: <span style={{ color: '#c9a96e' }}>erp.rszevar.com/api/shopify/webhooks/orders-fulfilled</span></div>
           <div style={{ marginTop: 8, fontSize: 11, color: '#555' }}>Shopify Admin → Settings → Notifications → Webhooks mein register karein</div>
@@ -435,7 +435,7 @@ function WhatsAppTab({ isSuperAdmin }) {
               value={testPhone}
               onChange={e => setTestPhone(e.target.value)}
               placeholder="03001234567"
-              style={{ flex: 1, background: '#0f0f0f', border: '1px solid #333', color: '#fff', borderRadius: 6, padding: '8px 12px', fontSize: 13 }}
+              style={{ flex: 1, background: 'var(--bg-section)', border: '1px solid var(--border2)', color: 'var(--text)', borderRadius: 6, padding: '8px 12px', fontSize: 13 }}
             />
             <button onClick={sendTest} disabled={testing || !testPhone} style={{ background: '#c9a96e', color: '#000', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               {testing ? 'Sending...' : '📤 Send Test'}
@@ -471,7 +471,7 @@ function DiagnosticsTab({ check, label }) {
   if (error) return (
     <div style={sectionStyle}>
       <div style={{ color: '#ef4444' }}>❌ {error}</div>
-      <button onClick={() => setRefreshKey(k => k + 1)} style={{ marginTop: 10, background: '#1a1a1a', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Retry</button>
+      <button onClick={() => setRefreshKey(k => k + 1)} style={{ marginTop: 10, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#ccc', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Retry</button>
     </div>
   );
 
@@ -479,7 +479,7 @@ function DiagnosticsTab({ check, label }) {
     <div style={sectionStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 16, color: gold }}>{label}</h3>
-        <button onClick={() => setRefreshKey(k => k + 1)} style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>⟳ Refresh</button>
+        <button onClick={() => setRefreshKey(k => k + 1)} style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>⟳ Refresh</button>
       </div>
       {check === 'shopify' && <ShopifyView data={data} />}
       {check === 'leopards' && <LeopardsView data={data} />}
@@ -528,7 +528,7 @@ function ShopifyView({ data }) {
         {data.webhooks?.list?.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {data.webhooks.list.map((w, i) => (
-              <div key={i} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 6, padding: '8px 12px', fontSize: 11 }}>
+              <div key={i} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 6, padding: '8px 12px', fontSize: 11 }}>
                 <div style={{ color: gold, fontWeight: 600 }}>{w.topic}</div>
                 <div style={{ color: '#666', marginTop: 2, fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all' }}>{w.address}</div>
               </div>
@@ -666,7 +666,7 @@ function SystemView({ data }) {
         {data.recent_syncs?.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {data.recent_syncs.map((sync, i) => (
-              <div key={i} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 6, padding: '8px 12px', fontSize: 11 }}>
+              <div key={i} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 6, padding: '8px 12px', fontSize: 11 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <div>
                     <Badge color={sync.errors ? '#ef4444' : '#22c55e'}>{sync.courier} {sync.sync_type}</Badge>
@@ -762,7 +762,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', maxWidth: 1200 }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', maxWidth: 1200 }}>
       <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Settings</h2>
@@ -793,7 +793,7 @@ export default function SettingsPage() {
             <button key={t.id} onClick={() => { setActiveTab(t.id); setDrafts({}); }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
-                background: activeTab === t.id ? '#1a1a1a' : 'transparent',
+                background: activeTab === t.id ? 'var(--bg-section)' : 'transparent',
                 border: 'none', borderLeft: activeTab === t.id ? `3px solid ${gold}` : '3px solid transparent',
                 color: activeTab === t.id ? gold : '#aaa',
                 padding: '11px 14px', fontSize: 13, fontWeight: activeTab === t.id ? 600 : 400,
@@ -829,11 +829,11 @@ export default function SettingsPage() {
                 })}
               </div>
               {hasChanges && isSuperAdmin && (
-                <div style={{ position: 'sticky', bottom: 16, background: '#0a0a0a', border: `1px solid ${gold}`, borderRadius: 12, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                <div style={{ position: 'sticky', bottom: 16, background: 'var(--bg)', border: `1px solid ${gold}`, borderRadius: 12, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
                   <div style={{ fontSize: 13, color: gold }}>{Object.keys(drafts).length} unsaved change{Object.keys(drafts).length !== 1 ? 's' : ''}</div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={discard} disabled={saving} style={{ background: 'transparent', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '9px 18px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>Discard</button>
-                    <button onClick={save} disabled={saving} style={{ background: saving ? '#1a1a1a' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)', border: `1px solid ${saving ? border : '#c9a96e'}`, color: saving ? '#888' : '#000', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{saving ? 'Saving...' : '💾 Save Changes'}</button>
+                    <button onClick={save} disabled={saving} style={{ background: saving ? 'var(--bg-section)' : 'linear-gradient(135deg, #c9a96e 0%, #b8975d 100%)', border: `1px solid ${saving ? border : '#c9a96e'}`, color: saving ? '#888' : '#000', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>{saving ? 'Saving...' : '💾 Save Changes'}</button>
                   </div>
                 </div>
               )}

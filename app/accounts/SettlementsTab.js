@@ -16,8 +16,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold   = '#c9a96e';
-const border = '#222';
-const card   = '#111';
+const border = 'var(--border)';
+const card   = 'var(--bg)';
 
 const COURIERS = [
   { id: 'Leopards', label: '🐆 Leopards', format: 'PDF / XLS', accept: '.pdf,.xls,.xlsx' },
@@ -91,12 +91,12 @@ function UploadSection({ onDone }) {
     setLoading(false);
   };
 
-  const inp = { background: '#0a0a0a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
+  const inp = { background: 'var(--bg)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
 
   return (
     <div style={{ maxWidth: 700, marginBottom: 36 }}>
       {result && (
-        <div style={{ background: '#001a0a', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+        <div style={{ background: 'var(--green-dim)', border: '1px solid #003300', borderRadius: 12, padding: 20, marginBottom: 24 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#22c55e', marginBottom: 12 }}>✅ Settlement Applied</div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
             {[
@@ -107,7 +107,7 @@ function UploadSection({ onDone }) {
               ['⏩ Skipped',          result.skipped,       '#555'],
               ['📋 Total Parsed',    result.total_parsed,  gold],
             ].map(([label, val, color]) => (
-              <div key={label} style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
+              <div key={label} style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
                 <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>{label}</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color }}>{val}</div>
               </div>
@@ -119,7 +119,7 @@ function UploadSection({ onDone }) {
               {result.meta?.totalWHT > 0 && <> &nbsp;·&nbsp; Taxes: <span style={{ color: '#ef4444' }}>Rs {Number(result.meta.totalWHT + (result.meta.totalGST || 0)).toLocaleString()}</span></>}
             </div>
           )}
-          <button onClick={reset} style={{ marginTop: 14, background: '#1a1a1a', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button onClick={reset} style={{ marginTop: 14, background: 'var(--bg-section)', border: `1px solid ${border}`, color: '#888', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
             🔄 Upload Another File
           </button>
         </div>
@@ -144,7 +144,7 @@ function UploadSection({ onDone }) {
                     fontFamily: 'inherit',
                     fontSize: 13,
                     fontWeight: 600,
-                    background: courier === c.id ? gold + '22' : '#0a0a0a',
+                    background: courier === c.id ? gold + '22' : 'var(--bg)',
                     border: `1px solid ${courier === c.id ? gold : border}`,
                     color: courier === c.id ? gold : '#666',
                   }}
@@ -179,13 +179,13 @@ function UploadSection({ onDone }) {
           </div>
 
           {error && (
-            <div style={{ background: '#1a0000', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
+            <div style={{ background: 'var(--red-dim)', border: '1px solid #330000', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#ef4444', marginBottom: 16 }}>
               ❌ {error}
             </div>
           )}
 
           {preview && (
-            <div style={{ background: '#0a0a0a', border: `1px solid ${border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: gold, marginBottom: 12 }}>📋 Preview — review before applying</div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
                 {[
@@ -196,7 +196,7 @@ function UploadSection({ onDone }) {
                   ['⏩ Skip (zero amt)', preview.skipped,      '#555'],
                   ['📋 Total',          preview.total_parsed, gold],
                 ].map(([label, val, color]) => (
-                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: '#111', borderRadius: 7, border: `1px solid ${border}` }}>
+                  <div key={label} style={{ textAlign: 'center', padding: '8px', background: 'var(--bg)', borderRadius: 7, border: `1px solid ${border}` }}>
                     <div style={{ fontSize: 9, color: '#555', marginBottom: 3 }}>{label}</div>
                     <div style={{ fontSize: 18, fontWeight: 700, color }}>{val}</div>
                   </div>
@@ -215,7 +215,7 @@ function UploadSection({ onDone }) {
                 disabled={!file || loading}
                 style={{
                   flex: 1,
-                  background: file ? gold + '22' : '#0a0a0a',
+                  background: file ? gold + '22' : 'var(--bg)',
                   border: `1px solid ${file ? gold : border}`,
                   color: file ? gold : '#555',
                   borderRadius: 8,
@@ -233,7 +233,7 @@ function UploadSection({ onDone }) {
                 <button
                   onClick={() => setPreview(null)}
                   disabled={loading}
-                  style={{ flex: 1, background: '#0a0a0a', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ flex: 1, background: 'var(--bg)', border: `1px solid ${border}`, color: '#888', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   ✕ Back
                 </button>
@@ -287,8 +287,8 @@ function HistorySection({ refresh }) {
               key={c}
               onClick={() => setFilter(c)}
               style={{
-                background: filter === c ? '#1e1e1e' : 'transparent',
-                border: `1px solid ${filter === c ? '#2a2a2a' : 'transparent'}`,
+                background: filter === c ? 'var(--bg-hover)' : 'transparent',
+                border: `1px solid ${filter === c ? 'var(--border)' : 'transparent'}`,
                 color: filter === c ? gold : '#666',
                 borderRadius: 6,
                 padding: '5px 12px',
@@ -363,14 +363,14 @@ function HistorySection({ refresh }) {
             </thead>
             <tbody>
               {filtered.map((s, i) => (
-                <tr key={s.id} style={{ borderBottom: `1px solid #111`, background: i % 2 === 0 ? 'transparent' : '#0a0a0a' }}>
+                <tr key={s.id} style={{ borderBottom: `1px solid #111`, background: i % 2 === 0 ? 'transparent' : 'var(--bg)' }}>
                   <td style={{ padding: '10px 14px', color: '#888' }}>{fmtDate(s.invoice_date || s.created_at)}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ color: courierColor[s.courier] || '#888', fontWeight: 600, fontSize: 12 }}>{s.courier}</span>
                   </td>
                   <td style={{ padding: '10px 14px', color: '#666', fontSize: 12 }}>{s.invoice_number || '—'}</td>
                   <td style={{ padding: '10px 14px', color: '#ccc' }}>{s.total_parcels || '—'}</td>
-                  <td style={{ padding: '10px 14px', color: '#fff', fontWeight: 600 }}>{fmt(s.total_cod_collected)}</td>
+                  <td style={{ padding: '10px 14px', color: 'var(--text)', fontWeight: 600 }}>{fmt(s.total_cod_collected)}</td>
                   <td style={{ padding: '10px 14px', color: '#f59e0b' }}>{fmt(s.courier_charges)}</td>
                   <td style={{ padding: '10px 14px', color: '#22c55e', fontWeight: 600 }}>{fmt(s.net_amount)}</td>
                   <td style={{ padding: '10px 14px', color: '#444', fontSize: 11, maxWidth: 200 }}>

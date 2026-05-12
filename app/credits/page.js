@@ -108,7 +108,7 @@ export default function CustomerCreditsPage() {
       {/* ── Header ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: '#fff', letterSpacing: '-0.01em' }}>
+          <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: 'var(--text)', letterSpacing: '-0.01em' }}>
             📒 Customer Credits
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text2)', margin: '6px 0 0' }}>
@@ -169,7 +169,7 @@ export default function CustomerCreditsPage() {
           style={{
             flex: '1 1 280px',
             background: 'var(--bg-card)', border: '1px solid var(--border)',
-            color: '#fff', borderRadius: 8, padding: '10px 14px', fontSize: 13,
+            color: 'var(--text)', borderRadius: 8, padding: '10px 14px', fontSize: 13,
             fontFamily: 'inherit', outline: 'none',
           }}
         />
@@ -258,7 +258,7 @@ export default function CustomerCreditsPage() {
             >
               {/* Customer name + phone */}
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {c.name || '—'}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, fontFamily: 'monospace' }}>
@@ -341,7 +341,7 @@ function EmptyState({ searchActive }) {
     return (
       <div style={{ padding: '60px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-        <div style={{ fontSize: 15, color: '#fff', fontWeight: 500, marginBottom: 6 }}>
+        <div style={{ fontSize: 15, color: 'var(--text)', fontWeight: 500, marginBottom: 6 }}>
           No customer found
         </div>
         <div style={{ fontSize: 12, color: 'var(--text3)', maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>
@@ -354,7 +354,7 @@ function EmptyState({ searchActive }) {
   return (
     <div style={{ padding: '60px 20px', textAlign: 'center' }}>
       <div style={{ fontSize: 48, marginBottom: 14 }}>📒</div>
-      <div style={{ fontSize: 16, color: '#fff', fontWeight: 500, marginBottom: 8 }}>
+      <div style={{ fontSize: 16, color: 'var(--text)', fontWeight: 500, marginBottom: 8 }}>
         Abhi koi credit customer nahi
       </div>
       <div style={{ fontSize: 13, color: 'var(--text2)', maxWidth: 460, margin: '0 auto 18px', lineHeight: 1.6 }}>

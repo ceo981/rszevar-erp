@@ -130,7 +130,7 @@ export default function ArchiveOrderDetailPage() {
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: '#fff' }}>
+            <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, color: 'var(--text)' }}>
               {order.order_number}
             </h1>
             <span style={{

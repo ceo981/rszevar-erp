@@ -234,7 +234,7 @@ export default function CustomerKhaataPage() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 600, margin: '6px 0 0', color: '#fff', letterSpacing: '-0.01em' }}>
+          <h1 style={{ fontSize: 26, fontWeight: 600, margin: '6px 0 0', color: 'var(--text)', letterSpacing: '-0.01em' }}>
             {customer.name || '—'}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text2)', margin: '6px 0 0', fontFamily: 'monospace' }}>

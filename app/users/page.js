@@ -477,7 +477,7 @@ export default function UsersPage() {
               style={{
                 flex: 1,
                 background: 'var(--gold)',
-                color: '#000',
+                color: 'var(--text)',
                 border: 'none',
                 borderRadius: 'var(--radius)',
                 padding: '9px',
@@ -551,7 +551,7 @@ export default function UsersPage() {
               style={{
                 flex: 1,
                 background: 'var(--red)',
-                color: '#000',
+                color: 'var(--text)',
                 border: 'none',
                 borderRadius: 'var(--radius)',
                 padding: '9px',

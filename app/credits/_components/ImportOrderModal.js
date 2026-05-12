@@ -138,7 +138,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12,
         }}>
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: '#fff' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0, color: 'var(--text)' }}>
               🔗 Add order to khaata
             </h2>
             <p style={{
@@ -171,7 +171,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
               borderRadius: 8, padding: 14, marginBottom: 14,
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-                <div style={{ fontSize: 14, color: '#fff', fontWeight: 600 }}>
+                <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600 }}>
                   {confirming.order_number}
                 </div>
                 <div style={{ fontSize: 14, color: confirming.balance > 0 ? danger : success, fontWeight: 600 }}>
@@ -185,7 +185,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
                 Currently in khaata: {confirming.current_khaata_phone}
               </div>
               <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text2)' }}>
-                <div>Total: <strong style={{ color: '#fff' }}>{fmtMoney(confirming.total_amount)}</strong></div>
+                <div>Total: <strong style={{ color: 'var(--text)' }}>{fmtMoney(confirming.total_amount)}</strong></div>
                 <div>Paid: <strong style={{ color: success }}>{fmtMoney(confirming.paid_amount)}</strong></div>
                 <div>Status: <strong style={{ color: STATUS_COLORS[confirming.status] || 'var(--text1)' }}>{confirming.status}</strong></div>
               </div>
@@ -236,7 +236,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  color: '#fff', borderRadius: 7, padding: '10px 14px',
+                  color: 'var(--text)', borderRadius: 7, padding: '10px 14px',
                   fontSize: 13, fontFamily: 'inherit', outline: 'none',
                 }}
               />
@@ -307,7 +307,7 @@ export default function ImportOrderModal({ khaataPhone, khaataName, onClose, onS
                           )}
                         </div>
                         <div style={{
-                          fontSize: 12, color: '#fff', marginBottom: 2,
+                          fontSize: 12, color: 'var(--text)', marginBottom: 2,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {o.customer_name || '—'}

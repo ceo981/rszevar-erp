@@ -3,8 +3,8 @@ import { useUser } from '@/context/UserContext';
 import { useState, useEffect, useRef } from 'react';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 const fmtK = n => n >= 1000000 ? `Rs ${(n/1000000).toFixed(1)}M` : n >= 1000 ? `Rs ${(n/1000).toFixed(0)}K` : fmt(n);
 
@@ -38,7 +38,7 @@ function BarChart({ data, valueKey, labelKey, color, title, formatValue }) {
             <div style={{ width: 90, fontSize: 11, color: '#666', textAlign: 'right', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {d[labelKey]}
             </div>
-            <div style={{ flex: 1, background: '#1a1a1a', borderRadius: 4, height: 22, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, background: 'var(--bg-section)', borderRadius: 4, height: 22, position: 'relative', overflow: 'hidden' }}>
               <div style={{
                 height: '100%',
                 width: `${(d[valueKey] / max) * 100}%`,
@@ -89,7 +89,7 @@ function LineChart({ data, title }) {
         {/* Grid lines */}
         {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
           <g key={i}>
-            <line x1={PAD.l} y1={PAD.t + iH * (1-t)} x2={PAD.l + iW} y2={PAD.t + iH * (1-t)} stroke="#1a1a1a" strokeWidth="1" />
+            <line x1={PAD.l} y1={PAD.t + iH * (1-t)} x2={PAD.l + iW} y2={PAD.t + iH * (1-t)} stroke="var(--bg-section)" strokeWidth="1" />
             <text x={PAD.l - 6} y={PAD.t + iH * (1-t) + 4} fill="#444" fontSize="10" textAnchor="end">
               {fmtK(maxRev * t)}
             </text>
@@ -145,7 +145,7 @@ function DonutChart({ data, title }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         <svg viewBox="0 0 160 160" style={{ width: 120, flexShrink: 0 }}>
           {slices.map((s, i) => <path key={i} d={s.path} fill={s.color} opacity="0.85" />)}
-          <circle cx="80" cy="80" r="35" fill="#0f0f0f" />
+          <circle cx="80" cy="80" r="35" fill="var(--bg-section)" />
           <text x="80" y="76" fill="#fff" fontSize="12" fontWeight="700" textAnchor="middle">{data.length}</text>
           <text x="80" y="90" fill="#555" fontSize="9" textAnchor="middle">couriers</text>
         </svg>
@@ -154,7 +154,7 @@ function DonutChart({ data, title }) {
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: s.color, flexShrink: 0 }} />
               <span style={{ color: '#888' }}>{s.label}</span>
-              <span style={{ color: '#fff', fontWeight: 600, marginLeft: 'auto' }}>{s.value}</span>
+              <span style={{ color: 'var(--text)', fontWeight: 600, marginLeft: 'auto' }}>{s.value}</span>
               <span style={{ color: '#555', fontSize: 11 }}>({(s.pct * 100).toFixed(0)}%)</span>
             </div>
           ))}
@@ -194,17 +194,17 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: 24 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#fff' }}>Analytics</h2>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>Analytics</h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Sales performance & insights</p>
         </div>
-        <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', padding: 4, borderRadius: 9 }}>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', padding: 4, borderRadius: 9 }}>
           {[['7', '7 Days'], ['30', '30 Days'], ['60', '60 Days'], ['90', '90 Days']].map(([v, l]) => (
             <button key={v} onClick={() => setRange(v)}
-              style={{ background: range === v ? '#1e1e1e' : 'transparent', border: `1px solid ${range === v ? '#2a2a2a' : 'transparent'}`, borderRadius: 7, padding: '6px 14px', fontSize: 12, color: range === v ? gold : '#555', fontWeight: range === v ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ background: range === v ? 'var(--bg-hover)' : 'transparent', border: `1px solid ${range === v ? 'var(--border)' : 'transparent'}`, borderRadius: 7, padding: '6px 14px', fontSize: 12, color: range === v ? gold : '#555', fontWeight: range === v ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
               {l}
             </button>
           ))}
@@ -287,7 +287,7 @@ export default function AnalyticsPage() {
               />
               <div style={{ marginTop: 16 }}>
                 {(data?.couriers || []).map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid #1a1a1a`, fontSize: 12 }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid var(--bg-section)`, fontSize: 12 }}>
                     <span style={{ color: '#888' }}>{c.courier}</span>
                     <span style={{ color: '#22c55e' }}>{c.delivered} delivered</span>
                     <span style={{ color: '#ef4444' }}>{c.rto} RTO</span>
@@ -311,9 +311,9 @@ export default function AnalyticsPage() {
                 </thead>
                 <tbody>
                   {[...(data?.daily || [])].reverse().map((d, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                       <td style={{ padding: '10px 16px', color: gold }}>{d.date}</td>
-                      <td style={{ padding: '10px 16px', color: '#fff' }}>{d.orders}</td>
+                      <td style={{ padding: '10px 16px', color: 'var(--text)' }}>{d.orders}</td>
                       {canViewFinancial && <td style={{ padding: '10px 16px', color: '#22c55e', fontWeight: 600 }}>{fmt(d.revenue)}</td>}
                       <td style={{ padding: '10px 16px', color: '#22c55e' }}>{d.delivered}</td>
                       <td style={{ padding: '10px 16px', color: '#ef4444' }}>{d.rto}</td>

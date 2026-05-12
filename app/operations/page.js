@@ -28,12 +28,12 @@ function isImageUrl(url) {
 }
 
 const inputStyle = {
-  width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a',
+  width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)',
   borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13,
   outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
 };
 const btnStyle = {
-  background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8,
+  background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 8,
   padding: '8px 16px', color: '#c9a96e', fontSize: 13, cursor: 'pointer',
   fontFamily: 'inherit', fontWeight: 600, transition: 'all 0.15s',
 };
@@ -47,7 +47,7 @@ const tdStyle = { padding: '12px 16px', fontSize: 13, color: '#888', verticalAli
 function Modal({ title, onClose, children, maxWidth = 480 }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 14, padding: 28, width: '100%', maxWidth, maxHeight: '90vh', overflowY: 'auto' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 28, width: '100%', maxWidth, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a96e' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', fontSize: 20, cursor: 'pointer' }}>✕</button>
@@ -60,7 +60,7 @@ function Modal({ title, onClose, children, maxWidth = 480 }) {
 
 // ─── BILL PREVIEW COMPONENT ────────────────────────────────────
 function BillPreview({ url, size = 36 }) {
-  if (!url) return <span style={{ color: '#333', fontSize: 12 }}>—</span>;
+  if (!url) return <span style={{ color: 'var(--border2)', fontSize: 12 }}>—</span>;
   if (isImageUrl(url)) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer" title="Full bill dekho"
@@ -68,8 +68,8 @@ function BillPreview({ url, size = 36 }) {
         <img src={url} alt="Bill"
           style={{
             width: size, height: size, objectFit: 'cover',
-            borderRadius: 6, border: '1px solid #2a2a2a',
-            cursor: 'pointer', background: '#1a1a1a',
+            borderRadius: 6, border: '1px solid var(--border)',
+            cursor: 'pointer', background: 'var(--bg-section)',
           }} />
       </a>
     );
@@ -126,7 +126,7 @@ function ExpenseForm({ form, setForm, onSave, onCancel, saving, mode = 'add' }) 
       </div>
       <div>
         <label style={labelStyle}>Bill / Receipt {existingUrl && '(already uploaded — replace karne ke liye click karo)'}</label>
-        <div style={{ border: '1px dashed #2a2a2a', borderRadius: 8, padding: 14, textAlign: 'center', background: '#1a1a1a', cursor: 'pointer', position: 'relative' }}
+        <div style={{ border: '1px dashed #2a2a2a', borderRadius: 8, padding: 14, textAlign: 'center', background: 'var(--bg-section)', cursor: 'pointer', position: 'relative' }}
           onClick={() => document.getElementById(`bill-upload-${mode}`).click()}>
           <input id={`bill-upload-${mode}`} type="file" accept="image/*,.pdf"
             style={{ display: 'none' }}
@@ -152,7 +152,7 @@ function ExpenseForm({ form, setForm, onSave, onCancel, saving, mode = 'add' }) 
             <div>
               <div style={{ fontSize: 22, marginBottom: 4 }}>📎</div>
               <div style={{ fontSize: 12, color: '#555' }}>Click karke bill upload karo</div>
-              <div style={{ fontSize: 10, color: '#333', marginTop: 4 }}>Image ya PDF — optional</div>
+              <div style={{ fontSize: 10, color: 'var(--border2)', marginTop: 4 }}>Image ya PDF — optional</div>
             </div>
           )}
         </div>
@@ -165,7 +165,7 @@ function ExpenseForm({ form, setForm, onSave, onCancel, saving, mode = 'add' }) 
       </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <button onClick={onSave} disabled={saving}
-          style={{ ...btnStyle, flex: 1, background: mode === 'edit' ? '#1a2a2a' : '#2a1a1a', borderColor: mode === 'edit' ? '#06b6d444' : '#ef444444', color: mode === 'edit' ? '#06b6d4' : '#ef4444' }}>
+          style={{ ...btnStyle, flex: 1, background: mode === 'edit' ? '#1a2a2a' : 'var(--red-dim)', borderColor: mode === 'edit' ? '#06b6d444' : '#ef444444', color: mode === 'edit' ? '#06b6d4' : '#ef4444' }}>
           {saving ? 'Save ho raha hai...' : (mode === 'edit' ? '💾 Update karo' : 'Expense Save karo')}
         </button>
         <button onClick={onCancel} style={{ ...btnStyle, color: '#555' }}>Cancel</button>
@@ -394,30 +394,30 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Balance Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <div style={{ background: '#111', border: `1px solid ${balanceColor}33`, borderRadius: 12, padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: `1px solid ${balanceColor}33`, borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Cash Balance</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: balanceColor, letterSpacing: -0.5 }}>{fmt(data.balance)}</div>
         </div>
-        <div style={{ background: '#111', border: '1px solid #1a2a1a', borderRadius: 12, padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #1a2a1a', borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Total Cash In</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#22c55e' }}>{fmt(data.total_in)}</div>
         </div>
-        <div style={{ background: '#111', border: '1px solid #2a1a1a', borderRadius: 12, padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #2a1a1a', borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Total Out</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#ef4444' }}>{fmt(data.total_out)}</div>
         </div>
-        <div style={{ background: '#111', border: '1px solid #ef444433', borderRadius: 12, padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #ef444433', borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>🗓 Aaj Ka Kharch</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: todayExpense > 0 ? '#ef4444' : '#333' }}>{fmt(todayExpense)}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: todayExpense > 0 ? '#ef4444' : 'var(--border2)' }}>{fmt(todayExpense)}</div>
           <div style={{ fontSize: 10, color: '#444', marginTop: 4 }}>{todayLogs.length} transactions</div>
         </div>
-        <div style={{ background: '#111', border: '1px solid #f59e0b33', borderRadius: 12, padding: '20px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #f59e0b33', borderRadius: 12, padding: '20px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>📅 Is Mahine Ka Kharch</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>{fmt(monthExpense)}</div>
           <div style={{ fontSize: 10, color: '#444', marginTop: 4 }}>{monthLogs.length} transactions</div>
         </div>
         {data.pending_count > 0 && (
-          <div style={{ background: '#111', border: '1px solid #c9a96e33', borderRadius: 12, padding: '20px 24px' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid #c9a96e33', borderRadius: 12, padding: '20px 24px' }}>
             <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Pending Approvals</div>
             <div style={{ fontSize: 22, fontWeight: 700, color: '#c9a96e' }}>{data.pending_count}</div>
           </div>
@@ -427,12 +427,12 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
       {/* Actions */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {isManager && (
-          <button onClick={() => setShowCashModal(true)} style={{ ...btnStyle, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e' }}>
+          <button onClick={() => setShowCashModal(true)} style={{ ...btnStyle, background: 'var(--green-dim)', borderColor: '#22c55e44', color: '#22c55e' }}>
             + Cash Request karo
           </button>
         )}
         {canExpenseAdd && (
-        <button onClick={() => setShowExpenseModal(true)} style={{ ...btnStyle, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444' }}>
+        <button onClick={() => setShowExpenseModal(true)} style={{ ...btnStyle, background: 'var(--red-dim)', borderColor: '#ef444444', color: '#ef4444' }}>
           + Expense Add karo
         </button>
         )}
@@ -444,18 +444,18 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
         </div>
       </div>
 
-      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
 
       {/* Pending Approvals — CEO only */}
       {isCEO && pendingLogs.length > 0 && (
-        <div style={{ background: '#111', border: '1px solid #c9a96e44', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #c9a96e44', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#c9a96e' }}>⏳ Pending Cash Requests</span>
             <span style={{ background: '#c9a96e22', color: '#c9a96e', borderRadius: 20, padding: '1px 8px', fontSize: 11 }}>{pendingLogs.length}</span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
+              <tr style={{ borderBottom: '1px solid var(--bg-hover)' }}>
                 {['Date', 'Requested By', 'Amount', 'Notes', 'Action'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400 }}>{h}</th>
                 ))}
@@ -463,15 +463,15 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
             </thead>
             <tbody>
               {pendingLogs.map(l => (
-                <tr key={l.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                <tr key={l.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                   <td style={tdStyle}>{fmtDate(l.date)}</td>
                   <td style={{ ...tdStyle, color: '#ccc' }}>{l.requested_by}</td>
                   <td style={{ ...tdStyle, color: '#22c55e', fontWeight: 700 }}>{fmt(l.amount)}</td>
                   <td style={{ ...tdStyle, color: '#666' }}>{l.notes || '—'}</td>
                   <td style={{ ...tdStyle }}>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => approveCash(l.id)} style={{ ...btnStyle, padding: '5px 12px', fontSize: 12, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e' }}>✅ Approve</button>
-                      <button onClick={() => rejectCash(l.id)} style={{ ...btnStyle, padding: '5px 12px', fontSize: 12, background: '#2a1a1a', borderColor: '#ef444444', color: '#ef4444' }}>✗ Reject</button>
+                      <button onClick={() => approveCash(l.id)} style={{ ...btnStyle, padding: '5px 12px', fontSize: 12, background: 'var(--green-dim)', borderColor: '#22c55e44', color: '#22c55e' }}>✅ Approve</button>
+                      <button onClick={() => rejectCash(l.id)} style={{ ...btnStyle, padding: '5px 12px', fontSize: 12, background: 'var(--red-dim)', borderColor: '#ef444444', color: '#ef4444' }}>✗ Reject</button>
                     </div>
                   </td>
                 </tr>
@@ -482,8 +482,8 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
       )}
 
       {/* Transaction Log — Day-wise */}
-      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bg-hover)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bg-hover)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>Transaction History</span>
             <span style={{ marginLeft: 10, fontSize: 12, color: '#444' }}>{approvedLogs.length} entries</span>
@@ -492,7 +492,7 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: '#444' }}>Loading...</div>
         ) : approvedLogs.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#333' }}>Koi transaction nahi</div>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--border2)' }}>Koi transaction nahi</div>
         ) : (
           <div>
             {sortedDates.map(date => {
@@ -502,12 +502,12 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
               const isToday = date === todayStr;
               return (
                 <div key={date}>
-                  <div style={{ padding: '10px 20px', background: '#0a0a0a', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ padding: '10px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--bg-section)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#c9a96e' : '#555' }}>
                         {isToday ? '📅 Aaj — ' : ''}{fmtDate(date)}
                       </span>
-                      <span style={{ fontSize: 11, color: '#333' }}>{dayLogs.length} transactions</span>
+                      <span style={{ fontSize: 11, color: 'var(--border2)' }}>{dayLogs.length} transactions</span>
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                       {dayIn > 0 && <span style={{ color: '#22c55e' }}>+{fmt(dayIn)}</span>}
@@ -524,7 +524,7 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
                         const editHistory = Array.isArray(l.edit_history) ? l.edit_history : [];
                         const lastEdit = editHistory[editHistory.length - 1];
                         return (
-                          <tr key={l.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                          <tr key={l.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                             <td style={tdStyle}>{fmtDate(l.date)}</td>
                             <td style={{ ...tdStyle }}>
                               <span style={{ background: typeColor + '22', color: typeColor, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>{typeLabel}</span>
@@ -549,7 +549,7 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
                               </div>
                             </td>
                             <td style={{ ...tdStyle }}>
-                              {l.category ? <span style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{l.category}</span> : '—'}
+                              {l.category ? <span style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#666' }}>{l.category}</span> : '—'}
                             </td>
                             <td style={{ ...tdStyle, color: isCashIn ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
                               {isCashIn ? '+' : '-'}{fmt(l.amount)}
@@ -597,11 +597,11 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
               <input placeholder="Kyun chahiye? (e.g. kal ka saman)" value={cashForm.notes}
                 onChange={e => setCashForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
             </div>
-            <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+            <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
               ⚠️ Yeh request CEO ke paas jayegi — approve hone ke baad balance mein add hoga
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={requestCash} disabled={saving} style={{ ...btnStyle, flex: 1, background: '#1a2a1a', borderColor: '#22c55e44', color: '#22c55e', justifyContent: 'center' }}>
+              <button onClick={requestCash} disabled={saving} style={{ ...btnStyle, flex: 1, background: 'var(--green-dim)', borderColor: '#22c55e44', color: '#22c55e', justifyContent: 'center' }}>
                 {saving ? 'Bhej raha hoon...' : 'Request Bhejo'}
               </button>
               <button onClick={() => setShowCashModal(false)} style={{ ...btnStyle, color: '#555' }}>Cancel</button>
@@ -627,7 +627,7 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
       {/* Expense Edit Modal */}
       {editingEntry && (
         <Modal title={`✏️ Entry Edit karo — ${editingEntry.description}`} onClose={() => setEditingEntry(null)}>
-          <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 10, fontSize: 11, color: '#666', marginBottom: 14 }}>
+          <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: 10, fontSize: 11, color: '#666', marginBottom: 14 }}>
             ℹ️ Jo bhi change karoge, full history log mein save hogi — kab, kisne, kya badla. Kuch chupega nahi.
           </div>
           <ExpenseForm
@@ -649,14 +649,14 @@ function CashTab({ isManager, isCEO, canExpenseAdd, currentUserName }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {(showHistoryFor.edit_history || []).slice().reverse().map((h, idx) => (
-              <div key={idx} style={{ background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: 8, padding: 14 }}>
+              <div key={idx} style={{ background: 'var(--bg)', border: '1px solid var(--bg-hover)', borderRadius: 8, padding: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <span style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 600 }}>✏️ {h.edited_by}</span>
                   <span style={{ fontSize: 11, color: '#444' }}>{fmtDateTime(h.edited_at)}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {Object.entries(h.changes || {}).map(([field, diff]) => (
-                    <div key={field} style={{ fontSize: 12, background: '#111', borderRadius: 6, padding: '6px 10px' }}>
+                    <div key={field} style={{ fontSize: 12, background: 'var(--bg)', borderRadius: 6, padding: '6px 10px' }}>
                       <div style={{ color: '#888', fontWeight: 600, marginBottom: 2, fontFamily: 'monospace', fontSize: 11 }}>{field}</div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <span style={{ color: '#ef4444', textDecoration: 'line-through', flex: 1 }}>{String(diff.from ?? '—')}</span>
@@ -731,7 +731,7 @@ function AdvancesTab({ isCEO, currentUserName }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ background: '#111', border: '1px solid #2a1a1a', borderRadius: 12, padding: '18px 24px' }}>
+        <div style={{ background: 'var(--bg)', border: '1px solid #2a1a1a', borderRadius: 12, padding: '18px 24px' }}>
           <div style={{ fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Total Outstanding</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>{fmt(pendingTotal)}</div>
         </div>
@@ -740,16 +740,16 @@ function AdvancesTab({ isCEO, currentUserName }) {
         </button>
       </div>
 
-      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ padding: '10px 16px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
 
-      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e' }}>
+      <div style={{ background: 'var(--bg)', border: '1px solid var(--bg-hover)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--bg-hover)' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#888' }}>Advances History</span>
           <span style={{ marginLeft: 10, fontSize: 12, color: '#444' }}>{advances.length} records</span>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
+            <tr style={{ borderBottom: '1px solid var(--bg-hover)' }}>
               {['Employee', 'Amount', 'Date', 'Deduct Month', 'Status', 'Notes', ''].map(h => (
                 <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#555', fontFamily: 'monospace', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 400 }}>{h}</th>
               ))}
@@ -757,9 +757,9 @@ function AdvancesTab({ isCEO, currentUserName }) {
           </thead>
           <tbody>
             {advances.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: '#333' }}>Koi advance nahi</td></tr>
+              <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'var(--border2)' }}>Koi advance nahi</td></tr>
             ) : advances.map(a => (
-              <tr key={a.id} style={{ borderBottom: '1px solid #1a1a1a' }}>
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                 <td style={{ ...tdStyle, color: '#ccc', fontWeight: 500 }}>{a.employees?.name || '—'}</td>
                 <td style={{ ...tdStyle, color: '#ef4444', fontWeight: 700 }}>{fmt(a.amount)}</td>
                 <td style={tdStyle}>{fmtDate(a.given_date)}</td>
@@ -815,7 +815,7 @@ function AdvancesTab({ isCEO, currentUserName }) {
               <input placeholder="Wajah ya notes..." value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={inputStyle} />
             </div>
-            <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+            <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
               ⚠️ Yeh advance Operations wallet se bhi deduct hoga aur HR mein bhi record hoga
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -861,11 +861,11 @@ export default function OperationsPage() {
         <div style={{ fontSize: 13, color: '#555' }}>Cash wallet, daily expenses & staff advances</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#111', borderRadius: 10, padding: 4, width: 'fit-content', border: '1px solid #1e1e1e' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--bg)', borderRadius: 10, padding: 4, width: 'fit-content', border: '1px solid var(--bg-hover)' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
-            background: tab === t.id ? '#1e1e1e' : 'transparent',
-            border: `1px solid ${tab === t.id ? '#2a2a2a' : 'transparent'}`,
+            background: tab === t.id ? 'var(--bg-hover)' : 'transparent',
+            border: `1px solid ${tab === t.id ? 'var(--border)' : 'transparent'}`,
             borderRadius: 8, padding: '7px 18px', cursor: 'pointer',
             fontSize: 13, color: tab === t.id ? '#c9a96e' : '#555',
             fontWeight: tab === t.id ? 600 : 400, fontFamily: 'inherit',

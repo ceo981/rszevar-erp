@@ -102,13 +102,13 @@ export default function PackingPage() {
   // ── Access denied (no packing.view) ──
   if (!canView) {
     return (
-      <div style={{ fontFamily:'Inter,sans-serif', background:'#0a0a0a', minHeight:'100vh', padding:60, color:'#fff', maxWidth:480, margin:'0 auto', textAlign:'center' }}>
+      <div style={{ fontFamily:'Inter,sans-serif', background:'var(--bg)', minHeight:'100vh', padding:60, color:'var(--text)', maxWidth:480, margin:'0 auto', textAlign:'center' }}>
         <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
         <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Permission denied</div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
           Packing screen ki ijazat tumhe nahi hai.
         </div>
-        <Link href="/" style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
+        <Link href="/" style={{ background: 'transparent', border: '1px solid var(--border)', color: '#ccc', borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block' }}>
           ← Wapas
         </Link>
       </div>
@@ -116,7 +116,7 @@ export default function PackingPage() {
   }
 
   return (
-    <div style={{ fontFamily:'Inter,sans-serif', background:'#0a0a0a', minHeight:'100vh', padding:'24px 20px', color:'#fff', maxWidth:480, margin:'0 auto' }}>
+    <div style={{ fontFamily:'Inter,sans-serif', background:'var(--bg)', minHeight:'100vh', padding:'24px 20px', color:'var(--text)', maxWidth:480, margin:'0 auto' }}>
       <div style={{ textAlign:'center', marginBottom:32 }}>
         <div style={{ fontSize:36, marginBottom:6 }}>📦</div>
         <div style={{ fontSize:22, fontWeight:700, color:gold }}>Packing Screen</div>
@@ -130,19 +130,19 @@ export default function PackingPage() {
               onChange={e => setOrderNum(e.target.value)}
               onKeyDown={e => e.key==='Enter' && search()}
               placeholder="ZEVAR-117XXX"
-              style={{ flex:1, background:'#141414', border:`2px solid ${orderNum?gold:'#2a2a2a'}`, color:'#fff', borderRadius:10, padding:'16px', fontSize:20, fontWeight:600, outline:'none', fontFamily:'inherit' }}
+              style={{ flex:1, background:'var(--bg-card)', border:`2px solid ${orderNum?gold:'var(--border)'}`, color:'var(--text)', borderRadius:10, padding:'16px', fontSize:20, fontWeight:600, outline:'none', fontFamily:'inherit' }}
             />
             <button onClick={search} disabled={searching||!orderNum}
-              style={{ background:searching?'#1a1a1a':gold, border:'none', color:'#000', borderRadius:10, padding:'16px 22px', fontSize:20, fontWeight:700, cursor:searching?'not-allowed':'pointer' }}>
+              style={{ background:searching?'var(--bg-section)':gold, border:'none', color:'#000', borderRadius:10, padding:'16px 22px', fontSize:20, fontWeight:700, cursor:searching?'not-allowed':'pointer' }}>
               {searching?'⟳':'🔍'}
             </button>
           </div>
-          {msg && <div style={{ marginTop:12, background: msg.startsWith('⚠️') ? '#1a1000' : '#1a0000', border: '1px solid ' + (msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444'), borderRadius:8, padding:'12px', fontSize:14, color: msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444' }}>{msg}</div>}
+          {msg && <div style={{ marginTop:12, background: msg.startsWith('⚠️') ? '#1a1000' : 'var(--red-dim)', border: '1px solid ' + (msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444'), borderRadius:8, padding:'12px', fontSize:14, color: msg.startsWith('⚠️') ? '#f59e0b' : '#ef4444' }}>{msg}</div>}
         </div>
       )}
 
       {done && (
-        <div style={{ background:'#001a0a', border:'2px solid #22c55e', borderRadius:14, padding:32, textAlign:'center', marginBottom:20 }}>
+        <div style={{ background:'var(--green-dim)', border:'2px solid #22c55e', borderRadius:14, padding:32, textAlign:'center', marginBottom:20 }}>
           <div style={{ fontSize:52, marginBottom:8 }}>✅</div>
           <div style={{ fontSize:18, fontWeight:700, color:'#22c55e' }}>{msg}</div>
         </div>
@@ -150,7 +150,7 @@ export default function PackingPage() {
 
       {order && !done && (
         <>
-          <div style={{ background:'#141414', border:`1px solid ${gold}44`, borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+          <div style={{ background:'var(--bg-card)', border:`1px solid ${gold}44`, borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
               <div>
                 <div style={{ fontSize:22, fontWeight:800, color:gold }}>{order.order_number}</div>
@@ -158,21 +158,21 @@ export default function PackingPage() {
                 <div style={{ fontSize:13, color:'#555', marginTop:2 }}>Rs {Number(order.total_amount).toLocaleString()}</div>
               </div>
               <button onClick={() => { setOrder(null); setItems([]); setOrderNum('ZEVAR-'); setPackedBy(''); setMsg(''); }}
-                style={{ background:'#1a1a1a', border:'1px solid #333', color:'#555', borderRadius:7, padding:'6px 12px', fontSize:12, cursor:'pointer' }}>✕</button>
+                style={{ background:'var(--bg-section)', border:'1px solid var(--border2)', color:'#555', borderRadius:7, padding:'6px 12px', fontSize:12, cursor:'pointer' }}>✕</button>
             </div>
           </div>
 
           {items.length > 0 && (
-            <div style={{ background:'#141414', border:'1px solid #222', borderRadius:12, padding:14, marginBottom:16 }}>
+            <div style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:12, padding:14, marginBottom:16 }}>
               <div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Items ({items.length})</div>
               {items.map((item, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:i<items.length-1?'1px solid #1a1a1a':'none' }}>
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:i<items.length-1?'1px solid var(--bg-section)':'none' }}>
                   {item.image_url
-                    ? <img src={item.image_url} style={{ width:48, height:48, objectFit:'cover', borderRadius:7, flexShrink:0, border:'1px solid #2a2a2a' }} />
+                    ? <img src={item.image_url} style={{ width:48, height:48, objectFit:'cover', borderRadius:7, flexShrink:0, border:'1px solid var(--border)' }} />
                     : <div style={{ width:48, height:48, borderRadius:7, background:gold+'22', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>💍</div>
                   }
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600, lineHeight:1.3 }}>{item.title}</div>
+                    <div style={{ fontSize:13, color:'var(--text)', fontWeight:600, lineHeight:1.3 }}>{item.title}</div>
                     {item.sku && <div style={{ fontSize:11, color:'#555', marginTop:1 }}>SKU: {item.sku}</div>}
                   </div>
                   <div style={{ fontSize:20, fontWeight:800, color:gold }}>×{item.quantity}</div>
@@ -185,24 +185,24 @@ export default function PackingPage() {
           <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
             {team.map(emp => (
               <button key={emp.id} onClick={() => setPackedBy(String(emp.id))}
-                style={{ background:packedBy===String(emp.id)?gold+'22':'#141414', border:`2px solid ${packedBy===String(emp.id)?gold:'#2a2a2a'}`, color:packedBy===String(emp.id)?gold:'#888', borderRadius:12, padding:'15px 18px', fontSize:17, fontWeight:packedBy===String(emp.id)?700:400, cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:38, height:38, borderRadius:'50%', background:packedBy===String(emp.id)?gold:'#2a2a2a', color:packedBy===String(emp.id)?'#000':'#555', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:700, flexShrink:0 }}>{emp.name[0]}</div>
+                style={{ background:packedBy===String(emp.id)?gold+'22':'var(--bg-card)', border:`2px solid ${packedBy===String(emp.id)?gold:'var(--border)'}`, color:packedBy===String(emp.id)?gold:'#888', borderRadius:12, padding:'15px 18px', fontSize:17, fontWeight:packedBy===String(emp.id)?700:400, cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:38, height:38, borderRadius:'50%', background:packedBy===String(emp.id)?gold:'var(--border)', color:packedBy===String(emp.id)?'#000':'#555', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15, fontWeight:700, flexShrink:0 }}>{emp.name[0]}</div>
                 {emp.name}
                 {packedBy===String(emp.id)&&<span style={{ marginLeft:'auto', fontSize:20 }}>✓</span>}
               </button>
             ))}
             <button onClick={() => setPackedBy('packing_team')}
-              style={{ background:packedBy==='packing_team'?'#3b82f622':'#141414', border:`2px solid ${packedBy==='packing_team'?'#3b82f6':'#2a2a2a'}`, color:packedBy==='packing_team'?'#3b82f6':'#555', borderRadius:12, padding:'15px 18px', fontSize:15, fontWeight:packedBy==='packing_team'?700:400, cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', alignItems:'center', gap:12, marginTop:4 }}>
-              <div style={{ width:38, height:38, borderRadius:'50%', background:packedBy==='packing_team'?'#3b82f6':'#2a2a2a', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>👥</div>
+              style={{ background:packedBy==='packing_team'?'#3b82f622':'var(--bg-card)', border:`2px solid ${packedBy==='packing_team'?'#3b82f6':'var(--border)'}`, color:packedBy==='packing_team'?'#3b82f6':'#555', borderRadius:12, padding:'15px 18px', fontSize:15, fontWeight:packedBy==='packing_team'?700:400, cursor:'pointer', textAlign:'left', fontFamily:'inherit', display:'flex', alignItems:'center', gap:12, marginTop:4 }}>
+              <div style={{ width:38, height:38, borderRadius:'50%', background:packedBy==='packing_team'?'#3b82f6':'var(--border)', color:'var(--text)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>👥</div>
               <div><div>Packing Team</div><div style={{ fontSize:11, opacity:0.6, marginTop:1 }}>Wholesale / sab ne pack kiya</div></div>
               {packedBy==='packing_team'&&<span style={{ marginLeft:'auto', fontSize:20 }}>✓</span>}
             </button>
           </div>
 
-          {msg && <div style={{ background:'#1a0000', border:'1px solid #ef4444', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#ef4444', marginBottom:14 }}>{msg}</div>}
+          {msg && <div style={{ background:'var(--red-dim)', border:'1px solid #ef4444', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#ef4444', marginBottom:14 }}>{msg}</div>}
 
           <button onClick={submit} disabled={submitting||!packedBy||!canSubmit}
-            style={{ width:'100%', background:(packedBy&&canSubmit)?'#22c55e':'#1a1a1a', color:(packedBy&&canSubmit)?'#000':'#444', border:'none', borderRadius:14, padding:'18px', fontSize:18, fontWeight:800, cursor:(packedBy&&canSubmit&&!submitting)?'pointer':'not-allowed', fontFamily:'inherit' }}>
+            style={{ width:'100%', background:(packedBy&&canSubmit)?'#22c55e':'var(--bg-section)', color:(packedBy&&canSubmit)?'#000':'#444', border:'none', borderRadius:14, padding:'18px', fontSize:18, fontWeight:800, cursor:(packedBy&&canSubmit&&!submitting)?'pointer':'not-allowed', fontFamily:'inherit' }}>
             {submitting?'⟳ Saving...':!canSubmit?'🔒 Submit ki ijazat nahi':packedBy?'✅ Done — Submit':'Packed By select karo'}
           </button>
         </>

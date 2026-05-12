@@ -3,8 +3,8 @@ import { useState, useRef } from 'react';
 import { useUser } from '@/context/UserContext';
 
 const gold = '#c9a96e';
-const card = '#141414';
-const border = '#222';
+const card = 'var(--bg-card)';
+const border = 'var(--border)';
 const fmt = n => `Rs ${Number(n || 0).toLocaleString()}`;
 
 export default function ReportsPage() {
@@ -130,7 +130,7 @@ export default function ReportsPage() {
   ` : '';
 
   return (
-    <div style={{ fontFamily: 'Inter, sans-serif', color: '#fff', padding: 24 }}>
+    <div style={{ fontFamily: 'Inter, sans-serif', color: 'var(--text)', padding: 24 }}>
       <div style={{ marginBottom: 24 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>Reports</h2>
         <p style={{ margin: '4px 0 0', fontSize: 13, color: '#555' }}>Daily, weekly, monthly reports — PDF download karo</p>
@@ -141,10 +141,10 @@ export default function ReportsPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Report Type</div>
-            <div style={{ display: 'flex', gap: 4, background: '#0a0a0a', padding: 4, borderRadius: 8 }}>
+            <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', padding: 4, borderRadius: 8 }}>
               {['daily', 'weekly', 'monthly'].map(t => (
                 <button key={t} onClick={() => setType(t)}
-                  style={{ background: type === t ? '#1e1e1e' : 'transparent', border: `1px solid ${type === t ? '#333' : 'transparent'}`, borderRadius: 6, padding: '7px 16px', fontSize: 12, color: type === t ? gold : '#555', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}>
+                  style={{ background: type === t ? 'var(--bg-hover)' : 'transparent', border: `1px solid ${type === t ? 'var(--border2)' : 'transparent'}`, borderRadius: 6, padding: '7px 16px', fontSize: 12, color: type === t ? gold : '#555', cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}>
                   {t}
                 </button>
               ))}
@@ -153,7 +153,7 @@ export default function ReportsPage() {
           <div>
             <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Date</div>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              style={{ background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '9px 12px', fontSize: 13 }} />
+              style={{ background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '9px 12px', fontSize: 13 }} />
           </div>
           <button onClick={generate} disabled={loading}
             style={{ background: gold, color: '#000', border: 'none', borderRadius: 8, padding: '10px 24px', fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer' }}>
@@ -161,7 +161,7 @@ export default function ReportsPage() {
           </button>
           {data && canPrint && (
             <button onClick={printPDF}
-              style={{ background: '#1e1e1e', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '10px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
+              style={{ background: 'var(--bg-hover)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '10px 24px', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
               🖨️ Download PDF
             </button>
           )}
@@ -185,7 +185,7 @@ export default function ReportsPage() {
           {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'Total Orders', value: s.total_orders, color: '#fff' },
+              { label: 'Total Orders', value: s.total_orders, color: 'var(--text)' },
               { label: 'Total COD', value: canFinancial ? fmt(s.total_cod) : '••••', color: gold },
               { label: 'Delivered', value: `${s.delivered} (${s.delivery_rate}%)`, color: '#22c55e' },
               { label: 'RTO', value: `${s.rto} (${s.rto_rate}%)`, color: '#ef4444' },
@@ -207,14 +207,14 @@ export default function ReportsPage() {
               <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, fontWeight: 600, fontSize: 13 }}>City Breakdown</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead><tr style={{ borderBottom: `1px solid ${border}` }}>{['City', 'Orders', 'COD'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#555' }}>{h}</th>)}</tr></thead>
-                <tbody>{(data.city_breakdown || []).map((c, i) => <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}><td style={{ padding: '8px 12px', color: '#ccc' }}>{c.city}</td><td style={{ padding: '8px 12px', color: '#fff' }}>{c.orders}</td><td style={{ padding: '8px 12px', color: gold }}>{fmt(c.cod)}</td></tr>)}</tbody>
+                <tbody>{(data.city_breakdown || []).map((c, i) => <tr key={i} style={{ borderBottom: '1px solid var(--bg-section)' }}><td style={{ padding: '8px 12px', color: '#ccc' }}>{c.city}</td><td style={{ padding: '8px 12px', color: 'var(--text)' }}>{c.orders}</td><td style={{ padding: '8px 12px', color: gold }}>{fmt(c.cod)}</td></tr>)}</tbody>
               </table>
             </div>
             <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
               <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, fontWeight: 600, fontSize: 13 }}>Courier Breakdown</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead><tr style={{ borderBottom: `1px solid ${border}` }}>{['Courier', 'Orders', 'Delivered', 'RTO'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#555' }}>{h}</th>)}</tr></thead>
-                <tbody>{(data.courier_breakdown || []).map((c, i) => <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}><td style={{ padding: '8px 12px', color: '#ccc' }}>{c.courier}</td><td style={{ padding: '8px 12px' }}>{c.orders}</td><td style={{ padding: '8px 12px', color: '#22c55e' }}>{c.delivered}</td><td style={{ padding: '8px 12px', color: '#ef4444' }}>{c.rto}</td></tr>)}</tbody>
+                <tbody>{(data.courier_breakdown || []).map((c, i) => <tr key={i} style={{ borderBottom: '1px solid var(--bg-section)' }}><td style={{ padding: '8px 12px', color: '#ccc' }}>{c.courier}</td><td style={{ padding: '8px 12px' }}>{c.orders}</td><td style={{ padding: '8px 12px', color: '#22c55e' }}>{c.delivered}</td><td style={{ padding: '8px 12px', color: '#ef4444' }}>{c.rto}</td></tr>)}</tbody>
               </table>
             </div>
           </div>
@@ -225,7 +225,7 @@ export default function ReportsPage() {
             <div style={{ overflowX: 'auto', maxHeight: 400, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead style={{ position: 'sticky', top: 0 }}>
-                  <tr style={{ borderBottom: `1px solid ${border}`, background: '#0a0a0a' }}>
+                  <tr style={{ borderBottom: `1px solid ${border}`, background: 'var(--bg)' }}>
                     {['Order', 'Customer', 'Phone', 'City', 'Amount', 'Courier', 'Status'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: '#555' }}>{h}</th>)}
                   </tr>
                 </thead>
@@ -233,12 +233,12 @@ export default function ReportsPage() {
                   {(data.orders || []).map((o, i) => {
                     const sc = { delivered: '#22c55e', pending: '#fb923c', rto: '#ef4444', returned: '#ef4444', dispatched: '#a855f7', cancelled: '#555' };
                     return (
-                      <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg-section)' }}>
                         <td style={{ padding: '8px 12px', color: gold }}>{o.order_number || o.shopify_order_name || o.id}</td>
                         <td style={{ padding: '8px 12px', color: '#ccc' }}>{o.customer_name}</td>
                         <td style={{ padding: '8px 12px', color: '#666' }}>{o.customer_phone}</td>
                         <td style={{ padding: '8px 12px', color: '#888' }}>{o.customer_city}</td>
-                        <td style={{ padding: '8px 12px', color: '#fff', fontWeight: 600 }}>{fmt(o.total_amount)}</td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text)', fontWeight: 600 }}>{fmt(o.total_amount)}</td>
                         <td style={{ padding: '8px 12px', color: '#666' }}>{o.dispatched_courier || '—'}</td>
                         <td style={{ padding: '8px 12px' }}><span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: (sc[o.status] || '#555')+'22', color: sc[o.status] || '#555' }}>{o.status}</span></td>
                       </tr>
