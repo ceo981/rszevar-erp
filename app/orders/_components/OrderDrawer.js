@@ -17,8 +17,8 @@ import {
 
 // ─── Shared style constants (mirrored from orders/page.js) ───────────────
 export const gold   = '#c9a96e';
-export const card   = '#141414';
-export const border = '#222';
+export const card   = 'var(--bg-card)';
+export const border = 'var(--border)';
 
 // Statuses jahan normal cancel block hota hai (post-dispatch zone).
 // Frontend uses this to show "Force cancel (admin)" checkbox for super_admin
@@ -607,13 +607,13 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
   //                 `page`   = normal block-flow full-page (new-tab usage)
   // Mobile pe drawer full-screen bana do — side panel mobile pe kaam nahi karti
   const outerStyle = isPage
-    ? { minHeight: '100vh', background: '#0a0a0a', padding: isMobile ? '12px 8px' : '20px 16px' }
+    ? { minHeight: '100vh', background: 'var(--bg)', padding: isMobile ? '12px 8px' : '20px 16px' }
     : { position: 'fixed', inset: 0, zIndex: 1000, display: 'flex' };
   const panelStyle = isPage
-    ? { maxWidth: 900, margin: '0 auto', background: '#0f0f0f', border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column' }
+    ? { maxWidth: 900, margin: '0 auto', background: 'var(--bg-section)', border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column' }
     : isMobile
-      ? { width: '100%', background: '#0f0f0f', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
-      : { width: 580, background: '#0f0f0f', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' };
+      ? { width: '100%', background: 'var(--bg-section)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
+      : { width: 580, background: 'var(--bg-section)', borderLeft: `1px solid ${border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto' };
 
   return (
     <div style={outerStyle}>
@@ -628,7 +628,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           gap: 8,
           position: isMobile && !isPage ? 'sticky' : 'static',
           top: 0,
-          background: '#0f0f0f',
+          background: 'var(--bg-section)',
           zIndex: 10,
         }}>
           {/* Mobile: back arrow instead of close */}
@@ -684,14 +684,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
             {order.shopify_order_id && !isMobile && (
               <a href={`https://rszevar.myshopify.com/admin/orders/${order.shopify_order_id}`} target="_blank" rel="noopener noreferrer"
-                style={{ background: 'none', border: `1px solid #333`, color: '#555', fontSize: 12, padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
+                style={{ background: 'none', border: `1px solid var(--border2)`, color: '#555', fontSize: 12, padding: '4px 8px', borderRadius: 5, textDecoration: 'none' }}>
                 🔗 Shopify
               </a>
             )}
             {!isPage && !isMobile && (
               <a href={`/orders/${order.id}`} target="_blank" rel="noopener noreferrer"
                 title="Naye tab mein kholo"
-                style={{ background: 'none', border: `1px solid #333`, color: '#888', fontSize: 13, padding: '4px 8px', borderRadius: 5, textDecoration: 'none', lineHeight: 1 }}>
+                style={{ background: 'none', border: `1px solid var(--border2)`, color: '#888', fontSize: 13, padding: '4px 8px', borderRadius: 5, textDecoration: 'none', lineHeight: 1 }}>
                 ↗
               </a>
             )}
@@ -700,7 +700,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
             )}
             {isPage && (
               <a href="/orders"
-                style={{ background: '#1a1a1a', border: `1px solid #333`, color: '#888', fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none' }}>
+                style={{ background: 'var(--bg-section)', border: `1px solid var(--border2)`, color: '#888', fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none' }}>
                 ← Back to Orders
               </a>
             )}
@@ -710,7 +710,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${border}` }}>
           {/* Dual Status Row */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, background: '#111', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
+            <div style={{ flex: 1, background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 8, padding: '10px 14px' }}>
               <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>🏢 Office Status</div>
               <StatusBadge status={order.status} />
             </div>
@@ -735,14 +735,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               const tagBg      = isException ? '#ef444411' : '#8b5cf611';
               const tagBorder  = isException ? '#ef444444' : '#8b5cf633';
               return (
-                <div style={{ flex: 1, background: '#111', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ flex: 1, background: 'var(--bg)', border: `1px solid ${cardBorder}`, borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span>🚚 Courier Status</span>
                     {isException && <span style={{ color: '#ef4444', fontSize: 10 }}>⚠️ Attention</span>}
                   </div>
                   {raw
                     ? <span style={{ color: tagColor, background: tagBg, border: `1px solid ${tagBorder}`, padding: '3px 10px', borderRadius: 5, fontSize: 12, fontWeight: 600 }}>{raw}</span>
-                    : <span style={{ color: '#333', fontSize: 12 }}>Not dispatched yet</span>}
+                    : <span style={{ color: 'var(--border2)', fontSize: 12 }}>Not dispatched yet</span>}
                 </div>
               );
             })()}
@@ -754,7 +754,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               ['Phone', order.customer_phone ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                   <span>{order.customer_phone}</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 10, cursor: 'pointer', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_phone); }} title="Copy number" style={{ background: 'transparent', border: '1px solid var(--border2)', color: '#888', fontSize: 10, cursor: 'pointer', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4, fontFamily: 'inherit' }}>📋</button>
                   <a href={`tel:${order.customer_phone}`} title="Call customer" style={{ background: 'transparent', border: '1px solid #1e3a5f', color: '#3b82f6', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>📞</a>
                   <a href={`https://wa.me/${String(order.customer_phone).replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" title="WhatsApp customer" style={{ background: 'transparent', border: '1px solid #14532d', color: '#22c55e', fontSize: 10, textDecoration: 'none', padding: '1px 6px', borderRadius: 4, lineHeight: 1.4 }}>💬</a>
                 </div>
@@ -774,7 +774,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 <span>Address</span>
                 {order.customer_address && (
                   <>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_address); }} title="Copy address" style={{ background: 'transparent', border: '1px solid #333', color: '#888', fontSize: 9, cursor: 'pointer', padding: '0 6px', borderRadius: 4, lineHeight: 1.6, fontFamily: 'inherit' }}>📋</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(order.customer_address); }} title="Copy address" style={{ background: 'transparent', border: '1px solid var(--border2)', color: '#888', fontSize: 9, cursor: 'pointer', padding: '0 6px', borderRadius: 4, lineHeight: 1.6, fontFamily: 'inherit' }}>📋</button>
                     <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([order.customer_address, order.customer_city].filter(Boolean).join(', '))}`} target="_blank" rel="noopener noreferrer" title="Open in Google Maps" style={{ background: 'transparent', border: '1px solid #1f3a5a', color: '#60a5fa', fontSize: 9, textDecoration: 'none', padding: '0 6px', borderRadius: 4, lineHeight: 1.6 }}>🗺️</a>
                   </>
                 )}
@@ -805,18 +805,18 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                       }
                     }, 300);
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#1a1a1a', borderRadius: 9, padding: '10px 12px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-section)', borderRadius: 9, padding: '10px 12px', cursor: item.sku ? 'pointer' : 'default', transition: 'background 0.15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#252525'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--bg-section)'}
                   title={item.sku ? 'Click to view product page' : ''}
                 >
                   {item.image_url ? (
-                    <img src={item.image_url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 7, flexShrink: 0, border: '1px solid #333' }} />
+                    <img src={item.image_url} alt="" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 7, flexShrink: 0, border: '1px solid var(--border2)' }} />
                   ) : (
                     <div style={{ width: 60, height: 60, borderRadius: 7, background: '#c9a96e22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>💍</div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, color: '#fff', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                    <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 700, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
                     {item.sku && <div style={{ fontSize: 11, color: '#c9a96e99', marginTop: 3 }}>SKU: {item.sku} {item.sku ? '↗' : ''}</div>}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -863,7 +863,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                       {item.image_url ? (
                         <img src={item.image_url} alt="" style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 7, flexShrink: 0, filter: 'grayscale(0.7)' }} />
                       ) : (
-                        <div style={{ width: 50, height: 50, borderRadius: 7, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, opacity: 0.5 }}>📦</div>
+                        <div style={{ width: 50, height: 50, borderRadius: 7, background: 'var(--bg-section)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0, opacity: 0.5 }}>📦</div>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, color: '#aaa', fontWeight: 600, textDecoration: 'line-through', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -932,9 +932,9 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 <div style={{ background: card, border: `1px solid #3b82f644`, borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#3b82f6', marginBottom: 10 }}>✅ Confirm Order</div>
                   <input value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
-                    placeholder="Notes (optional)" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+                    placeholder="Notes (optional)" style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
                   <button onClick={confirm} disabled={loading}
-                    style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
+                    style={{ background: '#3b82f6', color: 'var(--text)', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', width: '100%' }}>
                     {loading ? '...' : '✅ Confirm Order'}
                   </button>
                 </div>
@@ -959,7 +959,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     )}
                   </div>
                   <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
+                    style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: assignedTo ? '#fff' : '#555', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }}>
                     <option value="">— Select Packer —</option>
                     <option value="packing_team">👥 Whole Packing Team (shared credit)</option>
                     {packingStaff.map(e => (
@@ -967,7 +967,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     ))}
                   </select>
                   <button onClick={assignOrder} disabled={loading || !assignedTo}
-                    style={{ background: assignedTo ? '#f59e0b22' : '#1a1a1a', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
+                    style={{ background: assignedTo ? '#f59e0b22' : 'var(--bg-section)', border: `1px solid ${assignedTo ? '#f59e0b' : border}`, color: assignedTo ? '#f59e0b' : '#555', borderRadius: 7, padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: assignedTo ? 'pointer' : 'default', width: '100%', fontFamily: 'inherit' }}>
                     {currentAssignment ? '🔄 Re-Assign Packer' : '✅ Assign Packer'}
                   </button>
                 </div>
@@ -1004,7 +1004,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                       setLoading(false);
                     }}
                     disabled={loading}
-                    style={{ flex: 1, background: '#1a1a1a', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ flex: 1, background: 'var(--bg-section)', border: '1px solid #3b82f644', color: '#3b82f6', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                     ↩️ Unconfirm
                   </button>
                   {s === 'on_packing' && (
@@ -1024,7 +1024,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                         setLoading(false);
                       }}
                       disabled={loading}
-                      style={{ flex: 1, background: '#1a1a1a', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ flex: 1, background: 'var(--bg-section)', border: '1px solid #f59e0b44', color: '#f59e0b', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       👤 Unassign
                     </button>
                   )}
@@ -1101,7 +1101,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
 
                   {/* Show current packed_by if set */}
                   {currentAssignment?.employee ? (
-                    <div style={{ background: '#0a1a0a', border: '1px solid #22c55e33', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
+                    <div style={{ background: 'var(--green-dim)', border: '1px solid #22c55e33', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 12 }}>
                       <span style={{ color: '#555' }}>Packed by: </span>
                       <span style={{ color: '#22c55e', fontWeight: 700 }}>{currentAssignment.employee.name}</span>
                     </div>
@@ -1154,11 +1154,11 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => openCourierBooking('postex', order.shopify_order_id)} disabled={loading}
-                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        style={{ flex: 1, background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                         🚚 PostEx
                       </button>
                       <button onClick={() => openCourierBooking('leopards', order.shopify_order_id)} disabled={loading}
-                        style={{ flex: 1, background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        style={{ flex: 1, background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 8, padding: '9px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                         🚚 Leopards
                       </button>
                     </div>
@@ -1232,7 +1232,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   Aap roles page se Customer Support, Manager, etc. ko grant kar sakte. */}
               {canCancelFulfillment && (order.shopify_fulfillment_id || order.tracking_number || order.dispatched_courier) && s !== 'cancelled' && (
                 <button onClick={cancelFulfillment} disabled={loading}
-                  style={{ background: '#1a1a1a', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
+                  style={{ background: 'var(--bg-section)', border: '1px solid #f59e0b66', color: '#f59e0b', borderRadius: 10, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}>
                   🔄 Cancel Fulfillment (remove tracking)
                 </button>
               )}
@@ -1241,7 +1241,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 <div style={{ background: card, border: '1px solid #330000', borderRadius: 10, padding: '16px' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: '#ef4444', marginBottom: 10 }}>❌ Cancel Order</div>
                   <input value={cancelReason} onChange={e => setCancelReason(e.target.value)}
-                    placeholder="Reason for cancellation" style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
+                    placeholder="Reason for cancellation" style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 12px', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }} />
 
                   {/* May 8 2026 — Force cancel = perm orders.cancel_force.
                       Default: super_admin/admin only. Delegate-able via /roles. */}
@@ -1264,7 +1264,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               )}
 
               {msg && (
-                <div style={{ padding: '10px 14px', background: msg.startsWith('✅') ? '#001a0a' : '#1a0000', borderRadius: 8, border: `1px solid ${msg.startsWith('✅') ? '#003300' : '#330000'}`, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>
+                <div style={{ padding: '10px 14px', background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', borderRadius: 8, border: `1px solid ${msg.startsWith('✅') ? '#003300' : 'var(--red-dim)'}`, fontSize: 12, color: msg.startsWith('✅') ? '#22c55e' : '#ef4444' }}>
                   {msg}
                 </div>
               )}
@@ -1274,7 +1274,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
           {tab === 'timeline' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
               {/* Comment Input */}
-              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+              <div style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 8, fontWeight: 600 }}>💬 Staff Note / Comment</div>
                 <textarea
                   value={commentText}
@@ -1282,14 +1282,14 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment(); }}
                   placeholder="Koi note likhein... (Ctrl+Enter to post)"
                   rows={3}
-                  style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 7, padding: '8px 12px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
+                  style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 7, padding: '8px 12px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', outline: 'none' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                   <span style={{ fontSize: 11, color: '#444' }}>Post karne wale: <span style={{ color: gold }}>{performer || 'Staff'}</span></span>
                   <button
                     onClick={submitComment}
                     disabled={!commentText.trim() || submittingComment}
-                    style={{ background: commentText.trim() ? gold : '#1a1a1a', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
+                    style={{ background: commentText.trim() ? gold : 'var(--bg-section)', color: commentText.trim() ? '#000' : '#444', border: 'none', borderRadius: 7, padding: '7px 18px', fontSize: 12, fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', fontFamily: 'inherit' }}
                   >
                     {submittingComment ? 'Posting...' : '📨 Post'}
                   </button>
@@ -1308,7 +1308,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 });
                 return (<>
               {visibleLog.length === 0 && (
-                <div style={{ color: '#333', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>
+                <div style={{ color: 'var(--border2)', fontSize: 13, textAlign: 'center', padding: '30px 0' }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
                   Koi activity nahi abhi tak
                 </div>
@@ -1325,10 +1325,10 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   if (isComment) {
                     return (
                       <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0' }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginTop: 2 }}>💬</div>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-section)', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginTop: 2 }}>💬</div>
                         <div style={{ flex: 1 }}>
                           <div style={{ background: '#0f1f35', border: '1px solid #1e3a5f', borderRadius: '0 10px 10px 10px', padding: '10px 14px' }}>
-                            <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
+                            <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{l.notes}</div>
                           </div>
                           <div style={{ fontSize: 10, color: '#3a4a5a', marginTop: 4, paddingLeft: 2 }}>
                             {by && <span style={{ color: gold, fontWeight: 600 }}>{by}</span>}
@@ -1379,12 +1379,12 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '6px 0' }}>
                       <div style={{ width: 32, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4 }}>
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: actionColor + '22', border: `1px solid ${actionColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{emoji}</div>
-                        {i < visibleLog.length - 1 && <div style={{ width: 1, height: 18, background: '#1f1f1f', marginTop: 3 }} />}
+                        {i < visibleLog.length - 1 && <div style={{ width: 1, height: 18, background: 'var(--bg-hover)', marginTop: 3 }} />}
                       </div>
                       <div style={{ flex: 1, paddingBottom: 4 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ fontSize: 12, color: actionColor, fontWeight: 600, textTransform: 'capitalize' }}>{actionLabel}</div>
-                          <div style={{ fontSize: 10, color: '#333', flexShrink: 0, marginLeft: 8 }}>{dateStr}</div>
+                          <div style={{ fontSize: 10, color: 'var(--border2)', flexShrink: 0, marginLeft: 8 }}>{dateStr}</div>
                         </div>
                         {l.notes && <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{l.notes}</div>}
                         {(by || byEmail) && <div style={{ fontSize: 10, color: '#444', marginTop: 2 }}>by <span style={{ color: gold }}>{by || byEmail}</span>{by && byEmail && <span style={{ color: '#444' }}> · {byEmail}</span>}</div>}
@@ -1404,7 +1404,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   Pehle yahan read-only card tha aur edit ke liye Actions tab pe
                   alag toggle button tha. Ab Shopify-style: form direct yahan
                   hai, kebab menu se aate hi user can edit. */}
-              <div style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
+              <div style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 10, padding: 16 }}>
                 <div style={{ fontSize: 11, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>👤 Edit Customer Info</span>
                   <span style={{ fontSize: 9, color: '#444', textTransform: 'none', letterSpacing: 0 }}>Save Shopify pe bhi sync hota hai</span>
@@ -1418,7 +1418,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     <div key={key} style={{ gridColumn: key === 'customer_name' ? 'span 2' : 'auto' }}>
                       <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>{lbl}</div>
                       <input value={editForm[key]} onChange={e => setEditForm(f => ({...f, [key]: e.target.value}))}
-                        style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
+                        style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
                     </div>
                   ))}
                 </div>
@@ -1426,13 +1426,13 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Shipping Address</div>
                   <textarea value={editForm.customer_address} onChange={e => setEditForm(f => ({...f, customer_address: e.target.value}))}
                     rows={2}
-                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 10, color: '#666', marginBottom: 4 }}>Edit Reason (audit log mein save hoga)</div>
                   <input value={editForm.notes} onChange={e => setEditForm(f => ({...f, notes: e.target.value}))}
                     placeholder="e.g. Customer ne address change kaha"
-                    style={{ width: '100%', background: '#1a1a1a', border: `1px solid ${border}`, color: '#fff', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: `1px solid ${border}`, color: 'var(--text)', borderRadius: 6, padding: '8px 10px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }} />
                 </div>
                 <button onClick={saveEdit} disabled={loading}
                   style={{ width: '100%', background: '#f59e0b', color: '#000', border: 'none', borderRadius: 7, padding: '10px', fontSize: 13, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: loading ? 0.5 : 1 }}>
@@ -1444,7 +1444,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>Tags</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {order.tags.map((tag, ti) => (
-                        <span key={ti} style={{ background: '#1f1f1f', border: '1px solid #333', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
+                        <span key={ti} style={{ background: 'var(--bg-hover)', border: '1px solid var(--border2)', color: '#888', padding: '2px 9px', borderRadius: 5, fontSize: 11 }}>{tag}</span>
                       ))}
                     </div>
                   </div>
@@ -1458,7 +1458,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 </div>
                 {customerOrdersLoading && <div style={{ color: '#444', fontSize: 13, textAlign: 'center', padding: 20 }}>Loading...</div>}
                 {!customerOrdersLoading && customerOrders.length === 0 && (
-                  <div style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: 20 }}>Koi purana order nahi mila</div>
+                  <div style={{ color: 'var(--border2)', fontSize: 12, textAlign: 'center', padding: 20 }}>Koi purana order nahi mila</div>
                 )}
                 {!customerOrdersLoading && customerOrders.map(co => {
                   const coStatus = STATUS_CONFIG[co.status] || STATUS_CONFIG.pending;
@@ -1467,7 +1467,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                     <div
                       key={co.id}
                       onClick={() => { onClose(); setTimeout(() => window.dispatchEvent(new CustomEvent('openOrder', { detail: co })), 200); }}
-                      style={{ background: '#111', border: `1px solid ${border}`, borderRadius: 9, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                      style={{ background: 'var(--bg)', border: `1px solid ${border}`, borderRadius: 9, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', transition: 'border-color 0.15s' }}
                       onMouseEnter={e => e.currentTarget.style.borderColor = gold + '66'}
                       onMouseLeave={e => e.currentTarget.style.borderColor = border}
                     >
@@ -1492,7 +1492,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
       {/* ── Kangaroo Booking Modal ── */}
       {showKangarooModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#111', border: '1px solid #f59e0b44', borderRadius: 14, padding: 28, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid #f59e0b44', borderRadius: 14, padding: 28, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#f59e0b' }}>🦘 Book via Kangaroo</div>
               <button onClick={() => setShowKangarooModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -1502,7 +1502,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
               <div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Order Type</div>
                 <select value={kangarooForm.ordertype} onChange={e => setKangarooForm(f => ({...f, ordertype: e.target.value}))}
-                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}>
                   <option value="COD">COD</option>
                   <option value="Replacement">Replacement</option>
                   <option value="Voucher">Voucher</option>
@@ -1520,25 +1520,25 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
                   <input type={type} value={kangarooForm[key]} onChange={e => setKangarooForm(f => ({...f, [key]: e.target.value}))}
                     placeholder={placeholder}
-                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
                 </div>
               ))}
               <div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
                 <textarea value={kangarooForm.address} onChange={e => setKangarooForm(f => ({...f, address: e.target.value}))}
                   rows={2} placeholder="Customer ka address"
-                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (optional)</div>
                 <input value={kangarooForm.notes} onChange={e => setKangarooForm(f => ({...f, notes: e.target.value}))}
                   placeholder="e.g. Earrings Set, handle with care..."
-                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
               </div>
 
-              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
 
-              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+              <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
                 ⚠️ Submit karne se: Kangaroo pe booking hogi → ERP mein dispatched mark hoga → Shopify fulfill hoga tracking ke saath
               </div>
 
@@ -1548,7 +1548,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   {loading ? '⏳ Booking...' : '🦘 Confirm & Book'}
                 </button>
                 <button onClick={() => setShowKangarooModal(false)}
-                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Cancel
                 </button>
               </div>
@@ -1560,7 +1560,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
       {/* ── Leopards Booking Modal ── */}
       {showLeopardsModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#111', border: '1px solid #e87d4444', borderRadius: 14, padding: 28, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid #e87d4444', borderRadius: 14, padding: 28, width: '100%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#e87d44' }}>🐆 Book via Leopards</div>
               <button onClick={() => setShowLeopardsModal(false)} style={{ background: 'none', border: 'none', color: '#555', fontSize: 22, cursor: 'pointer' }}>✕</button>
@@ -1575,34 +1575,34 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                 <div key={key}>
                   <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>{label}</div>
                   <input type={type} value={leopardsForm[key]} onChange={e => setLeopardsForm(f => ({...f, [key]: e.target.value}))}
-                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
                 </div>
               ))}
               <div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Address</div>
                 <textarea value={leopardsForm.address} onChange={e => setLeopardsForm(f => ({...f, address: e.target.value}))}
-                  rows={2} style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
+                  rows={2} style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Weight (grams)</div>
                   <input type="number" value={leopardsForm.weight} onChange={e => setLeopardsForm(f => ({...f, weight: e.target.value}))}
-                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Pieces</div>
                   <input type="number" value={leopardsForm.pieces} onChange={e => setLeopardsForm(f => ({...f, pieces: e.target.value}))}
-                    style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                    style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 5, fontFamily: 'monospace', letterSpacing: 0.5 }}>Special Instructions (auto order items se bharega)</div>
                 <input value={leopardsForm.notes} onChange={e => setLeopardsForm(f => ({...f, notes: e.target.value}))}
                   placeholder="Leave empty for auto order items..."
-                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#ddd', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
               </div>
-              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? '#1a2a1a' : '#2a1a1a', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
-              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
+              {msg && <div style={{ padding: '10px 14px', borderRadius: 8, background: msg.startsWith('✅') ? 'var(--green-dim)' : 'var(--red-dim)', color: msg.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 13 }}>{msg}</div>}
+              <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, fontSize: 12, color: '#666' }}>
                 ⚠️ Submit karne se: Leopards pe booking hogi → ERP dispatched → Shopify fulfilled
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -1611,7 +1611,7 @@ export default function OrderDrawer({ order, onClose, onRefresh, performer, vari
                   {loading ? '⏳ Booking...' : '🐆 Confirm & Book'}
                 </button>
                 <button onClick={() => setShowLeopardsModal(false)}
-                  style={{ background: '#1e1e1e', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', color: '#666', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Cancel
                 </button>
               </div>
