@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { UserContext } from '@/context/UserContext';
+import { useTheme } from '../app/context/ThemeContext';
 import { createClient } from '@/lib/supabase/client';
 import AIAdvisorFloat from './AIAdvisorFloat';
 
@@ -107,6 +108,12 @@ function AuthenticatedShell({ pathname, router, children }) {
   const [profile, setProfile] = useState(null);
   const [permissions, setPermissions] = useState(new Set());
   const [authLoading, setAuthLoading] = useState(true);
+
+  // ── Theme (Dark / Light) ─────────────────────────────────────────────────
+  // useTheme() returns { theme, toggleTheme, setTheme } from ThemeContext.
+  // Provider is mounted in app/layout.js wrapping <AppShell>, so this hook
+  // is safe to call here. Used by the toggle button in the user footer.
+  const { theme, toggleTheme } = useTheme();
 
   // ── Sidebar nesting state (May 6 2026) ──
   // Tracks which parent modules are currently expanded (children visible).
@@ -454,7 +461,7 @@ function AuthenticatedShell({ pathname, router, children }) {
         {isMobile && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, height: 52,
-            background: 'rgba(13,22,38,0.97)',
+            background: theme === 'light' ? 'rgba(250,247,240,0.97)' : 'rgba(13,22,38,0.97)',
             borderBottom: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', padding: '0 14px', gap: 12,
             zIndex: 200, backdropFilter: 'blur(10px)',
@@ -488,7 +495,7 @@ function AuthenticatedShell({ pathname, router, children }) {
             peeche chhup jata. Desktop pe z-index 150 hi theek hai (modals ~1000). */}
         <aside style={{
           width: isMobile ? 260 : (sidebarOpen ? 224 : 60),
-          background: 'linear-gradient(180deg, #0d1626 0%, #091220 100%)',
+          background: 'linear-gradient(180deg, var(--bg2) 0%, var(--bg) 100%)',
           borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column',
           transition: isMobile ? 'transform 0.25s ease' : 'width 0.2s ease',
@@ -657,6 +664,36 @@ function AuthenticatedShell({ pathname, router, children }) {
             })}
           </nav>
 
+          {/* Collapsed-state theme toggle — sirf desktop collapsed sidebar mein
+              dikhe ga. Mobile aur expanded sidebar mein wala toggle user footer
+              ke andar render hota hai (logout button ke right). */}
+          {!sidebarOpen && !isMobile && (
+            <div style={{
+              padding: '12px 0',
+              borderTop: '1px solid var(--border)',
+              display: 'flex', justifyContent: 'center',
+              background: 'rgba(74,130,216,0.04)',
+            }}>
+              <button
+                onClick={toggleTheme}
+                title={theme === 'light' ? 'Dark mode' : 'Light mode'}
+                style={{
+                  background: theme === 'light' ? 'rgba(201,169,110,0.15)' : 'rgba(74,130,216,0.12)',
+                  border: theme === 'light'
+                    ? '1px solid rgba(201,169,110,0.45)'
+                    : '1px solid rgba(74,130,216,0.4)',
+                  color: theme === 'light' ? 'var(--gold)' : 'var(--sapphire)',
+                  width: 32, height: 32,
+                  borderRadius: 'var(--radius)', cursor: 'pointer',
+                  fontSize: 14,
+                  fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}>
+                {theme === 'light' ? '🌙' : '☀'}
+              </button>
+            </div>
+          )}
+
           {/* User Footer — Mobile pe safe-area-bottom (iPhone home indicator space)
               + bigger logout button touch target */}
           {(sidebarOpen || isMobile) && profile && (
@@ -684,6 +721,24 @@ function AuthenticatedShell({ pathname, router, children }) {
                     {(profile.role || '').replace(/_/g, ' ')}
                   </div>
                 </div>
+                <button
+                  onClick={toggleTheme}
+                  title={theme === 'light' ? 'Dark mode pe switch karo' : 'Light mode pe switch karo'}
+                  style={{
+                    background: theme === 'light' ? 'rgba(201,169,110,0.15)' : 'rgba(74,130,216,0.12)',
+                    border: theme === 'light'
+                      ? '1px solid rgba(201,169,110,0.45)'
+                      : '1px solid rgba(74,130,216,0.4)',
+                    color: theme === 'light' ? 'var(--gold)' : 'var(--sapphire)',
+                    width: isMobile ? 40 : 28,
+                    height: isMobile ? 40 : 28,
+                    borderRadius: 'var(--radius)', cursor: 'pointer',
+                    fontSize: isMobile ? 16 : 13,
+                    fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, transition: 'all 0.15s',
+                  }}>
+                  {theme === 'light' ? '🌙' : '☀'}
+                </button>
                 <button onClick={handleLogout} title="Sign out" style={{
                   background: 'rgba(248,113,113,0.1)',
                   border: '1px solid rgba(248,113,113,0.4)',
