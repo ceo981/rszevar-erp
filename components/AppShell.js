@@ -759,7 +759,7 @@ function AuthenticatedShell({ pathname, router, children }) {
               first-login name setup). */}
           {profile && showProfileModal && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ background: '#111', border: '1px solid #2a2a2a', borderRadius: 12, padding: 24, width: 340 }}>
+              <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 340 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#c9a96e', marginBottom: 6 }}>
                   {!profile?.full_name ? '👋 Welcome — Naam set karo' : '✏️ Profile Update'}
                 </div>
@@ -770,7 +770,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 6, marginTop: profile?.full_name ? 10 : 0 }}>Email (change nahi hoga)</div>
-                <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
+                <div style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', borderRadius: 7, padding: '8px 12px', fontSize: 13, color: '#555', marginBottom: 12 }}>{user?.email}</div>
                 <div style={{ fontSize: 11, color: '#555', marginBottom: 6 }}>Full Name</div>
                 <input
                   value={profileNameInput}
@@ -779,7 +779,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                   placeholder="e.g. Sharjeel Ahmed"
                   autoFocus
                   maxLength={80}
-                  style={{ width: '100%', background: '#1a1a1a', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: '#fff', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
+                  style={{ width: '100%', background: 'var(--bg-section)', border: '1px solid #c9a96e', borderRadius: 7, padding: '9px 12px', fontSize: 13, color: 'var(--text)', boxSizing: 'border-box', outline: 'none', marginBottom: 14 }}
                 />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={saveProfileName} disabled={profileSaving || !profileNameInput.trim()}
@@ -789,7 +789,7 @@ function AuthenticatedShell({ pathname, router, children }) {
                   {/* Cancel is only shown if user already has a name (i.e., they're just editing) */}
                   {profile?.full_name && (
                     <button onClick={() => setShowProfileModal(false)}
-                      style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
+                      style={{ background: 'var(--bg-section)', border: '1px solid var(--border)', color: '#555', borderRadius: 7, padding: '9px 14px', fontSize: 13, cursor: 'pointer' }}>
                       Cancel
                     </button>
                   )}
