@@ -38,9 +38,9 @@ import Link from 'next/link';
 
 // ─── Style constants (matches OrderDrawer palette) ──────────────────────────
 const gold   = '#c9a96e';
-const card   = '#141414';
-const border = '#222';
-const bg     = '#0a0a0a';
+const card   = 'var(--bg-card)';
+const border = 'var(--border)';
+const bg     = 'var(--bg)';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -140,7 +140,7 @@ function CopyField({ label, value, multiline = false, warning, sublabel, isStati
           {sublabel && <span style={{ color: '#555', marginLeft: 6, fontWeight: 400 }}>{sublabel}</span>}
         </label>
         {isStatic && (
-          <span style={{ fontSize: 10, color: '#666', background: '#1a1a1a', padding: '1px 6px', borderRadius: 3 }}>
+          <span style={{ fontSize: 10, color: '#666', background: 'var(--bg-section)', padding: '1px 6px', borderRadius: 3 }}>
             static
           </span>
         )}
@@ -149,7 +149,7 @@ function CopyField({ label, value, multiline = false, warning, sublabel, isStati
         <div style={{
           flex: 1,
           background: isEmpty ? '#0d0d0d' : '#181818',
-          border: `1px solid ${warning ? '#7c2d12' : (isEmpty ? '#222' : '#2a2a2a')}`,
+          border: `1px solid ${warning ? '#7c2d12' : (isEmpty ? 'var(--border)' : 'var(--border)')}`,
           borderRadius: 6,
           padding: multiline ? '10px 12px' : '9px 12px',
           color: isEmpty ? '#555' : '#e8e8e8',
@@ -170,7 +170,7 @@ function CopyField({ label, value, multiline = false, warning, sublabel, isStati
           disabled={isEmpty || isStatic}
           title={isStatic ? 'Static value — type manually in Kangaroo' : 'Copy to clipboard'}
           style={{
-            background: copied ? '#15803d' : (isEmpty || isStatic ? '#1a1a1a' : gold),
+            background: copied ? '#15803d' : (isEmpty || isStatic ? 'var(--bg-section)' : gold),
             color: copied ? '#fff' : (isEmpty || isStatic ? '#555' : '#000'),
             border: `1px solid ${copied ? '#15803d' : (isEmpty || isStatic ? border : gold)}`,
             borderRadius: 6,
@@ -228,7 +228,7 @@ export default function BookKangarooPage() {
 
   if (error || !order) {
     return (
-      <div style={{ minHeight: '100vh', background: bg, color: '#fff', padding: 24 }}>
+      <div style={{ minHeight: '100vh', background: bg, color: 'var(--text)', padding: 24 }}>
         <div style={{ maxWidth: 600, margin: '60px auto', textAlign: 'center' }}>
           <div style={{ color: '#f87171', fontSize: 16, marginBottom: 16 }}>
             {error || 'Order not found'}
