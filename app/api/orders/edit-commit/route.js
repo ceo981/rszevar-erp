@@ -23,7 +23,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { commitOrderEdit } from '@/lib/shopify-order-edit';
-import { fetchOrder, transformLineItems } from '@/lib/shopify';
+import { fetchOrder, transformLineItems, buildImageLookupMaps } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -67,20 +67,11 @@ async function resyncOrderFromShopify(orderRow) {
   const discount = parseFloat(so.current_total_discounts ?? so.total_discounts ?? 0);
   const total = parseFloat(so.current_total_price ?? so.total_price ?? 0);
 
-  // Pre-fetch SKU → image map (same pattern as webhook)
-  let skuImageMap = {};
-  try {
-    const { data: productImages } = await supabase
-      .from('products')
-      .select('sku, image_url')
-      .not('sku', 'is', null)
-      .not('image_url', 'is', null);
-    for (const p of productImages || []) {
-      if (p.sku && p.image_url && !skuImageMap[p.sku]) skuImageMap[p.sku] = p.image_url;
-    }
-  } catch {}
+  // Pre-fetch image lookup maps (same pattern as webhook).
+  // FIX May 2026 — Both sku + variant_id maps (variant_id-aware lookup).
+  const { skuImageMap, variantImageMap } = await buildImageLookupMaps(supabase);
 
-  const newItems = transformLineItems(so, skuImageMap).map(i => ({
+  const newItems = transformLineItems(so, skuImageMap, variantImageMap).map(i => ({
     ...i,
     order_id: orderRow.id,
   }));
