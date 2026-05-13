@@ -6,13 +6,15 @@
 // Does NOT commit — the real order is untouched until /edit-commit.
 //
 // Supported actions:
-//   - set_quantity   { line_item_id, quantity, restock? }
-//   - add_variant    { variant_id, quantity }
-//   - add_custom     { title, price, quantity, taxable?, requires_shipping? }
-//   - add_discount   { line_item_id, discount_type, discount_value, description? }
-//   - update_ship    { shipping_line_id, price, fallback_title? }
-//   - add_ship       { title, price }   ← NEW (May 2 2026): shipping line jab order pe nahi
-//   - remove_ship    { shipping_line_id } ← NEW (May 8 2026): shipping line hatane ke liye
+//   - set_quantity    { line_item_id, quantity, restock? }
+//   - add_variant     { variant_id, quantity }
+//   - add_custom      { title, price, quantity, taxable?, requires_shipping? }
+//   - add_discount    { line_item_id, discount_type, discount_value, description? }
+//   - update_discount { discount_application_id, discount_type, discount_value, description? }  ← May 13 2026
+//   - remove_discount { discount_application_id }                                                ← May 13 2026
+//   - update_ship     { shipping_line_id, price, fallback_title? }
+//   - add_ship        { title, price }   ← NEW (May 2 2026): shipping line jab order pe nahi
+//   - remove_ship     { shipping_line_id } ← NEW (May 8 2026): shipping line hatane ke liye
 //
 // Returns the updated calculatedOrder state (normalized).
 //
@@ -31,6 +33,8 @@ import {
   stageAddVariant,
   stageAddCustomItem,
   stageAddLineDiscount,
+  stageUpdateDiscount,
+  stageRemoveDiscount,
   stageUpdateShipping,
   stageAddShipping,
   stageRemoveShipping,
@@ -88,6 +92,29 @@ export async function POST(request) {
           discount_type: params.discount_type,
           discount_value: Number(params.discount_value),
           description: params.description,
+        });
+        break;
+
+      // May 13 2026 — Update an existing line item discount (manual application).
+      // Used when a line item already has a discount (committed from prior edit
+      // or staged in current session) and the user wants to change its value.
+      // Shopify rejects orderEditAddLineItemDiscount in that scenario; this is
+      // the correct path.
+      case 'update_discount':
+        updated = await stageUpdateDiscount({
+          calculated_order_id,
+          discount_application_id: params.discount_application_id,
+          discount_type: params.discount_type,
+          discount_value: Number(params.discount_value),
+          description: params.description,
+        });
+        break;
+
+      // May 13 2026 — Remove an existing line item discount (manual application).
+      case 'remove_discount':
+        updated = await stageRemoveDiscount({
+          calculated_order_id,
+          discount_application_id: params.discount_application_id,
         });
         break;
 
