@@ -679,6 +679,24 @@ export default function OrderEditPage() {
   };
 
   const applyDiscount = async (item, payload) => {
+    // May 13 2026 — If line item already has an editable (Manual) discount
+    // allocation (from prior committed edit OR same session staged), Shopify
+    // rejects orderEditAddLineItemDiscount with "The order has a discount
+    // which prevents applying additional discounts to this line item." The
+    // correct path is orderEditUpdateDiscount. Route accordingly.
+    if (item.existing_discount_application_id && item.existing_discount_is_editable) {
+      await stage('update_discount', {
+        discount_application_id: item.existing_discount_application_id,
+        discount_type: payload.discount_type,
+        discount_value: payload.discount_value,
+        description: payload.description,
+        // Hint for rebuild-replay fallback (discount_application_id is not stable
+        // across begin sessions; line_item_id IS stable for original items).
+        _hint_line_item_id: item.id,
+      }, 'Discount apply ho raha hai...');
+      return;
+    }
+    // No existing allocation → use the Add mutation as before.
     await stage('add_discount', {
       line_item_id: item.id,
       discount_type: payload.discount_type,
@@ -808,13 +826,53 @@ export default function OrderEditPage() {
     setBusyMsg('');
   }, [calcOrder, id, stagedOps, userEmail]);
 
-  const editLineDiscount = (item, payload) => {
-    return rebuildWithoutItemDiscount(item, payload);
+  const editLineDiscount = async (item, payload) => {
+    // May 13 2026 — Direct update via orderEditUpdateDiscount.
+    // Previously routed through rebuild-and-replay because we had no way to
+    // address the existing discount, so we discarded the session and rebuilt.
+    // Now that the calculated order surfaces `existing_discount_application_id`
+    // for both staged and committed discounts, we can update in-place. Much
+    // simpler, faster, and preserves all other staged changes (qty, shipping)
+    // without any replay risk.
+    if (!item.existing_discount_application_id) {
+      // No application ID known — fall back to legacy rebuild-replay path,
+      // which discards session and re-applies all ops cleanly.
+      return rebuildWithoutItemDiscount(item, payload);
+    }
+    if (!item.existing_discount_is_editable) {
+      alert(
+        `Yeh discount Shopify checkout pe laga tha (discount code ya automatic).\n` +
+        `API se ise edit nahi kiya ja sakta. Shopify Admin pe direct adjust karein.`,
+      );
+      return;
+    }
+    await stage('update_discount', {
+      discount_application_id: item.existing_discount_application_id,
+      discount_type: payload.discount_type,
+      discount_value: payload.discount_value,
+      description: payload.description,
+      _hint_line_item_id: item.id,
+    }, 'Discount update ho raha hai...');
   };
 
-  const removeLineDiscount = (item) => {
-    if (!window.confirm(`"${item.title}" se discount hata dein?\n\nNote: Iss item ka purana discount remove ho jayega aur baki saari staged changes preserve rahengi.`)) return;
-    rebuildWithoutItemDiscount(item, null);
+  const removeLineDiscount = async (item) => {
+    if (!window.confirm(`"${item.title}" se discount hata dein?`)) return;
+    // May 13 2026 — Direct remove via orderEditRemoveDiscount.
+    if (!item.existing_discount_application_id) {
+      // No application ID known — fall back to legacy rebuild-replay path.
+      return rebuildWithoutItemDiscount(item, null);
+    }
+    if (!item.existing_discount_is_editable) {
+      alert(
+        `Yeh discount Shopify checkout pe laga tha (discount code ya automatic).\n` +
+        `API se ise remove nahi kiya ja sakta. Shopify Admin pe direct hatayen.`,
+      );
+      return;
+    }
+    await stage('remove_discount', {
+      discount_application_id: item.existing_discount_application_id,
+      _hint_line_item_id: item.id,
+    }, 'Discount remove ho raha hai...');
   };
 
   const applyShipping = (sl) => {
@@ -1074,29 +1132,49 @@ export default function OrderEditPage() {
                         )}
                         {!locked && (
                           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                            {/* May 2026 — Edit/Remove discount controls.
-                                When item has_discount: button label switches to
-                                "✏ Edit Discount" + a "✕ Remove" appears.
-                                Click flow uses rebuild-and-replay (see
-                                rebuildWithoutItemDiscount) since Shopify has no
-                                public mutation to remove/replace a line discount. */}
-                            <button onClick={() => setDiscountFor(item)} disabled={busy} style={{
-                              background: item.has_discount ? 'rgba(125,200,138,0.08)' : 'transparent',
-                              border: `1px solid ${item.has_discount ? 'rgba(125,200,138,0.35)' : border}`,
-                              color: item.has_discount ? '#7dc88a' : '#aaa',
-                              borderRadius: 4, padding: '3px 8px',
-                              fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
-                              fontFamily: 'inherit',
-                            }}>{item.has_discount ? '✏ Edit Discount' : '+ Discount'}</button>
-                            {item.has_discount && (
-                              <button onClick={() => removeLineDiscount(item)} disabled={busy} style={{
-                                background: 'transparent',
-                                border: `1px solid rgba(248,113,113,0.35)`,
-                                color: '#f87171',
+                            {/* May 2026 / May 13 2026 — Edit/Remove discount controls.
+                                When item has_discount with editable Manual application:
+                                  "✏ Edit Discount" + "✕ Remove discount" both shown.
+                                When item has_discount but discount is from checkout
+                                  (CalculatedDiscountCodeApplication / Automatic):
+                                  show "🔒 Shopify discount" non-clickable label —
+                                  Shopify API doesn't allow editing these.
+                                When item has no discount:
+                                  "+ Discount" alone.
+                                Edit/Remove flows use orderEditUpdateDiscount /
+                                orderEditRemoveDiscount directly (no rebuild needed). */}
+                            {item.has_discount && !item.existing_discount_is_editable ? (
+                              <div style={{
+                                background: 'rgba(232,167,109,0.08)',
+                                border: '1px solid rgba(232,167,109,0.25)',
+                                color: '#e8a76d',
                                 borderRadius: 4, padding: '3px 8px',
-                                fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
-                                fontFamily: 'inherit',
-                              }}>✕ Remove discount</button>
+                                fontSize: 11,
+                                display: 'inline-flex', alignItems: 'center',
+                              }} title="Shopify checkout discount — API se edit nahi ho sakta">
+                                🔒 Shopify discount
+                              </div>
+                            ) : (
+                              <>
+                                <button onClick={() => setDiscountFor(item)} disabled={busy} style={{
+                                  background: item.has_discount ? 'rgba(125,200,138,0.08)' : 'transparent',
+                                  border: `1px solid ${item.has_discount ? 'rgba(125,200,138,0.35)' : border}`,
+                                  color: item.has_discount ? '#7dc88a' : '#aaa',
+                                  borderRadius: 4, padding: '3px 8px',
+                                  fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
+                                  fontFamily: 'inherit',
+                                }}>{item.has_discount ? '✏ Edit Discount' : '+ Discount'}</button>
+                                {item.has_discount && (
+                                  <button onClick={() => removeLineDiscount(item)} disabled={busy} style={{
+                                    background: 'transparent',
+                                    border: `1px solid rgba(248,113,113,0.35)`,
+                                    color: '#f87171',
+                                    borderRadius: 4, padding: '3px 8px',
+                                    fontSize: 11, cursor: busy ? 'not-allowed' : 'pointer',
+                                    fontFamily: 'inherit',
+                                  }}>✕ Remove discount</button>
+                                )}
+                              </>
                             )}
                             <button onClick={() => removeItem(item)} disabled={busy} style={btnDanger}>
                               🗑 Remove
@@ -1282,11 +1360,20 @@ export default function OrderEditPage() {
         <CustomItemModal onClose={() => setShowCustom(false)} onAdd={addCustomItem} />
       )}
       {discountFor && (() => {
-        // For items with existing discount: pre-fill the modal with current
-        // per-line discount and route apply through rebuild-and-replay.
-        const existingDisc = discountFor.has_discount ? Math.max(0,
+        // May 13 2026 — Prefer the explicit `existing_discount_amount` from
+        // Shopify's calculatedDiscountAllocations (server-side computed,
+        // exact). Fall back to (unit_price × qty − line_total) when not
+        // present, e.g. legacy paths or weird edge cases.
+        const fromServer = parseFloat(discountFor.existing_discount_amount);
+        const fromDiff = Math.max(0,
           (parseFloat(discountFor.unit_price) || 0) * (discountFor.quantity || 0) -
-          (parseFloat(discountFor.line_total) || 0)) : 0;
+          (parseFloat(discountFor.line_total) || 0));
+        const existingDisc = discountFor.has_discount
+          ? (Number.isFinite(fromServer) && fromServer > 0 ? fromServer : fromDiff)
+          : 0;
+        // Routing: any item with an existing allocation goes through edit
+        // (which itself routes to update_discount when application_id is
+        // present and editable). New items use add_discount.
         return (
           <DiscountModal
             item={discountFor}
