@@ -1,38 +1,40 @@
 // ============================================================================
-// RS ZEVAR ERP — Rebuild Order Edit Session (Replay)
-// POST /api/orders/edit-rebuild
-//   { order_id, ops: [{action, params}, ...], performed_by_email }
+// RS ZEVAR ERP — Stage Order Edit Change
+// POST /api/orders/edit-stage  { calculated_order_id, action, ...params }
 // ----------------------------------------------------------------------------
-// Discards the current calculatedOrder draft and starts a fresh one, then
-// replays the provided ops in order. Used to "edit" or "remove" a per-line
-// discount — Shopify's public Order Editing API has no remove/replace mutation
-// for line item discounts, so the only safe path is rebuild-from-scratch.
-// Same approach Shopify Admin uses internally.
+// Routes a single staged edit to the appropriate Shopify mutation.
+// Does NOT commit — the real order is untouched until /edit-commit.
 //
-// Caller responsibility: filter out the ops you DON'T want replayed (e.g. the
-// old discount op for the item being edited/removed) before sending.
+// Supported actions:
+//   - set_quantity    { line_item_id, quantity, restock? }
+//   - add_variant     { variant_id, quantity }
+//   - add_custom      { title, price, quantity, taxable?, requires_shipping? }
+//   - add_discount    { line_item_id, discount_type, discount_value, description? }
+//   - update_discount { discount_application_id, discount_type, discount_value, description? }  ← May 13 2026
+//   - remove_discount { discount_application_id }                                                ← May 13 2026
+//   - update_ship     { shipping_line_id, price, fallback_title? }
+//   - add_ship        { title, price }   ← NEW (May 2 2026): shipping line jab order pe nahi
+//   - remove_ship     { shipping_line_id } ← NEW (May 8 2026): shipping line hatane ke liye
 //
-// ID mapping:
-//   - Original line items (existed pre-edit): IDs are stable across
-//     orderEditBegin sessions, so set_quantity / add_discount on them
-//     replay verbatim.
-//   - Added items via add_variant / add_custom: new IDs each session. We
-//     diff items list before/after each replay step to capture the new ID,
-//     and rewrite subsequent ops' line_item_id via a translation map.
-//   - Shipping lines added via add_ship: same mapping logic.
+// Returns the updated calculatedOrder state (normalized).
 //
-// Returns the new calculatedOrder + the new calculated_order_id (which the
-// frontend must use for all subsequent stage/commit calls).
+// May 8 2026 — fallback_title for update_ship:
+//   Shopify ki rule ke mutabiq, "committed" shipping lines (jo edit session se
+//   pehle order pe thi) ko orderEditUpdateShippingLine update nahi kar sakta.
+//   stageUpdateShipping internally fallback karta hai remove+add pe — but uske
+//   liye new shipping line ka title chahiye. Frontend pass karta hai sl.title
+//   ko fallback_title ke roop mein, taa-ke "Free Shipping" jaisa naam preserve
+//   rahe replacement line pe bhi.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import {
-  beginOrderEdit,
   stageSetQuantity,
   stageAddVariant,
   stageAddCustomItem,
   stageAddLineDiscount,
+  stageUpdateDiscount,
+  stageRemoveDiscount,
   stageUpdateShipping,
   stageAddShipping,
   stageRemoveShipping,
@@ -41,216 +43,115 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-);
-
-const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'on_packing', 'packed', 'hold']);
-const ALLOWED_ROLES    = new Set(['super_admin', 'admin', 'manager', 'customer_support']);
-
-async function checkRole(email) {
-  if (!email) return null;
-  const { data } = await supabase.from('profiles').select('role').eq('email', email).single();
-  return data?.role || null;
-}
-
-// Translate an old line_item_id through the mapping. If no mapping (i.e. it's
-// an original line item ID, stable across sessions), return as-is.
-function mapLineId(map, oldId) {
-  if (!oldId) return oldId;
-  return map.get(oldId) || oldId;
-}
-
-// After a stage call, find the line_item_id that's NEW vs the previous state.
-// Used to capture the ID of items added via add_variant / add_custom.
-function findNewLineId(beforeIds, afterItems) {
-  for (const it of afterItems || []) {
-    if (it.id && !beforeIds.has(it.id)) return it.id;
-  }
-  return null;
-}
-
-function findNewShippingId(beforeIds, afterLines) {
-  for (const sl of afterLines || []) {
-    if (sl.id && !beforeIds.has(sl.id)) return sl.id;
-  }
-  return null;
-}
-
 export async function POST(request) {
   try {
-    const { order_id, ops, performed_by_email } = await request.json();
+    const body = await request.json();
+    const { calculated_order_id, action, ...params } = body;
 
-    if (!order_id) {
-      return NextResponse.json({ success: false, error: 'order_id required' }, { status: 400 });
+    if (!calculated_order_id) {
+      return NextResponse.json({ success: false, error: 'calculated_order_id required' }, { status: 400 });
     }
-    if (!Array.isArray(ops)) {
-      return NextResponse.json({ success: false, error: 'ops array required' }, { status: 400 });
-    }
-
-    // Permission check
-    if (performed_by_email) {
-      const role = await checkRole(performed_by_email);
-      if (role && !ALLOWED_ROLES.has(role)) {
-        return NextResponse.json(
-          { success: false, error: `Role '${role}' ko order edit ki permission nahi hai` },
-          { status: 403 },
-        );
-      }
+    if (!action) {
+      return NextResponse.json({ success: false, error: 'action required' }, { status: 400 });
     }
 
-    const { data: order, error: fetchErr } = await supabase
-      .from('orders')
-      .select('id, order_number, status, shopify_order_id, payment_status')
-      .eq('id', order_id)
-      .single();
+    let updated;
+    switch (action) {
+      case 'set_quantity':
+        updated = await stageSetQuantity({
+          calculated_order_id,
+          line_item_id: params.line_item_id,
+          quantity: Number(params.quantity),
+          restock: params.restock !== false, // default true
+        });
+        break;
 
-    if (fetchErr || !order) {
-      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
-    }
-    if (!order.shopify_order_id) {
-      return NextResponse.json(
-        { success: false, error: 'Manual order (no Shopify link) — rebuild not supported' },
-        { status: 400 },
-      );
-    }
-    if (!ALLOWED_STATUSES.has(order.status)) {
-      return NextResponse.json(
-        { success: false, error: `Status '${order.status}' edit nahi ho sakta` },
-        { status: 400 },
-      );
-    }
-    if (order.payment_status === 'refunded') {
-      return NextResponse.json(
-        { success: false, error: 'Refunded order edit nahi ho sakta' },
-        { status: 400 },
-      );
-    }
+      case 'add_variant':
+        updated = await stageAddVariant({
+          calculated_order_id,
+          variant_id: params.variant_id,
+          quantity: Number(params.quantity) || 1,
+        });
+        break;
 
-    // 1. Begin a fresh calculated order — this discards the previous staged state.
-    let calc = await beginOrderEdit(order.shopify_order_id);
-    const lineIdMap = new Map();   // old_line_id → new_line_id (for added items)
-    const shipIdMap = new Map();   // old_ship_id → new_ship_id (for added shipping)
+      case 'add_custom':
+        updated = await stageAddCustomItem({
+          calculated_order_id,
+          title: params.title,
+          price: params.price,
+          quantity: Number(params.quantity) || 1,
+          taxable: !!params.taxable,
+          requires_shipping: params.requires_shipping !== false, // default true
+        });
+        break;
 
-    // 2. Replay ops sequentially. Skip silently on errors per-op so a single
-    // failure (e.g. variant out of stock now) doesn't lose the rest of the
-    // user's work. Failed ops are reported in the response.
-    const replayErrors = [];
-    let opIdx = 0;
-    for (const op of ops) {
-      opIdx += 1;
-      const { action, params } = op || {};
-      if (!action || !params) {
-        replayErrors.push({ idx: opIdx, action, error: 'invalid op shape' });
-        continue;
-      }
+      case 'add_discount':
+        updated = await stageAddLineDiscount({
+          calculated_order_id,
+          line_item_id: params.line_item_id,
+          discount_type: params.discount_type,
+          discount_value: Number(params.discount_value),
+          description: params.description,
+        });
+        break;
 
-      const beforeLineIds = new Set(calc.items.map(i => i.id));
-      const beforeShipIds = new Set((calc.shipping_lines || []).map(s => s.id));
+      // May 13 2026 — Update an existing line item discount (manual application).
+      // Used when a line item already has a discount (committed from prior edit
+      // or staged in current session) and the user wants to change its value.
+      // Shopify rejects orderEditAddLineItemDiscount in that scenario; this is
+      // the correct path.
+      case 'update_discount':
+        updated = await stageUpdateDiscount({
+          calculated_order_id,
+          discount_application_id: params.discount_application_id,
+          discount_type: params.discount_type,
+          discount_value: Number(params.discount_value),
+          description: params.description,
+        });
+        break;
 
-      try {
-        switch (action) {
-          case 'set_quantity':
-            calc = await stageSetQuantity({
-              calculated_order_id: calc.calculated_order_id,
-              line_item_id: mapLineId(lineIdMap, params.line_item_id),
-              quantity: Number(params.quantity),
-              restock: params.restock !== false,
-            });
-            break;
+      // May 13 2026 — Remove an existing line item discount (manual application).
+      case 'remove_discount':
+        updated = await stageRemoveDiscount({
+          calculated_order_id,
+          discount_application_id: params.discount_application_id,
+        });
+        break;
 
-          case 'add_variant':
-            calc = await stageAddVariant({
-              calculated_order_id: calc.calculated_order_id,
-              variant_id: params.variant_id,
-              quantity: Number(params.quantity) || 1,
-            });
-            {
-              const newId = findNewLineId(beforeLineIds, calc.items);
-              if (newId && params._original_line_id) {
-                lineIdMap.set(params._original_line_id, newId);
-              }
-            }
-            break;
+      case 'update_ship':
+        updated = await stageUpdateShipping({
+          calculated_order_id,
+          shipping_line_id: params.shipping_line_id,
+          price: Number(params.price),
+          // Used by auto-fallback when Shopify rejects update on a committed
+          // shipping line — the fallback removes the line and adds a fresh one
+          // using fallback_title (defaults to "Shipping" if not provided).
+          fallback_title: params.fallback_title,
+        });
+        break;
 
-          case 'add_custom':
-            calc = await stageAddCustomItem({
-              calculated_order_id: calc.calculated_order_id,
-              title: params.title,
-              price: params.price,
-              quantity: Number(params.quantity) || 1,
-              taxable: !!params.taxable,
-              requires_shipping: params.requires_shipping !== false,
-            });
-            {
-              const newId = findNewLineId(beforeLineIds, calc.items);
-              if (newId && params._original_line_id) {
-                lineIdMap.set(params._original_line_id, newId);
-              }
-            }
-            break;
+      case 'add_ship':
+        updated = await stageAddShipping({
+          calculated_order_id,
+          title: params.title || 'Shipping',
+          price: Number(params.price),
+        });
+        break;
 
-          case 'add_discount':
-            calc = await stageAddLineDiscount({
-              calculated_order_id: calc.calculated_order_id,
-              line_item_id: mapLineId(lineIdMap, params.line_item_id),
-              discount_type: params.discount_type,
-              discount_value: Number(params.discount_value),
-              description: params.description,
-            });
-            break;
+      case 'remove_ship':
+        updated = await stageRemoveShipping({
+          calculated_order_id,
+          shipping_line_id: params.shipping_line_id,
+        });
+        break;
 
-          case 'update_ship':
-            calc = await stageUpdateShipping({
-              calculated_order_id: calc.calculated_order_id,
-              shipping_line_id: shipIdMap.get(params.shipping_line_id) || params.shipping_line_id,
-              price: Number(params.price),
-              // Pass through fallback_title so committed-line replacement on
-              // replay uses the same name (e.g. "Free Shipping" → "Free Shipping").
-              fallback_title: params.fallback_title,
-            });
-            break;
-
-          case 'add_ship':
-            calc = await stageAddShipping({
-              calculated_order_id: calc.calculated_order_id,
-              title: params.title || 'Shipping',
-              price: Number(params.price),
-            });
-            {
-              const newId = findNewShippingId(beforeShipIds, calc.shipping_lines);
-              if (newId && params._original_ship_id) {
-                shipIdMap.set(params._original_ship_id, newId);
-              }
-            }
-            break;
-
-          case 'remove_ship':
-            calc = await stageRemoveShipping({
-              calculated_order_id: calc.calculated_order_id,
-              shipping_line_id: shipIdMap.get(params.shipping_line_id) || params.shipping_line_id,
-            });
-            break;
-
-          default:
-            replayErrors.push({ idx: opIdx, action, error: `unknown action` });
-        }
-      } catch (e) {
-        replayErrors.push({ idx: opIdx, action, error: e.message });
-      }
+      default:
+        return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
     }
 
-    return NextResponse.json({
-      success: true,
-      order_number: order.order_number,
-      original_status: order.status,
-      original_payment_status: order.payment_status,
-      replay_errors: replayErrors,
-      ...calc,
-    });
+    return NextResponse.json({ success: true, ...updated });
   } catch (e) {
-    console.error('[edit-rebuild] error:', e.message);
+    console.error('[edit-stage] error:', e.message);
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 }
