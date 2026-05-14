@@ -595,7 +595,19 @@ export default function InvoicePage() {
                 // Order-level discount is shown separately in the totals section.
                 const showStrike = item.has_line_discount;
                 const lineSub  = (item.original_unit_price || item.unit_price) * qty;        // pre-discount line total
-                const lineNet  = item.total_price || (item.unit_price * qty);                // post-discount
+                // FIX May 2026 — Per-line discount must reflect in the Amount column.
+                // Bug: invoice ka Amount column hamesha pre-discount line total dikha
+                // raha tha (wholesale orders me Rs 4,250 dikha jab actual Rs 2,500
+                // hona chahiye tha — Farhana Yang ka order). Root cause: DB ka
+                // `order_items.total_price` deliberately GROSS (originalUnitPrice ×
+                // qty) store karta hai per lib/shopify.js transformLineItems, aur
+                // is line ne is gross value ko directly assign kar diya. Order
+                // detail page (app/orders/[id]/page.js line 1280) pehle hi sahi
+                // pattern use kar raha tha — yahan bhi same: jab has_line_discount
+                // true ho to effective_unit_price × qty use karo, warna gross OK.
+                const lineNet  = item.has_line_discount
+                  ? (item.effective_unit_price || 0) * qty
+                  : (item.total_price || (item.unit_price * qty));
                 return (
                   <tr key={item.id || idx}>
                     <td>
