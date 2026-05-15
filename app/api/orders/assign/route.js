@@ -245,7 +245,7 @@ export async function POST(request) {
     if (action === 'set_packer') {
       const { data: ord } = await supabase
         .from('orders')
-        .select('id, order_number, status, shopify_order_id, shopify_fulfillment_id')
+        .select('id, order_number, status, shopify_order_id, shopify_fulfillment_id, is_walkin')
         .eq('id', order_id)
         .single();
 
@@ -253,6 +253,38 @@ export async function POST(request) {
       if (!['on_packing', 'confirmed'].includes(ord.status)) {
         return NextResponse.json(
           { success: false, error: `Order status '${ord.status}' pe packer set nahi ho sakta` },
+          { status: 400 },
+        );
+      }
+
+      // FIX May 2026 — Fulfillment guard for non-walk-in Shopify orders.
+      //
+      // Pehle: agar order Shopify se hai aur fulfilled nahi hai, set_packer
+      // silently Shopify pe "Pickup" fulfillment create kar deta tha (bina
+      // tracking, bina customer email). Walk-in orders ke liye yeh by-design
+      // hai — customer khud aakar lene wala hai, tracking ki zaroorat nahi.
+      // LEKIN normal courier orders pe yeh accidental silent fulfill khatarnak
+      // hai — staff galti se packer assign kar de fulfillment se pehle, to
+      // order Shopify pe "Pickup" label se fulfilled mark ho jata aur customer
+      // ko tracking nahi milti.
+      //
+      // Naya behavior:
+      //   - Walk-in order (is_walkin=true): silent fulfill allow (existing behavior)
+      //   - Already-fulfilled order (shopify_fulfillment_id present): no-op
+      //   - Non-walk-in unfulfilled order: REJECT with clear English error.
+      //     Staff ko pehle "Add Tracking / Fulfill" button click karna padega
+      //     (jo tracking + courier ke saath proper fulfillment create karta hai).
+      if (
+        ord.shopify_order_id &&
+        !ord.shopify_fulfillment_id &&
+        !ord.is_walkin
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Cannot assign packer: order is not yet fulfilled in Shopify. Please click "Add Tracking / Fulfill" first to book the courier, then assign the packer.',
+            code: 'NOT_FULFILLED',
+          },
           { status: 400 },
         );
       }
@@ -338,21 +370,24 @@ export async function POST(request) {
       // se mismatch hota tha, aur baad mein "Mark fulfilled" wala option ERP
       // mein delivered ke baad hidden ho jata tha.
       //
-      // Fix: jab packer assign hota hai, agar Shopify pe fulfillment nahi
-      // hai (yani courier book nahi hua), to silent fulfillment push karte
-      // hain — bina tracking, bina customer notification. Customer ko sirf
-      // walk-in pickup hi mil raha hai, koi shipping email nahi chahiye.
+      // Walk-in silent fulfillment (May 2026 — narrowed scope).
       //
-      // Courier orders pe ye no-op hai kyunki shopify_fulfillment_id pehle
-      // se set hota hai (orders/fulfilled webhook se). ERP-only orders
-      // (shopify_order_id null) pe bhi no-op.
+      // For walk-in orders only (is_walkin=true), if Shopify order has no
+      // fulfillment yet, push a silent "Pickup" fulfillment — no tracking,
+      // no customer email. Customer comes to office to pick up; doesn't
+      // need shipping notification.
+      //
+      // Guard above (line ~270) already rejects non-walk-in unfulfilled
+      // orders, so this block now only executes for walk-ins. Courier
+      // orders pass through with their pre-existing shopify_fulfillment_id
+      // (set by orders-fulfilled webhook).
       //
       // Best-effort: agar Shopify push fail hua to assign block nahi hota,
       // sirf warning log hoti hai. User baad mein /api/orders/manual-fulfill
       // se retry kar sakta hai.
       let shopifyFulfilled = false;
       let shopifyFulfillError = null;
-      if (ord.shopify_order_id && !ord.shopify_fulfillment_id) {
+      if (ord.shopify_order_id && !ord.shopify_fulfillment_id && ord.is_walkin) {
         try {
           const fulfillment = await createShopifyFulfillment(
             ord.shopify_order_id,
