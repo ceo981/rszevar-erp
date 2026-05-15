@@ -9,6 +9,44 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
 
+// ────────────────────────────────────────────────────────────────────────────
+// Phone variant generator for cross-format customer phone matching.
+//
+// FIX May 2026 — Shopify customer phone is stored as-typed-by-customer
+// (lib/shopify.js line 230, no normalization). Same customer ke alag-alag
+// orders me phone alag format me hoti hai:
+//   - Order A: '+923326347131' (E.164)
+//   - Order B: '03326347131'   (local with 0)
+//   - Order C: '923326347131'  (intl without +)
+//
+// Search ilike `%03326347131%` `+923326347131` ko match nahi karta (no '0' in
+// digit sequence). Yeh helper saare 4 standard PK formats generate karta hai
+// taa ke search query format-agnostic ho jaye.
+//
+// Yeh helper bhi app/api/orders/[id]/route.js me duplicate hai — future me
+// lib/phone.js me centralize karna chahiye.
+// ────────────────────────────────────────────────────────────────────────────
+function buildPhoneVariants(rawPhone) {
+  if (!rawPhone) return [];
+  const digits = String(rawPhone).replace(/\D/g, '');
+  if (!digits) return [rawPhone];
+  let national;
+  if (digits.startsWith('92') && digits.length >= 12) {
+    national = digits.slice(2);
+  } else if (digits.startsWith('0') && digits.length >= 11) {
+    national = digits.slice(1);
+  } else {
+    national = digits;
+  }
+  return [...new Set([
+    rawPhone,
+    `+92${national}`,
+    `92${national}`,
+    `0${national}`,
+    national,
+  ])];
+}
+
 // ============================================================================
 // Protocol Audit — violation discovery (May 2 2026, extended May 2026)
 // ----------------------------------------------------------------------------
@@ -405,6 +443,14 @@ export async function GET(request) {
         // checkout success page like LCYW8MGUF, before the order_number is
         // assigned). Customer support often pastes that code from a screenshot.
         // matchedOrderIdsFromItems is precomputed above (one-shot DB hit).
+        //
+        // FIX May 2026 — Phone search ab format-agnostic hai. Pehle sirf
+        // `customer_phone.ilike.%${search}%` use hota tha, jisse same customer
+        // ke orders alag formats (+92... vs 0...) me stored hote to sirf ek
+        // format match karta. Example: Sania Saqlain ke 2 orders Shopify pe
+        // dikha rahe the, ERP me search se sirf 1 dikha. Ab agar search 10-13
+        // digits ka pure phone hai, to saare 4 standard PK variants exact
+        // match bhi try karte hain (ilike partial match ke saath additive).
         const safeSearch = search.replace(/[,()%]/g, ' ').trim();
         const orParts = [
           `order_number.ilike.%${safeSearch}%`,
@@ -414,6 +460,25 @@ export async function GET(request) {
           `tracking_number.ilike.%${safeSearch}%`,
           `shopify_raw->>confirmation_number.ilike.%${safeSearch}%`,
         ];
+        // If search looks like a full PK phone (10-13 digits, no letters),
+        // also match all standard format variants exactly — covers cross-format
+        // storage where ilike substring won't match (e.g. searching
+        // '03326347131' wouldn't match a stored '+923326347131' since there's
+        // no '0' in those digits).
+        // Quoted values used per PostgREST OR grammar to safely handle '+'.
+        //
+        // Heuristic: search must contain ONLY digits/+/-/space/parens to
+        // qualify as a phone — this avoids false-triggering on order numbers
+        // or tracking codes that happen to contain >=10 digits (e.g.
+        // 'KI7534599590' tracking number, 'ZEVAR-119503' order number).
+        const isPhoneLike = /^[\d\s+\-()]+$/.test(safeSearch);
+        const digitsInSearch = safeSearch.replace(/\D/g, '');
+        if (isPhoneLike && digitsInSearch.length >= 10 && digitsInSearch.length <= 13) {
+          const phoneVariants = buildPhoneVariants(safeSearch);
+          for (const variant of phoneVariants) {
+            orParts.push(`customer_phone.eq."${variant}"`);
+          }
+        }
         if (matchedOrderIdsFromItems && matchedOrderIdsFromItems.length > 0) {
           orParts.push(`id.in.(${matchedOrderIdsFromItems.join(',')})`);
         }
