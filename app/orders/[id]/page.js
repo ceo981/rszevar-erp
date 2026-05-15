@@ -982,7 +982,11 @@ export default function SingleOrderPage() {
   } else if (order.status === 'packed') {
     primaryAction = { label: '🚚 Dispatch Order', onClick: () => doAction('/api/orders/status', { order_id: id, status: 'dispatched' }, '✓ Dispatched') };
   } else if (order.status === 'attempted' || order.status === 'hold') {
-    primaryAction = { label: '✓ Confirm Order', onClick: confirmOrder };
+    // May 2026 — Label change: was "✓ Confirm Order" (same as pending→confirmed),
+    // which was confusing for staff because the action coming back from
+    // hold/attempted is semantically a "resume", not a fresh confirmation.
+    // Same handler (confirmOrder writes status='confirmed'), just clearer label.
+    primaryAction = { label: '▶ Resume Order', onClick: confirmOrder };
   } else if (order.status === 'confirmed' && order.shopify_fulfillment_id) {
     // Edge case: confirmed + already-fulfilled (e.g. Shopify webhook delayed advance)
     // Skip the fulfill step, jump straight to packing prompt.
@@ -1013,9 +1017,10 @@ export default function SingleOrderPage() {
   const statusOptions = SAFE_OFFICE_STATUSES.filter(s => s !== order.status);
 
   // Fulfill dropdown items — secondary actions next to primary button
+  // May 2026 — Hold removed from this dropdown; now a visible secondary button
+  // in the actions row (below) for better discoverability.
   const fulfillSecondary = [
     { status: 'on_packing', label: 'Mark as in progress', icon: '🟡', show: order.status !== 'on_packing' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
-    { status: 'hold',       label: 'Mark as on hold',     icon: '⏸', show: order.status !== 'hold' && !isCancelled && !isDelivered && order.status !== 'dispatched' },
     // Manual fulfill secondary entry — only shown when fulfill is NOT already
     // the primary action. Useful for emergency fulfill from on_packing/packed
     // (e.g. user reverted, needs to re-add tracking after cancel-fulfillment).
@@ -1654,6 +1659,45 @@ export default function SingleOrderPage() {
                       onClick={() => setShowCancelBox(v => !v)}
                       style={{ background: 'var(--red-dim)', border: '1px solid #660000', color: '#ef4444', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                       ✕ Cancel order
+                    </button>
+                  )}
+
+                  {/* May 2026 — Attempted button (mirrors OrderDrawer line 1035).
+                      Permission: canConfirm (orders.confirm, e.g. Sharjeel/CEO).
+                      Use case: CSR called customer, no answer — mark attempted so
+                      it shows in the follow-up queue. Same statuses as drawer. */}
+                  {canConfirm && ['pending', 'confirmed', 'on_packing', 'hold'].includes(order.status) && (
+                    <button
+                      onClick={() => setStatus('attempted')}
+                      disabled={actionBusy}
+                      style={{ background: 'rgba(249,115,22,0.12)', border: '1px solid #f9731644', color: '#f97316', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      📞 Attempted (Call Not Answered)
+                    </button>
+                  )}
+
+                  {/* May 2026 — Put on Hold button (mirrors OrderDrawer line 1043).
+                      Permission: canConfirm. Moved out of fulfill-secondary dropdown
+                      for better discoverability — staff frequently put orders on hold
+                      pending customer callback. */}
+                  {canConfirm && ['pending', 'confirmed', 'on_packing', 'attempted'].includes(order.status) && (
+                    <button
+                      onClick={() => setStatus('hold')}
+                      disabled={actionBusy}
+                      style={{ background: 'rgba(100,116,139,0.12)', border: '1px solid #64748b44', color: 'var(--text2)', borderRadius: 7, padding: '7px 14px', fontSize: 12, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      ⏸ Put on Hold
+                    </button>
+                  )}
+
+                  {/* May 2026 — Mark as Delivered manual override (mirrors OrderDrawer line 1199).
+                      Permission: canForceStatusRevert (orders.force_status_revert, admin-only).
+                      Use case: courier API delayed/missing delivered status — admin marks
+                      manually. Terminal state, audit-logged. */}
+                  {canForceStatusRevert && ['dispatched', 'packed', 'attempted'].includes(order.status) && (
+                    <button
+                      onClick={() => setStatus('delivered')}
+                      disabled={actionBusy}
+                      style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid #22c55e66', color: '#22c55e', borderRadius: 7, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: actionBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: actionBusy ? 0.5 : 1 }}>
+                      ✅ Mark as Delivered (manual)
                     </button>
                   )}
 
