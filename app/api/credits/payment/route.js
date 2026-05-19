@@ -51,6 +51,20 @@ const ACTIVE_STATUSES = [
   'dispatched', 'attempted', 'hold', 'delivered',
 ];
 
+// ── Rounding tolerance (May 19 2026 — partial-paid residue fix) ──────────
+// PROBLEM: Customer round amount (e.g. Rs 5000) jama karta hai magar order
+// total mein paisa/rounding ki wajah se Rs 0.45 jaisa chhota balance bach
+// jata tha — order hamesha "partial" pada rehta tha jabke pending balance
+// effectively 0 dikh raha hota. DB trigger paid_amount == total_amount pe
+// hi "paid" karta hai, isliye 0.45 ka faraq usko atka deta tha.
+//
+// FIX: Agar payment kisi order ko fully clear karne se sirf is amount tak
+// (≤ Rs 10) kam padti hai, to us order ka POORA balance allocate kar do —
+// chhota faraq write-off ho jata hai aur order proper "paid" ho jata hai.
+// FIFO oldest-first chalti hai, isliye purane atke hue partial orders bhi
+// agle payment pe khud-ba-khud clear ho jayenge.
+const ROUNDING_TOLERANCE = 10;  // Rs — is se kam ka faraq → forgive + paid
+
 export async function POST(request) {
   try {
     const supabase = createServerClient();
@@ -173,13 +187,28 @@ export async function POST(request) {
         const balance = (ord.total_amount || 0) - (ord.paid_amount || 0);
         if (balance <= 0.01) continue;  // already paid (shouldn't happen but safety)
 
-        const allocAmount = Math.min(remaining, balance);
+        // Default allocation = jitna paisa bacha hai ya order ka balance,
+        // jo bhi kam ho.
+        let allocAmount = Math.min(remaining, balance);
+
+        // ── Rounding/paisa write-off ──────────────────────────────────
+        // Agar is order ko fully clear karne mein sirf chhota faraq
+        // (≤ ROUNDING_TOLERANCE) reh raha hai, to poora balance allocate
+        // kar do taake paid_amount == total_amount ho aur order proper
+        // "paid" mark ho — Rs 0.45 jaisa residue na atke.
+        const shortfall = balance - remaining;
+        if (shortfall > 0 && shortfall <= ROUNDING_TOLERANCE) {
+          allocAmount = balance;
+        }
+
         allocationsToInsert.push({
           order_id: ord.id,
           amount: Math.round(allocAmount * 100) / 100,
           allocation_type: 'fifo',
         });
-        remaining -= allocAmount;
+        // remaining negative na ho (write-off ki wajah se thoda zyada
+        // allocate hua to 0 pe clamp karo)
+        remaining = Math.max(0, remaining - allocAmount);
       }
       unallocatedAmount = Math.round(remaining * 100) / 100;
     }
