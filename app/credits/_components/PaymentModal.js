@@ -95,13 +95,22 @@ export default function PaymentModal({ customer, openOrders, onClose, onSuccess,
   const totalOutstanding = openOrders.reduce((s, o) => s + (o.balance || 0), 0);
 
   // ── Live FIFO preview ──
+  // NOTE: ROUNDING_TOLERANCE server (app/api/credits/payment/route.js) ke
+  // saath match karna zaroori hai — warna preview "Rs 0.45 partial" dikhaye
+  // aur server actually "paid" kar de (mismatch confusing hota).
+  const ROUNDING_TOLERANCE = 10;  // Rs — chhota faraq → fully paid
   const fifoPreview = useMemo(() => {
     if (mode !== 'fifo' || numAmount <= 0) return [];
     let remaining = numAmount;
     const allocs = [];
     for (const o of openOrders) {
       if (remaining <= 0.01) break;
-      const allocAmount = Math.min(remaining, o.balance);
+      let allocAmount = Math.min(remaining, o.balance);
+      // Server jaisa hi: faraq mamooli (≤ tolerance) ho to poora balance
+      const shortfall = o.balance - remaining;
+      if (shortfall > 0 && shortfall <= ROUNDING_TOLERANCE) {
+        allocAmount = o.balance;
+      }
       allocs.push({
         order_id: o.id,
         order_number: o.order_number,
@@ -109,7 +118,7 @@ export default function PaymentModal({ customer, openOrders, onClose, onSuccess,
         is_full: allocAmount >= o.balance - 0.01,
         balance_before: o.balance,
       });
-      remaining -= allocAmount;
+      remaining = Math.max(0, remaining - allocAmount);
     }
     return { allocs, unallocated: Math.max(0, remaining) };
   }, [mode, numAmount, openOrders]);
