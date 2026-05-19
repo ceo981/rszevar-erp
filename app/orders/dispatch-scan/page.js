@@ -178,6 +178,18 @@ export default function DispatchScanPage() {
   const scannerRef = useRef(null);
   const lastScanTimeRef = useRef(0);  // debounce duplicate camera scans
 
+  // ── Synchronous scan lock (May 19 2026 — duplicate-row fix) ────────────
+  // BUG: USB scanner kabhi same barcode 2x bohot fast bhej deta hai. Pehle
+  // guard `busy` STATE pe tha — state closure mein stale hota hai aur async
+  // update hota hai, isliye dono rapid scans guard + dedup paas kar jaate
+  // the aur same order `scannedOrders` mein DO BAAR add ho jata tha (count
+  // 40 → 44). `selectedIds` Set hai isliye selected count sahi rehta tha.
+  //
+  // Refs synchronous + mutable hote hain — same render tick mein bhi turant
+  // update ho jaate hain, isliye double-fire pakka block ho jata hai.
+  const processingRef = useRef(false);          // ek waqt mein 1 scan hi
+  const inFlightRef = useRef(new Set());         // jo values abhi fetch ho rahi
+
   // ── Auto-focus input on mount + after every scan ───────────────────────
   useEffect(() => {
     if (!cameraOpen) inputRef.current?.focus();
@@ -372,9 +384,16 @@ export default function DispatchScanPage() {
   const handleScan = useCallback(async (rawValue) => {
     const value = String(rawValue || '').trim();
     if (!value) return;
-    if (busy) return;
 
-    // Dedup check (same tracking already in this session)
+    // ── Synchronous double-fire guard (refs, NOT state) ─────────────────
+    // `busy` state closure mein stale hota hai — rapid double-scan dono
+    // ko paas kar deta tha. Refs turant update hote hain isliye 2nd fire
+    // yahin ruk jata hai. Ek waqt mein sirf 1 scan process hota hai.
+    if (processingRef.current) return;
+    // Same value abhi fetch ho rahi ho to ignore (extra safety net)
+    if (inFlightRef.current.has(value)) return;
+
+    // Dedup check (same tracking/order pehle se is session mein scan ho chuka)
     if (scannedOrders.some(o =>
       o.tracking_number === value || o.order_number === value
     )) {
@@ -384,6 +403,10 @@ export default function DispatchScanPage() {
       return;
     }
 
+    // Lock le lo SYNCHRONOUSLY — agla scan (chahe usi tick mein aaye)
+    // ab automatically block hoga
+    processingRef.current = true;
+    inFlightRef.current.add(value);
     setBusy(true);
     setScanInput('');
 
@@ -400,9 +423,12 @@ export default function DispatchScanPage() {
       const d = await r.json();
 
       if (d.success) {
-        // Prepend (newest first)
-        setScannedOrders(prev => [d.order, ...prev]);
-        // Auto-select newly scanned parcel
+        // Dedup-safe prepend — agar kisi race se same order.id pehle se
+        // list mein hai to dobara add NA karo (count 40 → 44 wala fix)
+        setScannedOrders(prev =>
+          prev.some(o => o.id === d.order.id) ? prev : [d.order, ...prev]
+        );
+        // Auto-select newly scanned parcel (Set khud dedupe karta hai)
         setSelectedIds(prev => {
           const next = new Set(prev);
           next.add(d.order.id);
@@ -427,10 +453,13 @@ export default function DispatchScanPage() {
     } catch (e) {
       setFeedback({ type: 'error', text: e.message });
       playBeep('error');
+    } finally {
+      // Lock hamesha release ho — error/success dono case mein
+      processingRef.current = false;
+      inFlightRef.current.delete(value);
+      setBusy(false);
     }
-
-    setBusy(false);
-  }, [busy, scannedOrders, performer, userEmail]);
+  }, [scannedOrders, performer, userEmail]);
 
   // ── USB scanner: Enter key triggers scan ───────────────────────────────
   const onKeyDown = (e) => {
