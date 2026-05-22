@@ -468,6 +468,15 @@ export default function CreateOrderPage() {
   const [note, setNote] = useState('');
   const [source, setSource] = useState('WhatsApp');
 
+  // May 22 2026 — Payment method selector. Pehle hardcoded 'COD' jata tha
+  // create route mein, isi liye ERP-created bank transfer / card orders bhi
+  // COD ban jate the. Ab user explicitly choose karta hai.
+  //   - 'COD'           → Cash on Delivery (default, 90% case)
+  //   - 'Bank Transfer' → Customer bank transfer karega — DISPATCH NA karein
+  //                       jab tak payment confirm na ho
+  //   - 'Card'          → Card payment (online, Shopify Payments wagaira)
+  const [paymentMethod, setPaymentMethod] = useState('COD');
+
   // Submit
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -665,6 +674,7 @@ export default function CreateOrderPage() {
           },
           shipping_line: parseFloat(shippingAmt) > 0 ? { title: 'Shipping Charges', price: parseFloat(shippingAmt) } : null,
           order_discount: orderDiscount,
+          payment_method: paymentMethod,
           note,
           tags: [...tagsList, source].filter(Boolean),
         }),
@@ -928,8 +938,64 @@ export default function CreateOrderPage() {
               </div>
             </div>
 
-            <div style={{ marginTop: 14, padding: '10px 12px', background: 'rgba(201,169,110,0.06)', borderRadius: 7, fontSize: 11, color: 'var(--text2)' }}>
-              Payment method: <strong style={{ color: gold }}>COD</strong> (Cash on Delivery) — customer collect karega courier ke saath.
+            <div style={{ marginTop: 14 }}>
+              <div style={labelStyle}>Payment method</div>
+              {/* 3-option selector — pill buttons. Default COD (90% case).
+                  Bank Transfer / Card pe yellow warning dikhta hai jisme
+                  dispatcher ko clearly bola jaye payment confirm hone tak
+                  courier book NA karein. */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { value: 'COD',           label: '💵 COD',           sub: 'Cash on Delivery' },
+                  { value: 'Bank Transfer', label: '🏦 Bank Transfer', sub: 'Customer bank transfer karega' },
+                  { value: 'Card',          label: '💳 Card',          sub: 'Online card payment' },
+                ].map(opt => {
+                  const isActive = paymentMethod === opt.value;
+                  return (
+                    <button key={opt.value}
+                      type="button"
+                      onClick={() => setPaymentMethod(opt.value)}
+                      style={{
+                        flex: 1,
+                        background: isActive ? 'rgba(201,169,110,0.15)' : 'var(--bg-card)',
+                        border: `1.5px solid ${isActive ? gold : border}`,
+                        color: isActive ? gold : 'var(--text2)',
+                        borderRadius: 7,
+                        padding: '10px 8px',
+                        fontSize: 12,
+                        fontWeight: isActive ? 700 : 500,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        textAlign: 'center',
+                        lineHeight: 1.3,
+                        transition: 'all 0.12s',
+                      }}>
+                      <div>{opt.label}</div>
+                      <div style={{
+                        fontSize: 9.5, marginTop: 3, fontWeight: 400,
+                        color: isActive ? 'rgba(201,169,110,0.85)' : 'var(--text3)',
+                      }}>
+                        {opt.sub}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {paymentMethod === 'COD' ? (
+                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text3)' }}>
+                  Customer cash collect karega courier ke saath delivery par.
+                </div>
+              ) : (
+                <div style={{
+                  marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: 11,
+                  background: 'rgba(245,158,11,0.10)',
+                  border: '1px solid rgba(245,158,11,0.35)',
+                  color: '#f59e0b', lineHeight: 1.4,
+                }}>
+                  ⚠️ Payment confirm hone tak <strong>DISPATCH NA karein</strong>.
+                  Order create hone ke baad us page pe "Mark as paid" karke phir hi courier book karein.
+                </div>
+              )}
             </div>
           </div>
 
