@@ -100,6 +100,43 @@ function Row({ label, value, mono, color }) {
   );
 }
 
+// ─── Payment Method Badge (May 22 2026) ──────────────────────────────────
+// Customer ne Shopify pe kis method se order place kiya — header mein
+// clearly dikhe. Bank Transfer / Card jaise non-COD orders ke liye
+// dispatcher ko foran clarity mile (alag se warning banner bhi neeche).
+function PaymentMethodBadge({ method }) {
+  if (!method) return null;
+  // Known methods get styled icons + colors; unknown gateways get a generic look
+  let cfg;
+  if (method === 'COD') {
+    cfg = { label: '💵 COD', color: '#fbbf24', bg: '#fbbf2422' };
+  } else if (method === 'Bank Transfer') {
+    cfg = { label: '🏦 Bank Transfer', color: '#60a5fa', bg: '#60a5fa22' };
+  } else if (method === 'Card') {
+    cfg = { label: '💳 Card', color: '#a78bfa', bg: '#a78bfa22' };
+  } else if (method === 'Cash') {
+    // Receipt method (post mark-paid via Cash)
+    cfg = { label: '💵 Cash', color: '#22c55e', bg: '#22c55e22' };
+  } else if (
+    method === 'Bank Alfalah' || method === 'Meezan Bank' ||
+    method === 'Easypaisa' || method === 'JazzCash'
+  ) {
+    // Receipt methods set via mark-paid flow
+    cfg = { label: `✓ ${method}`, color: '#22c55e', bg: '#22c55e22' };
+  } else {
+    cfg = { label: method, color: 'var(--text2)', bg: '#ffffff14' };
+  }
+  return (
+    <span style={{
+      color: cfg.color, background: cfg.bg,
+      padding: '3px 10px', borderRadius: 5,
+      fontSize: 11, fontWeight: 600,
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
 function HeaderBtn({ onClick, href, target, children, primary, title }) {
   const style = {
     background: primary ? gold : '#1a1a1a',
@@ -1080,6 +1117,10 @@ export default function SingleOrderPage() {
                   </span>
                 )}
                 <PaymentBadge payment_status={order.payment_status} />
+                {/* May 22 2026 — Payment method badge so dispatcher foran
+                    dekh sake order kis gateway se aaya (COD / Bank Transfer
+                    / Card). Warning banner neeche zyada prominent hai. */}
+                <PaymentMethodBadge method={order.payment_method} />
                 {typeBadges.map(b => (
                   <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{b.label}</span>
                 ))}
@@ -1199,6 +1240,35 @@ export default function SingleOrderPage() {
                 padding: '7px 14px', fontSize: 12, fontWeight: 600,
                 textDecoration: 'none', whiteSpace: 'nowrap',
               }}>View khaata →</a>
+          </div>
+        )}
+
+        {/* May 22 2026 — DISPATCH-BLOCK warning for non-COD unpaid orders.
+            Bank Transfer aur Card orders ki payment online hoti hai, toh
+            unhe courier book NA karein jab tak payment confirm na ho. Yeh
+            banner sirf relevant cases mein dikhta hai (active + unpaid +
+            non-COD method), aur Shopify-style yellow tone use karta hai
+            taa ke dispatcher foran rukh jaaye. */}
+        {!isCancelled && !isRefunded && !isDispatched && order.payment_status === 'unpaid' &&
+          (order.payment_method === 'Bank Transfer' || order.payment_method === 'Card') && (
+          <div style={{
+            background: 'rgba(245,158,11,0.12)',
+            border: '1.5px solid rgba(245,158,11,0.6)',
+            borderRadius: 10, padding: '14px 18px', marginBottom: 16,
+            display: 'flex', gap: 12, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
+                Payment confirm hone tak DISPATCH NA karein
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(245,158,11,0.85)', lineHeight: 1.5 }}>
+                Yeh <strong>{order.payment_method}</strong> order hai —
+                {order.payment_method === 'Bank Transfer'
+                  ? ' customer ne bank transfer select kiya hai. Pehle bank account check karein ke payment receive hui hai, phir manually "Mark as paid" karke courier book karein.'
+                  : ' card payment Shopify side pe abhi unpaid hai. Shopify mein payment status verify karein, phir hi dispatch karein.'}
+              </div>
+            </div>
           </div>
         )}
 
