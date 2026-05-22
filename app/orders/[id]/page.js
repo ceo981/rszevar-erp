@@ -37,6 +37,7 @@ import {
   computeOrderWeightGrams,
   formatWeight,
 } from '../../../lib/order-line-items';
+import { effectivePaymentMethod } from '../../../lib/payment-method';
 
 // ─── Format helpers ───────────────────────────────────────────────────────
 function formatFullDate(iso) {
@@ -1119,8 +1120,12 @@ export default function SingleOrderPage() {
                 <PaymentBadge payment_status={order.payment_status} />
                 {/* May 22 2026 — Payment method badge so dispatcher foran
                     dekh sake order kis gateway se aaya (COD / Bank Transfer
-                    / Card). Warning banner neeche zyada prominent hai. */}
-                <PaymentMethodBadge method={order.payment_method} />
+                    / Card). Warning banner neeche zyada prominent hai.
+                    effectivePaymentMethod() shopify_raw se fresh derive
+                    karta hai jab DB ka stored payment_method generic 'COD'
+                    ho — purane stuck orders bhi correctly display honge
+                    bina DB resync ke. */}
+                <PaymentMethodBadge method={effectivePaymentMethod(order)} />
                 {typeBadges.map(b => (
                   <span key={b.label} style={{ color: b.color, background: b.color + '22', padding: '3px 10px', borderRadius: 5, fontSize: 11, fontWeight: 600 }}>{b.label}</span>
                 ))}
@@ -1248,29 +1253,37 @@ export default function SingleOrderPage() {
             unhe courier book NA karein jab tak payment confirm na ho. Yeh
             banner sirf relevant cases mein dikhta hai (active + unpaid +
             non-COD method), aur Shopify-style yellow tone use karta hai
-            taa ke dispatcher foran rukh jaaye. */}
-        {!isCancelled && !isRefunded && !isDispatched && order.payment_status === 'unpaid' &&
-          (order.payment_method === 'Bank Transfer' || order.payment_method === 'Card') && (
-          <div style={{
-            background: 'rgba(245,158,11,0.12)',
-            border: '1.5px solid rgba(245,158,11,0.6)',
-            borderRadius: 10, padding: '14px 18px', marginBottom: 16,
-            display: 'flex', gap: 12, alignItems: 'flex-start',
-          }}>
-            <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
-                Payment confirm hone tak DISPATCH NA karein
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(245,158,11,0.85)', lineHeight: 1.5 }}>
-                Yeh <strong>{order.payment_method}</strong> order hai —
-                {order.payment_method === 'Bank Transfer'
-                  ? ' customer ne bank transfer select kiya hai. Pehle bank account check karein ke payment receive hui hai, phir manually "Mark as paid" karke courier book karein.'
-                  : ' card payment Shopify side pe abhi unpaid hai. Shopify mein payment status verify karein, phir hi dispatch karein.'}
+            taa ke dispatcher foran rukh jaaye.
+            effectivePaymentMethod() shopify_raw se fresh derive karta hai
+            taa ke purane stuck orders (DB mein 'COD' but actually card/
+            bank) bhi sahi se warning dikhayein. */}
+        {(() => {
+          const effectiveMethod = effectivePaymentMethod(order);
+          if (isCancelled || isRefunded || isDispatched) return null;
+          if (order.payment_status !== 'unpaid') return null;
+          if (effectiveMethod !== 'Bank Transfer' && effectiveMethod !== 'Card') return null;
+          return (
+            <div style={{
+              background: 'rgba(245,158,11,0.12)',
+              border: '1.5px solid rgba(245,158,11,0.6)',
+              borderRadius: 10, padding: '14px 18px', marginBottom: 16,
+              display: 'flex', gap: 12, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
+                  Payment confirm hone tak DISPATCH NA karein
+                </div>
+                <div style={{ fontSize: 12, color: 'rgba(245,158,11,0.85)', lineHeight: 1.5 }}>
+                  Yeh <strong>{effectiveMethod}</strong> order hai —
+                  {effectiveMethod === 'Bank Transfer'
+                    ? ' customer ne bank transfer select kiya hai. Pehle bank account check karein ke payment receive hui hai, phir manually "Mark as paid" karke courier book karein.'
+                    : ' card payment Shopify side pe abhi unpaid hai. Shopify mein payment status verify karein, phir hi dispatch karein.'}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ─── 2-Column Grid ─── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 20 }}>
@@ -1958,7 +1971,7 @@ export default function SingleOrderPage() {
                 <Row label="Balance" value={<span style={{ color: balance > 0 ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>{fmt(balance)}</span>} />
               </div>
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, fontSize: 11, color: 'var(--text3)' }}>
-                Payment method: <span style={{ color: 'var(--text2)' }}>{order.payment_method || 'COD'}</span>
+                Payment method: <span style={{ color: 'var(--text2)' }}>{effectivePaymentMethod(order)}</span>
               </div>
 
               {/* Collect payment button — only when unpaid and not cancelled */}
