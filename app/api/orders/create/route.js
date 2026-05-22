@@ -34,6 +34,13 @@ const SHOPIFY_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_TOKEN  = process.env.SHOPIFY_ACCESS_TOKEN;
 const API_VERSION    = '2024-01';
 
+// May 22 2026 — Payment methods user can pick from ERP create page.
+// Yeh values lib/shopify.js#derivePaymentMethod ke return values se align
+// karte hain taa ke same data shape DB mein consistent rahe. Webhook lock
+// (lib/shopify-webhook.js) ERP-set value ko Shopify's empty gateway se
+// overwrite hone se bachata hai.
+const ALLOWED_PAYMENT_METHODS = new Set(['COD', 'Bank Transfer', 'Card']);
+
 // ─── Shopify HTTP helpers ──────────────────────────────────────────────────
 async function shopifyRequest(method, endpoint, body) {
   const res = await fetch(`https://${SHOPIFY_DOMAIN}/admin/api/${API_VERSION}/${endpoint}`, {
@@ -203,7 +210,12 @@ function buildShopifyPayload(body) {
 // ─── ERP DB upsert ─────────────────────────────────────────────────────────
 // Webhook bhi async fire hoga aur same shopify_order_id ke saath insert
 // karne ki koshish kar sakta hai. Isi liye onConflict pattern use karte hain.
-async function upsertOrderInERP(supabase, shopifyOrder) {
+//
+// May 22 2026 — paymentMethod parameter add hua. Pehle hardcoded 'COD' tha
+// (har order COD ban jata tha chahe user kuch bhi pick kare). Ab caller
+// explicitly pass karta hai. Webhook ka lock (shopify-webhook.js) yeh
+// preserve karta hai jab Shopify empty gateway se webhook bhejta hai.
+async function upsertOrderInERP(supabase, shopifyOrder, paymentMethod = 'COD') {
   const o = shopifyOrder;
 
   // Status mapping — same logic jo lib/shopify.js#mapShopifyStatus karta hai,
@@ -236,7 +248,7 @@ async function upsertOrderInERP(supabase, shopifyOrder) {
     discount,
     shipping_fee:      shipping,
     total_amount:      total,
-    payment_method:    'COD',
+    payment_method:    paymentMethod,
     status:            officeStatus,
     payment_status:    paymentStatus,
     confirmed_at:      new Date().toISOString(),
@@ -307,6 +319,12 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: errs.join('; ') }, { status: 400 });
     }
 
+    // May 22 2026 — Payment method validation. Body se aaye to allowed values
+    // mein hona chahiye; nahi aaya to safe default 'COD'.
+    const paymentMethod = body.payment_method && ALLOWED_PAYMENT_METHODS.has(body.payment_method)
+      ? body.payment_method
+      : 'COD';
+
     // Step 2: Shopify Draft Order create
     const shopifyPayload = buildShopifyPayload(body);
     const draftRes = await shopifyRequest('POST', 'draft_orders.json', shopifyPayload);
@@ -334,7 +352,7 @@ export async function POST(request) {
 
     // Step 4: Upsert in ERP DB (so user can navigate immediately;
     // webhook bhi fire hoga aur upsert se safe handle hoga)
-    const erpOrder = await upsertOrderInERP(supabase, realOrder);
+    const erpOrder = await upsertOrderInERP(supabase, realOrder, paymentMethod);
 
     // Apr 30 2026 — Internal note ko ERP timeline mein bhi save karo.
     // Pehle note sirf Shopify order.note pe jata tha — ERP UI usko display
