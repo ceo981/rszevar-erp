@@ -81,7 +81,7 @@ function validateInput(body) {
 }
 
 // ─── Shopify draft_order payload builder ───────────────────────────────────
-function buildShopifyPayload(body) {
+function buildShopifyPayload(body, paymentMethod = 'COD') {
   const { line_items, customer, shipping_address, shipping_line, order_discount, note, tags } = body;
 
   // Line items — har item shopify variant id se ya custom title se
@@ -162,6 +162,17 @@ function buildShopifyPayload(body) {
     note: note || '',
     tags: finalTags,
     use_customer_default_address: false,
+    // May 30 2026 FIX — Bake the user's explicit payment method choice into the
+    // Shopify order as a note_attribute. Reason: completing a draft order with
+    // payment_pending=true makes Shopify set gateway='manual' for BOTH COD and
+    // Bank Transfer, so gateway-based derivePaymentMethod() can't tell them
+    // apart and was wrongly flipping COD orders to "Bank Transfer". This marker
+    // travels with shopify_raw into every webhook (create/updated/edited/paid),
+    // so derivePaymentMethod() (STEP 0) treats it as authoritative — fully
+    // race-proof, no matter which webhook fires first.
+    note_attributes: [
+      { name: '_erp_payment_method', value: paymentMethod },
+    ],
   };
 
   // May 6 2026 fix — EMAIL FIELD
@@ -326,7 +337,7 @@ export async function POST(request) {
       : 'COD';
 
     // Step 2: Shopify Draft Order create
-    const shopifyPayload = buildShopifyPayload(body);
+    const shopifyPayload = buildShopifyPayload(body, paymentMethod);
     const draftRes = await shopifyRequest('POST', 'draft_orders.json', shopifyPayload);
     const draft = draftRes.draft_order;
     if (!draft?.id) {
