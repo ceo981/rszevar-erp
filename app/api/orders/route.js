@@ -9,6 +9,11 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { isActiveLineItem, getEffectiveQuantity } from '@/lib/shopify';
 
+// May 30 2026 — Orders export (CSV/XLSX) can pull thousands of rows in
+// chunks, so give the route headroom beyond the default timeout.
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Phone variant generator for cross-format customer phone matching.
 //
@@ -273,6 +278,9 @@ export async function GET(request) {
     const dateTo = searchParams.get('to');
     const sort = searchParams.get('sort') || 'created_at';
     const order = searchParams.get('order') || 'desc';
+    // May 30 2026 — Export mode: 'csv' | 'xlsx'. When set, route returns a
+    // downloadable file of ALL filtered rows (no pagination) instead of JSON.
+    const exportFmt = searchParams.get('export');
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
@@ -486,6 +494,112 @@ export async function GET(request) {
       }
       return q;
     };
+
+    // ── EXPORT branch (CSV / XLSX) ──────────────────────────────────────────
+    // May 30 2026 — Saare CURRENT filters (tab/search/courier/type/payment/
+    // date range/protocol audit) ko reuse karta hai applyFilters() se, magar
+    // pagination skip karke SAARI matching rows chunk-fetch karta hai (Supabase
+    // ka 1000-row cap bypass — har chunk fresh query builder se). Phir CSV ya
+    // XLSX file return karta hai. order_items ko ek readable "Items" column mein
+    // summarise karta hai.
+    if (exportFmt === 'csv' || exportFmt === 'xlsx') {
+      const EXPORT_COLS =
+        'order_number, created_at, customer_name, customer_phone, customer_city, ' +
+        'customer_address, status, payment_status, payment_method, dispatched_courier, ' +
+        'tracking_number, subtotal, discount, shipping_fee, total_amount, ' +
+        'is_wholesale, is_walkin, is_international, tags, ' +
+        'order_items(sku, title, quantity, unit_price, total_price)';
+
+      const CHUNK = 1000;
+      const MAX_ROWS = 50000; // safety cap
+      const all = [];
+      let offset = 0;
+      while (offset < MAX_ROWS) {
+        // Fresh builder har iteration mein (PostgREST builders mutable hote hain)
+        let q = supabase.from('orders').select(EXPORT_COLS);
+        q = applyFilters(q);
+        q = q.order(sort, { ascending: order === 'asc' }).range(offset, offset + CHUNK - 1);
+        const { data: chunk, error: chErr } = await q;
+        if (chErr) throw chErr;
+        if (!chunk || chunk.length === 0) break;
+        all.push(...chunk);
+        if (chunk.length < CHUNK) break;
+        offset += CHUNK;
+      }
+
+      const rows = all.map(o => {
+        const items = (o.order_items || [])
+          .map(it => `${it.sku || it.title || 'item'} x${it.quantity}`)
+          .join(' | ');
+        return {
+          'Order #':         o.order_number || '',
+          'Date':            o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : '',
+          'Customer':        o.customer_name || '',
+          'Phone':           o.customer_phone || '',
+          'City':            o.customer_city || '',
+          'Address':         o.customer_address || '',
+          'Status':          o.status || '',
+          'Payment Status':  o.payment_status || '',
+          'Payment Method':  o.payment_method || '',
+          'Courier':         o.dispatched_courier || '',
+          'Tracking #':      o.tracking_number || '',
+          'Subtotal':        o.subtotal ?? '',
+          'Discount':        o.discount ?? '',
+          'Shipping':        o.shipping_fee ?? '',
+          'Total':           o.total_amount ?? '',
+          'Wholesale':       o.is_wholesale ? 'Yes' : '',
+          'Walk-in':         o.is_walkin ? 'Yes' : '',
+          'International':    o.is_international ? 'Yes' : '',
+          'Tags':            Array.isArray(o.tags) ? o.tags.join(', ') : (o.tags || ''),
+          'Items':           items,
+        };
+      });
+
+      const HEADERS = [
+        'Order #', 'Date', 'Customer', 'Phone', 'City', 'Address', 'Status',
+        'Payment Status', 'Payment Method', 'Courier', 'Tracking #', 'Subtotal',
+        'Discount', 'Shipping', 'Total', 'Wholesale', 'Walk-in', 'International',
+        'Tags', 'Items',
+      ];
+      const stamp = new Date().toISOString().slice(0, 10);
+      const fname = `rszevar-orders-${stamp}`;
+
+      if (exportFmt === 'csv') {
+        const esc = (v) => {
+          const s = v == null ? '' : String(v);
+          return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lines = [HEADERS.join(',')];
+        for (const r of rows) lines.push(HEADERS.map(h => esc(r[h])).join(','));
+        // \uFEFF BOM → Excel UTF-8 sahi padhta hai (Urdu naam theek render hon)
+        const body = '\uFEFF' + lines.join('\r\n');
+        return new NextResponse(body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${fname}.csv"`,
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
+
+      // xlsx — SheetJS already a dependency (package.json). Dynamic import taake
+      // sirf export ke waqt load ho, normal list requests pe nahi.
+      const xlsxMod = await import('xlsx');
+      const XLSX = xlsxMod.utils ? xlsxMod : (xlsxMod.default || xlsxMod);
+      const ws = XLSX.utils.json_to_sheet(rows, { header: HEADERS });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${fname}.xlsx"`,
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
 
     // ── Main query (paginated list) ──
     let query = supabase
