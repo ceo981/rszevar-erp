@@ -540,6 +540,9 @@ export default function OrdersPage() {
   const [bulkModal, setBulkModal] = useState(null); // 'cancel' | 'status' | 'assign' | null
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
+  // May 30 2026 — Export (CSV/XLSX) of current filtered view
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // ── Debounce search typing ──
   // User har keystroke pe API hit na ho. 350ms ruk ke fire hoti hai query.
@@ -594,6 +597,39 @@ export default function OrdersPage() {
   }, [page, debouncedSearch, filter, dateRange]);
 
   useEffect(() => { load(); }, [load]);
+
+  // May 30 2026 — Export current filtered view (tab + search + date range) to
+  // CSV or XLSX. Saari matching rows aati hain (current page nahi) — server
+  // chunk-fetch karta hai. Blob download trigger karte hain.
+  const handleExport = async (fmt) => {
+    setShowExportMenu(false);
+    if (exporting) return;
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (filter.type && filter.value) params.append(filter.type, filter.value);
+      if (dateRange.from) params.append('from', dateRange.from);
+      if (dateRange.to) params.append('to', dateRange.to);
+      params.append('export', fmt);
+      const r = await fetch(`/api/orders?${params}`);
+      if (!r.ok) throw new Error(`Server ${r.status}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `rszevar-orders-${stamp}.${fmt === 'xlsx' ? 'xlsx' : 'csv'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Export nahi hua: ' + (e?.message || e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // FIX: keep the currently-open drawer order in sync with the latest `orders`
   // data after a refresh. Previously `onRefresh` was using closure-stale orders,
@@ -879,6 +915,59 @@ export default function OrdersPage() {
             Default: empty (no filter, all dates). When user picks a date,
             tab counts AND list both narrow to that range. */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* May 30 2026 — Export current filtered view (CSV / XLSX) */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowExportMenu(s => !s)}
+              disabled={exporting}
+              title="Export current filtered orders"
+              style={{
+                background: showExportMenu ? `${gold}22` : '#0a0a0a',
+                border: `1px solid ${showExportMenu ? gold : border}`,
+                color: exporting ? 'var(--text3)' : (showExportMenu ? gold : '#bbb'),
+                borderRadius: 7, padding: '7px 12px', fontSize: 12,
+                cursor: exporting ? 'wait' : 'pointer', fontFamily: 'inherit', fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+              {exporting ? '⏳ Exporting…' : '⬇ Export'}
+            </button>
+            {showExportMenu && !exporting && (
+              <>
+                <div onClick={() => setShowExportMenu(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                  background: card, border: `1px solid ${border}`, borderRadius: 10,
+                  padding: 6, zIndex: 51, minWidth: 210,
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+                }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', padding: '6px 10px 8px', lineHeight: 1.4 }}>
+                    {(dateRange.from || dateRange.to || filter.type || debouncedSearch)
+                      ? 'Filtered view export hogi'
+                      : 'Saare orders export honge'}
+                    {stats?.total != null ? ` · ${stats.total} rows` : ''}
+                  </div>
+                  {[
+                    { fmt: 'xlsx', label: '📊 Excel (.xlsx)' },
+                    { fmt: 'csv',  label: '📄 CSV (.csv)' },
+                  ].map(opt => (
+                    <button key={opt.fmt} onClick={() => handleExport(opt.fmt)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'transparent', border: 'none', color: 'var(--text)',
+                        borderRadius: 7, padding: '9px 10px', fontSize: 13,
+                        cursor: 'pointer', fontFamily: 'inherit',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {(dateRange.from || dateRange.to) && (
             <div style={{
               fontSize: 11, color: gold, fontWeight: 600,
