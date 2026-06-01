@@ -119,6 +119,16 @@ function UploadSection({ onDone }) {
               {result.meta?.totalWHT > 0 && <> &nbsp;·&nbsp; Taxes: <span style={{ color: '#ef4444' }}>Rs {Number(result.meta.totalWHT + (result.meta.totalGST || 0)).toLocaleString()}</span></>}
             </div>
           )}
+          {result.sample_skipped?.length > 0 && (
+            <div style={{ fontSize: 11, color: '#999', borderTop: `1px solid ${border}`, paddingTop: 10, marginTop: 10 }}>
+              ⏩ Skipped parcels: {result.sample_skipped.join(', ')}{result.skipped > result.sample_skipped.length ? ` …+${result.skipped - result.sample_skipped.length} aur` : ''}
+            </div>
+          )}
+          {result.sample_not_found?.length > 0 && (
+            <div style={{ fontSize: 11, color: '#f59e0b99', marginTop: 6 }}>
+              🔍 Not found: {result.sample_not_found.join(', ')}
+            </div>
+          )}
           <button onClick={reset} style={{ marginTop: 14, background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 7, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
             🔄 Upload Another File
           </button>
@@ -205,6 +215,7 @@ function UploadSection({ onDone }) {
               {preview.sample_paid?.length > 0       && <div style={{ fontSize: 11, color: '#22c55e99', marginBottom: 4 }}>Paid sample: {preview.sample_paid.join(', ')}</div>}
               {preview.sample_rto?.length > 0        && <div style={{ fontSize: 11, color: '#ef444499', marginBottom: 4 }}>RTO sample: {preview.sample_rto.join(', ')}</div>}
               {preview.sample_not_found?.length > 0  && <div style={{ fontSize: 11, color: '#f59e0b99' }}>Not found: {preview.sample_not_found.join(', ')}</div>}
+              {preview.sample_skipped?.length > 0    && <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>⏩ Skipped: {preview.sample_skipped.join(', ')}{preview.skipped > preview.sample_skipped.length ? ` …+${preview.skipped - preview.sample_skipped.length} aur` : ''}</div>}
             </div>
           )}
 
