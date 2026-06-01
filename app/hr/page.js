@@ -859,6 +859,10 @@ function SalaryTab({ employees, allEmployees }) {
         <div class="row"><span>Absent Deduction:</span><span>- Rs. ${fmt(rec.absent_deduction)}</span></div>
         <div class="row"><span>Advance Deduction:</span><span>- Rs. ${fmt(rec.advance_deduction)}</span></div>
         <div class="row"><span>Unpaid Leave:</span><span>- Rs. ${fmt(rec.unpaid_leave_deduction)}</span></div>
+        ${(rec.yearly_leaves && rec.yearly_leaves.over_quota_this_month > 0) ? `
+        <div style="font-size:11px;color:#666;margin:2px 0 0 12px;">
+          &nbsp;&nbsp;• ${rec.yearly_leaves.over_quota_this_month} leave(s) over yearly quota (${rec.yearly_leaves.allowed} allowed, ${rec.yearly_leaves.opening_used} pre-ERP) — cut applied
+        </div>` : ''}
       </div>
       <div class="keep">
       <div class="section">
@@ -907,6 +911,7 @@ function SalaryTab({ employees, allEmployees }) {
               ['Late Deduction', `- Rs. ${fmt(preview.calculation.late_deduction)}`],
               ['Absent Deduction', `- Rs. ${fmt(preview.calculation.absent_deduction)}`],
               ['Advance Deduction', `- Rs. ${fmt(preview.calculation.advance_deduction)}`],
+              ['Unpaid Leave (over-quota)', `- Rs. ${fmt(preview.calculation.unpaid_leave_deduction)}`],
             ].map(([k, v]) => (
               <div key={k} style={{ background: 'var(--bg-section)', borderRadius: 6, padding: 10 }}>
                 <div style={{ color: 'var(--text2)', fontSize: 11 }}>{k}</div>
@@ -941,6 +946,11 @@ function SalaryTab({ employees, allEmployees }) {
                   </div>
                 </div>
               </div>
+              {preview.calculation.yearly_leaves.over_quota_this_month > 0 && (
+                <div style={{ marginTop: 8, padding: 8, background: '#7f1d1d33', borderRadius: 4, fontSize: 11, color: '#fca5a5' }}>
+                  ⚠️ {preview.calculation.yearly_leaves.over_quota_this_month} leave is mahine yearly quota se bahar ({preview.calculation.yearly_leaves.allowed} allowed, {preview.calculation.yearly_leaves.opening_used} pre-ERP) — unpaid cut lagaa diya.
+                </div>
+              )}
               {preview.calculation.yearly_leaves.remaining === 0 && preview.calculation.absent_days > 0 && (
                 <div style={{ marginTop: 8, padding: 8, background: '#7f1d1d33', borderRadius: 4, fontSize: 11, color: '#fca5a5' }}>
                   ⚠️ Yearly leaves khatam — absent days ab paid hain (salary cut applied)
