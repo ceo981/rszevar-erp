@@ -796,10 +796,14 @@ function SalaryTab({ employees, allEmployees }) {
       </div>
       <div class="section">
         <b>Attendance</b>
+        <div class="row"><span>Month Days:</span><span>${rec.month_days ?? rec.working_days}</span></div>
         <div class="row"><span>Working Days:</span><span>${rec.working_days}</span></div>
+        ${(rec.public_holidays != null) ? `<div class="row"><span>Public Holidays:</span><span>${rec.public_holidays}</span></div>` : ''}
+        ${(rec.sundays != null) ? `<div class="row"><span>Weekly Offs (Sun):</span><span>${rec.sundays}</span></div>` : ''}
         <div class="row"><span>Present Days:</span><span>${rec.present_days}</span></div>
         <div class="row"><span>Absent Days (Paid Cut):</span><span>${rec.absent_days}</span></div>
-        <div class="row"><span>Annual Leaves Used:</span><span>${rec.leave_days || 0}</span></div>
+        <div class="row"><span>Annual Leaves Used (free):</span><span>${rec.free_leave_days ?? rec.leave_days ?? 0}</span></div>
+        ${(rec.yearly_leaves && rec.yearly_leaves.over_quota_this_month > 0) ? `<div class="row"><span>Over-Quota Leaves (unpaid):</span><span>${rec.yearly_leaves.over_quota_this_month}</span></div>` : ''}
         <div class="row"><span>Late Days:</span><span>${rec.late_days}</span></div>
       </div>
       ${rec.yearly_leaves ? `
@@ -902,9 +906,13 @@ function SalaryTab({ employees, allEmployees }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             {[
               ['Base Salary', `Rs. ${fmt(preview.calculation.base_salary)}`],
+              ['Month Days', preview.calculation.month_days ?? preview.calculation.working_days],
+              ['Working Days', preview.calculation.working_days],
+              ['Public Holidays', preview.calculation.public_holidays ?? 0],
               ['Present Days', preview.calculation.present_days],
               ['Absent Days (Paid Cut)', preview.calculation.absent_days],
-              ['Annual Leaves Used', preview.calculation.free_leave_days || 0],
+              ['Annual Leaves Used (free)', preview.calculation.free_leave_days || 0],
+              ['Over-Quota (unpaid)', preview.calculation.yearly_leaves?.over_quota_this_month || 0],
               ['Late Days', preview.calculation.late_days],
               ['Overtime Pay', `Rs. ${fmt(preview.calculation.overtime_pay)}`],
               ['Bonus (total)', `Rs. ${fmt(preview.calculation.bonus)}`],
