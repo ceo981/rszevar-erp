@@ -775,12 +775,18 @@ function SalaryTab({ employees, allEmployees }) {
     const emp = nameLookupList.find(e => e.id === rec.employee_id) || {};
     const w = window.open('', '_blank');
     w.document.write(`
-      <html><head><title>Salary Slip - ${emp.name}</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px;max-width:600px;margin:0 auto}
-      h1{color:#333;border-bottom:2px solid #c9a96e;padding-bottom:8px}
-      .row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}
-      .total{font-weight:bold;font-size:18px;color:#c9a96e}
-      .section{margin:16px 0;padding:12px;background:#f9f9f9;border-radius:6px}
+      <html><head><meta charset="utf-8"><title>Salary Slip - ${emp.name || rec.employee_id} - ${rec.month}</title>
+      <style>
+      @page{size:A4;margin:10mm}
+      *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+      body{font-family:Arial,sans-serif;padding:0;max-width:600px;margin:0 auto;font-size:12.5px;color:#222}
+      h1{color:#333;border-bottom:2px solid #c9a96e;padding-bottom:5px;font-size:18px;margin:0 0 8px}
+      .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #eee}
+      .total{font-weight:bold;font-size:16px;color:#c9a96e}
+      .section{margin:8px 0;padding:8px 10px;background:#f9f9f9;border-radius:6px}
+      .section b{font-size:12.5px}
+      .sign{margin-top:22px;display:flex;justify-content:space-between}
+      .keep{page-break-inside:avoid;break-inside:avoid}
       </style></head><body>
       <h1>💍 RS ZEVAR — Salary Slip</h1>
       <div class="section">
@@ -854,16 +860,23 @@ function SalaryTab({ employees, allEmployees }) {
         <div class="row"><span>Advance Deduction:</span><span>- Rs. ${fmt(rec.advance_deduction)}</span></div>
         <div class="row"><span>Unpaid Leave:</span><span>- Rs. ${fmt(rec.unpaid_leave_deduction)}</span></div>
       </div>
+      <div class="keep">
       <div class="section">
         <div class="row total"><span>NET SALARY:</span><span>Rs. ${fmt(rec.net_salary)}</span></div>
       </div>
-      <div style="margin-top:40px;display:flex;justify-content:space-between">
+      <div class="sign">
         <div>Employee Signature: _______________</div>
         <div>Authorized By: _______________</div>
       </div>
+      </div>
       </body></html>`);
     w.document.close();
-    w.print();
+    // Filename = employee ka naam + month (warna Chrome "about:blank" daal deta hai)
+    const fileTitle = `Salary Slip - ${emp.name || rec.employee_id} - ${rec.month}`;
+    try { w.document.title = fileTitle; } catch (e) {}
+    const doPrint = () => { try { w.focus(); w.print(); } catch (e) {} };
+    if (w.document.readyState === 'complete') setTimeout(doPrint, 300);
+    else w.onload = () => setTimeout(doPrint, 200);
   }
 
   const statusColor = { draft: '#94a3b8', finalized: '#3b82f6', paid: '#22c55e' };
