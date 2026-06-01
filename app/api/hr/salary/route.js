@@ -218,19 +218,39 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const officeYearStart = mm >= 10 ? `${yy}-10-01` : `${yy - 1}-10-01`;
   const officeYearEndOfMonth = end;  // already last day of this month
 
-  let erpFreeLeavesThisYear = 0;
+  let erpAnnualDates = [];
   try {
-    const { count } = await supabase
+    const { data: alRows } = await supabase
       .from('employee_attendance')
-      .select('*', { count: 'exact', head: true })
+      .select('date')
       .eq('employee_id', employee_id)
       .eq('leave_type', 'annual_leave')
       .gte('date', officeYearStart)
-      .lte('date', officeYearEndOfMonth);
-    erpFreeLeavesThisYear = count || 0;
+      .lte('date', officeYearEndOfMonth)
+      .order('date', { ascending: true });
+    erpAnnualDates = (alRows || []).map(r => r.date);
   } catch (e) {
-    console.error('[salary] yearly leaves count failed:', e.message);
+    console.error('[salary] yearly leaves fetch failed:', e.message);
   }
+  const erpFreeLeavesThisYear = erpAnnualDates.length;
+
+  // ── Over-quota reclassification (Jun 2026 fix) ──────────────────────────
+  // Yearly paid-leave allowance = `allowed` (e.g. 6), jis mein se `opening`
+  // (e.g. 3) ERP se pehle use ho chuke. To ERP ke andar free annual leaves =
+  // allowed - opening. Date-order mein is quota se AAGE ki har annual-leave
+  // OVER-QUOTA hai → unpaid (salary cut) — chahe attendance route ne usay
+  // entry-time pe 'annual_leave' stamp kar diya ho (jaise opening_used baad
+  // mein set hua, ya leaves backdated/out-of-order add hue). Cut us mahine
+  // lagti hai jis mahine ki over-quota leave hai (date order ke hisaab se).
+  const freeErpAllowance = Math.max(0, allowed - opening);
+  let overQuotaThisMonth = 0;
+  let overQuotaYearToDate = 0;
+  erpAnnualDates.forEach((d, idx) => {
+    if (idx >= freeErpAllowance) {
+      overQuotaYearToDate += 1;
+      if (d >= start && d <= end) overQuotaThisMonth += 1;
+    }
+  });
 
   const yearlyTotalUsed  = erpFreeLeavesThisYear + opening;
   const yearlyRemaining  = Math.max(0, allowed - yearlyTotalUsed);
@@ -240,15 +260,17 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
     erp_used_this_year: erpFreeLeavesThisYear,
     total_used: yearlyTotalUsed,
     remaining: yearlyRemaining,
+    free_erp_allowance: freeErpAllowance,
+    over_quota_this_month: overQuotaThisMonth,
+    over_quota_year_to_date: overQuotaYearToDate,
     office_year_start: officeYearStart,
     office_year_end: mm >= 10 ? `${yy + 1}-09-30` : `${yy}-09-30`,
   };
 
-  // Unpaid leave deduction — separate column for clarity in slip. For now
-  // we treat 'leave' status as paid (yearly_leaves_allowed handles the
-  // unpaid case via the attendance route auto-converting excess leaves to
-  // 'absent'). So unpaid_leave_deduction stays 0 here.
-  const unpaidLeaveDeduction = 0;
+  // Unpaid leave deduction — is mahine ki over-quota annual leaves ka per-day
+  // rate cut. (Pehle ye hamesha 0 tha — isi wajah se yearly quota khatam hone
+  // ke baad bhi koi cut nahi lagti thi.)
+  const unpaidLeaveDeduction = overQuotaThisMonth * perDayRate;
 
   // ── Overtime pay ────────────────────────────────────────────────────────
   const { data: overtimeRows } = await supabase
@@ -445,26 +467,42 @@ export async function GET(request) {
       .in('id', empIds);
     const empMap = new Map((empRows || []).map(e => [e.id, e]));
 
-    // Per employee: count free leaves taken in office year up to end of slip month
+    // Per employee: dated free leaves in office year up to end of slip month
+    const monthStart = `${month}-01`;
     await Promise.all(records.map(async (rec) => {
       try {
-        const { count } = await supabase
+        const { data: alRows } = await supabase
           .from('employee_attendance')
-          .select('*', { count: 'exact', head: true })
+          .select('date')
           .eq('employee_id', rec.employee_id)
           .eq('leave_type', 'annual_leave')
           .gte('date', officeYearStart)
-          .lte('date', monthEnd);
+          .lte('date', monthEnd)
+          .order('date', { ascending: true });
+        const dates = (alRows || []).map(r => r.date);
+        const count = dates.length;
         const emp = empMap.get(rec.employee_id) || {};
         const allowed = parseInt(emp.yearly_leaves_allowed) || 14;
         const opening = parseInt(emp.leaves_opening_used)   || 0;
-        const totalUsed = (count || 0) + opening;
+        const totalUsed = count + opening;
+        const freeErpAllowance = Math.max(0, allowed - opening);
+        let overQuotaThisMonth = 0;
+        let overQuotaYearToDate = 0;
+        dates.forEach((d, idx) => {
+          if (idx >= freeErpAllowance) {
+            overQuotaYearToDate += 1;
+            if (d >= monthStart && d <= monthEnd) overQuotaThisMonth += 1;
+          }
+        });
         rec.yearly_leaves = {
           allowed,
           opening_used: opening,
-          erp_used_this_year: count || 0,
+          erp_used_this_year: count,
           total_used: totalUsed,
           remaining: Math.max(0, allowed - totalUsed),
+          free_erp_allowance: freeErpAllowance,
+          over_quota_this_month: overQuotaThisMonth,
+          over_quota_year_to_date: overQuotaYearToDate,
           office_year_start: officeYearStart,
           office_year_end: officeYearEnd,
         };
