@@ -28,17 +28,40 @@ function AttendanceTab({ employees }) {
   const [form, setForm] = useState({ employee_id: '', date: today(), status: 'present', time_in: '11:00', time_out: '21:00', notes: '' });
   const [msg, setMsg] = useState('');
   const [editRecord, setEditRecord] = useState(null);
+  const [holidays, setHolidays] = useState([]);
+  const [absentRunning, setAbsentRunning] = useState(false);
   const formRef = useCallback(node => { if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/hr/attendance?month=${month}`);
-      const d = await r.json();
-      setRecords(d.attendance || []);
+      const [aRes, hRes] = await Promise.all([
+        fetch(`/api/hr/attendance?month=${month}`),
+        fetch('/api/hr/leaves?action=holidays'),
+      ]);
+      const a = await aRes.json();
+      const h = await hRes.json();
+      setRecords(a.attendance || []);
+      setHolidays(h.holidays || []);
     } catch(e) { console.error('Attendance load error:', e); }
     setLoading(false);
   }, [month]);
+
+  // Manually trigger the auto-absent run (same logic as the daily cron)
+  async function runAutoAbsent() {
+    if (!window.confirm('Auto-absent run karein? Jin working days ki attendance missing hai (Sundays & holidays chhod kar) un par active staff ko ABSENT mark kar diya jayega. Pehle se mojood records ko haath nahi lagega.')) return;
+    setAbsentRunning(true);
+    try {
+      const r = await fetch('/api/hr/auto-absent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: 31 }) });
+      const d = await r.json();
+      if (d.success) {
+        setMsg(`✅ Auto-absent done — ${d.marked} record(s) mark hue${d.dates?.length ? ` (${d.dates.length} din)` : ''}`);
+        load();
+      } else setMsg('❌ ' + (d.error || 'Error'));
+    } catch(e) { setMsg('❌ ' + e.message); }
+    setAbsentRunning(false);
+    setTimeout(() => setMsg(''), 6000);
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -95,6 +118,18 @@ function AttendanceTab({ employees }) {
     half_day: { label: 'H',  color: '#6366f1', bg: '#6366f128' },
   };
 
+  // Holiday (store-wide off day, comes from holiday_calendar — not per-employee)
+  const HOLIDAY = { label: 'HL', color: '#22d3ee', bg: '#22d3ee22' };
+
+  // Map: day_number → holiday object (for current visible month only)
+  const holidayMap = {};
+  holidays.forEach(h => {
+    if (h.date && h.date.startsWith(month)) {
+      const day = parseInt(h.date.split('-')[2]);
+      if (day) holidayMap[day] = h;
+    }
+  });
+
   const getSummary = (empId) => {
     const recs = Object.values(empDayMap[empId] || {});
     return {
@@ -121,9 +156,17 @@ function AttendanceTab({ employees }) {
   return (
     <div>
       {/* Header row */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={inputStyle} />
         <span style={{ color: 'var(--text2)', fontSize: 14 }}>{records.length} records</span>
+        <button
+          onClick={runAutoAbsent}
+          disabled={absentRunning}
+          title="Jin working days ki attendance missing hai (Sundays & holidays skip), un par active staff ko absent mark karein"
+          style={{ marginLeft: 'auto', background: '#7f1d1d', color: '#fecaca', border: '1px solid #991b1b', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: absentRunning ? 'default' : 'pointer', opacity: absentRunning ? 0.6 : 1 }}
+        >
+          {absentRunning ? '⏳ Running…' : '🚫 Run Auto-Absent'}
+        </button>
       </div>
 
       {/* Add form */}
@@ -214,8 +257,9 @@ function AttendanceTab({ employees }) {
                   const dow = new Date(year, mon - 1, d).getDay();
                   const isToday = d === todayDay;
                   const isSun = dow === 0;
+                  const isHol = !!holidayMap[d];
                   return (
-                    <th key={d} style={{ width: 36, minWidth: 36, padding: '5px 2px', textAlign: 'center', color: isToday ? '#c9a96e' : isSun ? '#475569' : '#334155', fontSize: 10, fontWeight: 500, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                    <th key={d} title={isHol ? holidayMap[d].title : undefined} style={{ width: 36, minWidth: 36, padding: '5px 2px', textAlign: 'center', color: isHol ? HOLIDAY.color : isToday ? '#c9a96e' : isSun ? '#475569' : '#334155', fontSize: 10, fontWeight: 500, background: isHol ? HOLIDAY.bg : isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
                       {DOW[dow]}
                     </th>
                   );
@@ -233,8 +277,9 @@ function AttendanceTab({ employees }) {
                   const isToday = d === todayDay;
                   const dow = new Date(year, mon - 1, d).getDay();
                   const isSun = dow === 0;
+                  const isHol = !!holidayMap[d];
                   return (
-                    <th key={d} style={{ width: 36, padding: '4px 2px', textAlign: 'center', fontWeight: isToday ? 700 : 500, color: isToday ? '#c9a96e' : isSun ? '#334155' : '#475569', fontSize: 12, background: isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
+                    <th key={d} title={isHol ? holidayMap[d].title : undefined} style={{ width: 36, padding: '4px 2px', textAlign: 'center', fontWeight: isToday ? 700 : 500, color: isHol ? HOLIDAY.color : isToday ? '#c9a96e' : isSun ? '#334155' : '#475569', fontSize: 12, background: isHol ? HOLIDAY.bg : isToday ? '#c9a96e11' : '#0d1117', borderLeft: '1px solid #1a1a2e' }}>
                       {d}
                     </th>
                   );
@@ -255,19 +300,22 @@ function AttendanceTab({ employees }) {
                     {days.map(d => {
                       const rec = empDayMap[emp.id]?.[d];
                       const cfg = rec ? STATUS[rec.status] : null;
+                      const hol = holidayMap[d];
                       const dow = new Date(year, mon - 1, d).getDay();
                       const isToday = d === todayDay;
                       const isSun = dow === 0;
                       const tooltip = rec
-                        ? `${empMap[rec.employee_id] || ''} • ${rec.date}\n${rec.time_in || ''} – ${rec.time_out || ''}${rec.late_minutes > 0 ? `\nLate: ${rec.late_minutes} min` : ''}${rec.notes ? `\n${rec.notes}` : ''}`
-                        : `Click to add: ${emp.name} • ${month}-${String(d).padStart(2,'0')}`;
+                        ? `${empMap[rec.employee_id] || ''} • ${rec.date}\n${rec.time_in || ''} – ${rec.time_out || ''}${rec.late_minutes > 0 ? `\nLate: ${rec.late_minutes} min` : ''}${rec.notes ? `\n${rec.notes}` : ''}${hol ? `\n🎉 Holiday: ${hol.title}` : ''}`
+                        : hol
+                          ? `🎉 Holiday: ${hol.title}\nClick to add attendance: ${emp.name} • ${month}-${String(d).padStart(2,'0')}`
+                          : `Click to add: ${emp.name} • ${month}-${String(d).padStart(2,'0')}`;
                       return (
                         <td key={d}
                           onClick={() => handleCellClick(emp, d)}
                           title={tooltip}
                           style={{
                             width: 36, padding: '5px 2px', textAlign: 'center', cursor: 'pointer',
-                            background: cfg ? cfg.bg : isToday ? '#c9a96e08' : isSun ? '#ffffff04' : 'transparent',
+                            background: cfg ? cfg.bg : hol ? HOLIDAY.bg : isToday ? '#c9a96e08' : isSun ? '#ffffff04' : 'transparent',
                             borderLeft: '1px solid #1a1a2e',
                             transition: 'filter 0.1s',
                           }}
@@ -276,6 +324,8 @@ function AttendanceTab({ employees }) {
                         >
                           {cfg ? (
                             <span style={{ color: cfg.color, fontSize: 11, fontWeight: 700, letterSpacing: -0.5 }}>{cfg.label}</span>
+                          ) : hol ? (
+                            <span style={{ color: HOLIDAY.color, fontSize: 10, fontWeight: 700, letterSpacing: -0.5 }}>{HOLIDAY.label}</span>
                           ) : (
                             <span style={{ color: '#1e293b', fontSize: 14, lineHeight: 1 }}>·</span>
                           )}
@@ -305,6 +355,10 @@ function AttendanceTab({ employees }) {
             {k.replace('_', ' ')}
           </span>
         ))}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text2)' }}>
+          <span style={{ display: 'inline-block', width: 22, height: 18, borderRadius: 3, background: HOLIDAY.bg, color: HOLIDAY.color, fontSize: 10, fontWeight: 700, textAlign: 'center', lineHeight: '18px' }}>{HOLIDAY.label}</span>
+          holiday
+        </span>
         <span style={{ fontSize: 12, color: '#334155' }}>· = no record (click to add)</span>
       </div>
     </div>
@@ -1263,6 +1317,8 @@ function PolicyTab() {
     leaderboard_bonus_1st: '2000',
     leaderboard_bonus_2nd: '1000',
     overtime_rate_multiplier: '1.5',
+    auto_absent_enabled: 'true',
+    auto_absent_hours: '24',
   });
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
@@ -1325,6 +1381,26 @@ function PolicyTab() {
       <h3 style={{ color: 'var(--gold)', marginBottom: 20 }}>Overtime</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
         <Field label="Overtime Multiplier" k="overtime_rate_multiplier" suffix="x" help="1.5 = 1.5x per hour rate" />
+      </div>
+
+      <h3 style={{ color: 'var(--gold)', marginBottom: 20 }}>Auto-Absent</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 14 }}>
+          <div style={{ color: 'var(--text2)', fontSize: 12, marginBottom: 6 }}>Auto-Absent</div>
+          <select
+            value={policy.auto_absent_enabled || 'true'}
+            onChange={e => setPolicy(p => ({ ...p, auto_absent_enabled: e.target.value }))}
+            style={{ ...inputStyle, width: '100%', fontSize: 15, fontWeight: 700 }}
+          >
+            <option value="true">✅ ON</option>
+            <option value="false">⛔ OFF</option>
+          </select>
+          <div style={{ color: '#334155', fontSize: 11, marginTop: 4 }}>ON = missing attendance auto absent ho jati hai</div>
+        </div>
+        <Field label="Buffer Hours" k="auto_absent_hours" suffix="hours" help="Din khatam hone ke itne ghante baad mark hoti hai (24 = next day, 12 = noon next day)" />
+      </div>
+      <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 14, marginBottom: 24, fontSize: 12, color: 'var(--text2)', lineHeight: 1.7 }}>
+        Daily cron ye check karta hai. <strong style={{ color: '#fbbf24' }}>Sundays</strong> aur <strong style={{ color: '#22d3ee' }}>holidays</strong> skip hote hain. Pehle se mojood koi record overwrite nahi hota. Manual run ke liye Attendance tab mein <strong>🚫 Run Auto-Absent</strong> button hai.
       </div>
 
       <div style={{ background: 'var(--bg-section)', borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13, color: 'var(--text2)', lineHeight: 1.7 }}>
