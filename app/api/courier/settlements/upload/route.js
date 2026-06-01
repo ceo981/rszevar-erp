@@ -426,6 +426,7 @@ export async function POST(request) {
         sample_paid: toMarkPaid.slice(0, 5).map(o => o.order_number),
         sample_rto: toMarkRTO.slice(0, 5).map(o => o.order_number),
         sample_not_found: notFound.slice(0, 5),
+        sample_skipped: skipped.slice(0, 20),
       });
     }
 
@@ -545,6 +546,8 @@ export async function POST(request) {
       not_found: notFound.length,
       skipped: skipped.length,
       total_parsed: parsed.orders.length,
+      sample_not_found: notFound.slice(0, 5),
+      sample_skipped: skipped.slice(0, 20),
       meta: parsed.meta,
       errors: [...(errors || []), ...(settlementSaveError ? [settlementSaveError] : [])].length > 0
         ? [...(errors || []), ...(settlementSaveError ? [settlementSaveError] : [])]
