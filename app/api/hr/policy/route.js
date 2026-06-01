@@ -25,6 +25,11 @@ const DEFAULTS = {
   leaderboard_bonus_1st:       '2000',
   leaderboard_bonus_2nd:       '1000',
   overtime_rate_multiplier:    '1.5',
+  // ── Auto-Absent (Jun 2026) ───────────────────────────────────────────────
+  // Jis working day ki attendance log na ho, buffer hours guzarne ke baad
+  // active staff ko auto 'absent' mark kar diya jata hai (Sundays/holidays skip).
+  auto_absent_enabled:         'true',
+  auto_absent_hours:           '24',   // 24 = agla din + buffer, 12 = noon next day
 };
 
 export async function GET() {
