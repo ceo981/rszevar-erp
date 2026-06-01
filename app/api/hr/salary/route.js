@@ -157,11 +157,11 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   const markedDays  = (attendance || []).length;
   const presentDays = counts.present + counts.late;          // Late counts as present for pay
   const absentDays  = counts.paid_absent;                    // Drives deduction (paid absents only)
-  const freeLeaveDays = counts.free_leave;                   // Used yearly leave balance, NO cut
-  const totalAbsentDays = counts.paid_absent + counts.free_leave; // For UI display
+  let   freeLeaveDays = counts.free_leave;                   // Reassigned below (year-aware split)
+  let   totalAbsentDays = counts.paid_absent + counts.free_leave; // For UI display
   const lateDays    = counts.late;
   const halfDays    = counts.half_day;
-  const leaveDays   = freeLeaveDays;                         // Saved as 'leave_days' in DB
+  let   leaveDays   = freeLeaveDays;                         // Saved as 'leave_days' in DB
 
   // ── Policy + per-day rate ───────────────────────────────────────────────
   const policy = await getPolicy(supabase);
@@ -243,14 +243,25 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
   // mein set hua, ya leaves backdated/out-of-order add hue). Cut us mahine
   // lagti hai jis mahine ki over-quota leave hai (date order ke hisaab se).
   const freeErpAllowance = Math.max(0, allowed - opening);
+  // Is mahine ki annual-leave dates (year index ke saath) → free vs over-quota.
+  // Basis = leave_type='annual_leave' (status nahi) taa ke "Annual Leaves Used"
+  // aur "Over-Quota" counts unpaid cut se 100% reconcile karein.
+  const monthAnnualDates = erpAnnualDates.filter(d => d >= start && d <= end);
+  let freeThisMonth = 0;
   let overQuotaThisMonth = 0;
-  let overQuotaYearToDate = 0;
-  erpAnnualDates.forEach((d, idx) => {
-    if (idx >= freeErpAllowance) {
-      overQuotaYearToDate += 1;
-      if (d >= start && d <= end) overQuotaThisMonth += 1;
-    }
+  monthAnnualDates.forEach(d => {
+    const idx = erpAnnualDates.indexOf(d);
+    if (idx >= 0 && idx < freeErpAllowance) freeThisMonth += 1;
+    else overQuotaThisMonth += 1;
   });
+  const annualLeavesThisMonth = monthAnnualDates.length;
+  let overQuotaYearToDate = 0;
+  erpAnnualDates.forEach((d, idx) => { if (idx >= freeErpAllowance) overQuotaYearToDate += 1; });
+
+  // Display counts reassign — slip reconcile ho (free + over-quota = total annual)
+  freeLeaveDays   = freeThisMonth;
+  leaveDays       = freeThisMonth;
+  totalAbsentDays = counts.paid_absent + annualLeavesThisMonth;
 
   const yearlyTotalUsed  = erpFreeLeavesThisYear + opening;
   const yearlyRemaining  = Math.max(0, allowed - yearlyTotalUsed);
@@ -263,9 +274,35 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
     free_erp_allowance: freeErpAllowance,
     over_quota_this_month: overQuotaThisMonth,
     over_quota_year_to_date: overQuotaYearToDate,
+    annual_leaves_this_month: annualLeavesThisMonth,
     office_year_start: officeYearStart,
     office_year_end: mm >= 10 ? `${yy + 1}-09-30` : `${yy}-09-30`,
   };
+
+  // ── Working-days breakdown (Jun 2026) — salary slip clarity ─────────────
+  // Month Days = calendar days. Working Days = Month Days − Sundays (weekly
+  // off) − Public Holidays. (Per-day rate ka denominator alag hai — wo
+  // calendar days hi rehta hai, ye sirf slip pe clear breakdown ke liye hai.)
+  const monthDays = totalDays;
+  let sundaysCount = 0;
+  for (let dnum = 1; dnum <= monthDays; dnum++) {
+    if (new Date(Date.UTC(yy, mm - 1, dnum)).getUTCDay() === 0) sundaysCount += 1;
+  }
+  let publicHolidaysCount = 0;
+  try {
+    const { data: hols } = await supabase
+      .from('holiday_calendar')
+      .select('date')
+      .gte('date', start)
+      .lte('date', end);
+    publicHolidaysCount = (hols || []).filter(h => {
+      const [hy, hm, hd] = String(h.date).split('-').map(Number);
+      return new Date(Date.UTC(hy, hm - 1, hd)).getUTCDay() !== 0; // Sunday holiday double-count nahi
+    }).length;
+  } catch (e) {
+    console.error('[salary] holiday count failed:', e.message);
+  }
+  const workingDaysActual = Math.max(0, monthDays - sundaysCount - publicHolidaysCount);
 
   // Unpaid leave deduction — is mahine ki over-quota annual leaves ka per-day
   // rate cut. (Pehle ye hamesha 0 tha — isi wajah se yearly quota khatam hone
@@ -375,7 +412,10 @@ async function calculatePayroll(supabase, employee_id, month, manualBonus = 0) {
       employee_id,
       employee_name: emp.name,
       month,
-      working_days:   totalDays,
+      working_days:   workingDaysActual,
+      month_days:     monthDays,
+      sundays:        sundaysCount,
+      public_holidays: publicHolidaysCount,
       marked_days:    markedDays,
       present_days:   presentDays,
       absent_days:    absentDays,           // PAID absents (drives deduction)
@@ -457,6 +497,29 @@ export async function GET(request) {
   const officeYearStart  = mm >= 10 ? `${yy}-10-01`     : `${yy - 1}-10-01`;
   const officeYearEnd    = mm >= 10 ? `${yy + 1}-09-30` : `${yy}-09-30`;
   const monthEnd         = `${month}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+  const monthStartStr    = `${month}-01`;
+
+  // Working-days breakdown for this month (employee-independent → compute once)
+  const monthDaysAll = new Date(yy, mm, 0).getDate();
+  let sundaysAll = 0;
+  for (let dnum = 1; dnum <= monthDaysAll; dnum++) {
+    if (new Date(Date.UTC(yy, mm - 1, dnum)).getUTCDay() === 0) sundaysAll += 1;
+  }
+  let publicHolidaysAll = 0;
+  try {
+    const { data: hols } = await supabase
+      .from('holiday_calendar')
+      .select('date')
+      .gte('date', monthStartStr)
+      .lte('date', monthEnd);
+    publicHolidaysAll = (hols || []).filter(h => {
+      const [hy, hm, hd] = String(h.date).split('-').map(Number);
+      return new Date(Date.UTC(hy, hm - 1, hd)).getUTCDay() !== 0;
+    }).length;
+  } catch (e) {
+    console.error('[salary] holiday count (enrich) failed:', e.message);
+  }
+  const workingDaysAll = Math.max(0, monthDaysAll - sundaysAll - publicHolidaysAll);
 
   if (records.length > 0) {
     const empIds = records.map(r => r.employee_id);
@@ -488,10 +551,13 @@ export async function GET(request) {
         const freeErpAllowance = Math.max(0, allowed - opening);
         let overQuotaThisMonth = 0;
         let overQuotaYearToDate = 0;
+        let annualThisMonth = 0;
         dates.forEach((d, idx) => {
+          const inMonth = d >= monthStart && d <= monthEnd;
+          if (inMonth) annualThisMonth += 1;
           if (idx >= freeErpAllowance) {
             overQuotaYearToDate += 1;
-            if (d >= monthStart && d <= monthEnd) overQuotaThisMonth += 1;
+            if (inMonth) overQuotaThisMonth += 1;
           }
         });
         rec.yearly_leaves = {
@@ -503,9 +569,17 @@ export async function GET(request) {
           free_erp_allowance: freeErpAllowance,
           over_quota_this_month: overQuotaThisMonth,
           over_quota_year_to_date: overQuotaYearToDate,
+          annual_leaves_this_month: annualThisMonth,
           office_year_start: officeYearStart,
           office_year_end: officeYearEnd,
         };
+        // Working-days breakdown (display) — override stale saved working_days
+        rec.month_days = monthDaysAll;
+        rec.working_days = workingDaysAll;
+        rec.public_holidays = publicHolidaysAll;
+        rec.sundays = sundaysAll;
+        // Free annual leaves shown = total annual this month − over-quota
+        rec.free_leave_days = Math.max(0, annualThisMonth - overQuotaThisMonth);
       } catch (e) {
         rec.yearly_leaves = null;
       }
