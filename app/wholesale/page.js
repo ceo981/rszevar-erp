@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 
 const gold = 'var(--gold)';
 const card = 'var(--bg-card)';
@@ -146,7 +147,7 @@ function OrderModal({ buyers, onClose, onSave }) {
 
 // ── Main Wholesale Page ───────────────────────────────────────
 export default function WholesalePage() {
-  const [tab, setTab] = useState('buyers');
+  const [tab, setTab] = useUrlTab('tab', 'buyers');
   const [buyers, setBuyers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({});
