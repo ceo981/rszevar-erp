@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import { useUser } from '@/context/UserContext';
 
 const gold = 'var(--gold)';
@@ -701,7 +702,7 @@ export default function SettingsPage() {
 
   const [settings, setSettings] = useState([]);
   const [drafts, setDrafts] = useState({});
-  const [activeTab, setActiveTab] = useState('store');
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'store');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
