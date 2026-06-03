@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import { useUser } from '@/context/UserContext';
 
 const gold = 'var(--gold)';
@@ -415,7 +416,7 @@ export default function CourierSyncPage() {
   const TABS = ALL_TABS.filter(t => can(t.perm));
   const defaultTab = TABS[0]?.id || 'sync';
 
-  const [tab, setTab] = useState(defaultTab);
+  const [tab, setTab] = useUrlTab('tab', defaultTab);
 
   // Edge case: zero perms → empty state
   if (TABS.length === 0) {
