@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import { useUser } from '@/context/UserContext';
 
 const EXPENSE_CATEGORIES = [
@@ -835,7 +836,7 @@ function AdvancesTab({ isCEO, currentUserName }) {
 // ─── MAIN PAGE ──────────────────────────────────────────────────
 export default function OperationsPage() {
   const { profile, isSuperAdmin, userEmail, activeUser, can } = useUser();
-  const [tab, setTab] = useState('cash');
+  const [tab, setTab] = useUrlTab('tab', 'cash');
 
   // ── Granular permission gates (May 2 2026) ──
   // isCEO/isManager were role-based. Ab perm-driven hain:
