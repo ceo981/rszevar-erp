@@ -20,6 +20,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 import { createClient as createAuthClient } from '@/lib/supabase/client';
@@ -58,7 +59,7 @@ const FUL_BADGE = {
 
 export default function HistoricalOrdersPage() {
   const { profile, isSuperAdmin } = useUser();
-  const [tab, setTab] = useState('browse');  // 'browse' | 'import'
+  const [tab, setTab] = useUrlTab('tab', 'browse');  // 'browse' | 'import'
 
   return (
     <div style={{ padding: '28px 28px 60px', maxWidth: 1240, margin: '0 auto' }}>
