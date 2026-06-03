@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import { useUser } from '@/context/UserContext';
 
 const gold  = 'var(--gold)';
@@ -380,7 +381,7 @@ export default function ComplaintsPage() {
   const [loading, setLoading]       = useState(true);
   const [showAdd, setShowAdd]       = useState(false);
   const [selected, setSelected]     = useState(null);
-  const [tab, setTab]               = useState('complaints');
+  const [tab, setTab]               = useUrlTab('tab', 'complaints');
   const [categoryFilter, setCatF]   = useState('all');
   const [mistakeFilter, setMistF]   = useState('all');
   const [search, setSearch]         = useState('');
