@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
@@ -1485,7 +1486,7 @@ function PolicyTab() {
 // MAIN HR PAGE
 // ─────────────────────────────────────────────
 export default function HRPage() {
-  const [activeTab, setActiveTab] = useState('attendance');
+  const [activeTab, setActiveTab] = useUrlTab('tab', 'attendance');
   const [employees, setEmployees] = useState([]);
 
   useEffect(() => {
