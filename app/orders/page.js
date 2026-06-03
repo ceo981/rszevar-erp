@@ -527,6 +527,9 @@ export default function OrdersPage() {
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selected, setSelected] = useState(null);
+  // Deep-link gate — jab tak URL ke ?order= ko handle na kar lein, URL param ko
+  // delete na karein (warna mount par selected=null hone se link ud jata).
+  const deepLinkHandledRef = useRef(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -639,6 +642,39 @@ export default function OrdersPage() {
     const fresh = orders.find(o => o.id === selected.id);
     if (fresh && fresh !== selected) setSelected(fresh);
   }, [orders, selected]);
+
+  // ── SHAREABLE DRAWER (deep-link) ─────────────────────────────────────────
+  // Jab koi order drawer khulta hai, URL mein ?order=<id> reflect hota hai —
+  // ab woh link copy karke kisi ko bhej sakte ho aur unke yahan wahi order
+  // drawer khulega (agar current list/filter mein mojood ho). List page reload
+  // par bhi drawer open rehta hai.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (selected?.id) {
+        url.searchParams.set('order', String(selected.id));
+      } else if (deepLinkHandledRef.current) {
+        url.searchParams.delete('order');
+      } else {
+        return; // deep-link abhi handle nahi hua → URL ko mat chedo
+      }
+      window.history.replaceState(window.history.state, '', url.toString());
+    } catch (_) {}
+  }, [selected]);
+
+  // Page load par: agar URL mein ?order=<id> hai to list se woh order khol do.
+  useEffect(() => {
+    if (deepLinkHandledRef.current) return;
+    if (!orders || orders.length === 0) return;
+    try {
+      const wanted = new URLSearchParams(window.location.search).get('order');
+      if (wanted) {
+        const found = orders.find(o => String(o.id) === wanted);
+        if (found) setSelected(found);
+      }
+    } catch (_) {}
+    deepLinkHandledRef.current = true;
+  }, [orders]);
 
   // Background auto-sync — page load pe silently Leopards + Kangaroo dono sync
   useEffect(() => {
