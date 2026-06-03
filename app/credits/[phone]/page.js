@@ -20,6 +20,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
@@ -82,7 +83,7 @@ export default function CustomerKhaataPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [tab, setTab] = useState('orders');  // 'orders' | 'payments'
+  const [tab, setTab] = useUrlTab('tab', 'orders');  // 'orders' | 'payments'
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [voidingId, setVoidingId] = useState(null);
   // May 5 2026 — import-order state
