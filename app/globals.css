@@ -573,3 +573,23 @@ body {
 [data-theme="light"] [style*="linear-gradient"][style*="#fff"] {
   color: #fff !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   URL-DRIVEN TABS — mobile polish (added with useUrlTab rollout, Jun 2026)
+   ────────────────────────────────────────────────────────────────────────────
+   Sab andar ke tabs ab `?tab=` URL param se chalte hain (shareable). Ye block
+   sirf un tab-rows ka mobile experience behtar karta hai — purely additive,
+   kisi maujooda layout ko nahi todta. Tab buttons inline-styled hain is liye
+   hum unke common flex-row container ko target karte hain.
+═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Tab rows jo wrap nahi hote — unhe smooth horizontal scroll do, kabhi
+     screen se bahar na jaayein. flex-wrap wale already wrap ho jaate hain. */
+  div[style*="display: flex"][style*="gap: 8"][style*="margin-bottom"] {
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Tab buttons mobile par thoda bada tap target — accidental mis-tap kam. */
+  div[style*="display: flex"][style*="gap: 8"] > button[style*="border-radius: 8"] {
+    min-height: 40px;
+  }
+}
