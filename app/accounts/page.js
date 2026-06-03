@@ -16,6 +16,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useUrlTab } from '@/lib/useUrlTab';
 import SettlementsTab from './SettlementsTab';
 import { useUser } from '@/context/UserContext';
 
@@ -1290,7 +1291,7 @@ export default function AccountsPage() {
   const TABS = ALL_TABS.filter(t => can(t.perm));
 
   const defaultTab = TABS[0]?.id || 'dashboard';
-  const [tab, setTab] = useState(defaultTab);
+  const [tab, setTab] = useUrlTab('tab', defaultTab);
 
   // No permissions → soft empty state.
   if (TABS.length === 0) {
