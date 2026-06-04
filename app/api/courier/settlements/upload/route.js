@@ -1,7 +1,7 @@
 // ============================================================================
 // RS ZEVAR ERP — Settlement Upload Route
 // POST /api/courier/settlements/upload
-// Handles: Leopards PDF, Kangaroo XLSX, PostEx CSV
+// Handles: Leopards PDF, Kangaroo XLSX, PostEx CSV, Trax XLSX/CSV
 // Actions: mark paid (Delivered), mark RTO (Return/Cancelled)
 // ============================================================================
 
@@ -239,6 +239,86 @@ function parseCSVLine(line) {
   return result;
 }
 
+// ─── TRAX (Sonic) SETTLEMENT PARSER ──────────────────────────────────────────
+// Header-name based (flexible) — Trax ki settlement file ka exact format abhi
+// confirm nahi hua, isliye yeh columns ko NAAM se dhoondta hai (position se nahi).
+// Jab tum real Trax settlement file bhejoge, hum yahaan exact column names
+// lock kar denge. NOTE: Trax payment reconciliation API se bhi automatic hoti
+// hai (sync-payments route) — yeh file upload sirf charges/deductions accounts
+// mein capture karne ke liye extra path hai.
+//
+// Accepts array-of-objects rows (header → value). Returns same shape as other parsers.
+function parseTraxSheet(rows) {
+  const orders = [];
+  let totalDeliveryCharges = 0;
+  let totalGST = 0;
+  let totalWHT = 0;
+  if (!Array.isArray(rows) || rows.length === 0) return { orders, meta: {} };
+
+  // Build a case-insensitive header lookup from the first row's keys
+  const sampleKeys = Object.keys(rows[0] || {});
+  const findKey = (...candidates) => {
+    for (const cand of candidates) {
+      const hit = sampleKeys.find(k => String(k).toLowerCase().replace(/[^a-z0-9]/g, '')
+        .includes(String(cand).toLowerCase().replace(/[^a-z0-9]/g, '')));
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  const kOrderRef = findKey('orderid', 'order_id', 'orderref', 'reference', 'consigneeref', 'shipperref');
+  const kTracking = findKey('trackingnumber', 'tracking', 'cn', 'consignment');
+  const kCod      = findKey('codamount', 'cod', 'collectionamount', 'amount');
+  const kNet      = findKey('netpayable', 'netamount', 'payable', 'net');
+  const kCharges  = findKey('totalcharges', 'weightcharges', 'deliverycharges', 'charges', 'servicecharges');
+  const kGst      = findKey('gst', 'salestax');
+  const kWhtIt    = findKey('whincometax', 'whtit', 'incometax');
+  const kWhtSt    = findKey('whsalestax', 'whtst');
+  const kStatus   = findKey('status', 'shipmentstatus', 'paymenttype', 'currentstatus');
+
+  const num = (v) => parseFloat(String(v ?? '').replace(/[,\s]/g, '')) || 0;
+
+  for (const row of rows) {
+    const orderRef = String((kOrderRef && row[kOrderRef]) || '');
+    const zevarMatch = orderRef.match(/ZEVAR[-\s]?(\d{4,6})/i);
+    if (!zevarMatch) continue;
+    const orderNumber = 'ZEVAR-' + zevarMatch[1].padStart(6, '0');
+
+    const codAmount = kCod ? num(row[kCod]) : 0;
+    const netAmount = kNet ? num(row[kNet]) : codAmount;
+    const charges   = kCharges ? num(row[kCharges]) : 0;
+    const gst       = kGst ? num(row[kGst]) : 0;
+    const whtIt     = kWhtIt ? num(row[kWhtIt]) : 0;
+    const whtSt     = kWhtSt ? num(row[kWhtSt]) : 0;
+    const statusRaw = String((kStatus && row[kStatus]) || '').toLowerCase();
+
+    let status = 'unknown';
+    if (statusRaw.includes('deliver') && !statusRaw.includes('unsuccess')) {
+      status = netAmount <= 0 ? 'skip' : 'delivered';
+    } else if (statusRaw.includes('return') || statusRaw.includes('rto') || statusRaw.includes('cancel')) {
+      status = 'rto';
+    }
+
+    orders.push({
+      order_number: orderNumber,
+      tracking_number: kTracking ? String(row[kTracking] || '') : '',
+      cod_amount: codAmount,
+      delivery_charge: charges,
+      gst,
+      wht_it: whtIt,
+      wht_st: whtSt,
+      net_amount: netAmount,
+      status,
+    });
+
+    totalDeliveryCharges += charges;
+    totalGST += gst;
+    totalWHT += whtIt + whtSt;
+  }
+
+  return { orders, meta: { totalDeliveryCharges, totalGST, totalWHT } };
+}
+
 // ─── MAIN ROUTE ──────────────────────────────────────────────────────────────
 export async function POST(request) {
   try {
@@ -309,6 +389,44 @@ export async function POST(request) {
         const rows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
         parsed = parseLeopardsPDFRows(rows.map(r => r.join('\t')));
       }
+    } else if (courier === 'Trax' && (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv'))) {
+      // Trax settlement — header-name based flexible parser
+      let traxRows = [];
+      if (fileName.endsWith('.csv')) {
+        const text = buffer.toString('utf-8');
+        const lines = text.split('\n').filter(l => l.trim());
+        if (lines.length >= 2) {
+          const headers = parseCSVLine(lines[0]).map(h => h.trim().replace(/"/g, ''));
+          for (let i = 1; i < lines.length; i++) {
+            const vals = parseCSVLine(lines[i]);
+            const obj = {};
+            headers.forEach((h, idx) => { obj[h] = (vals[idx] || '').trim(); });
+            traxRows.push(obj);
+          }
+        }
+      } else {
+        const XLSXMod = await import('xlsx');
+        const XLSX = XLSXMod.default || XLSXMod;
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const allRows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 });
+        // Find header row — first row containing a ZEVAR-ish ref column or 'Tracking'
+        let headerRowIdx = 0;
+        for (let i = 0; i < Math.min(allRows.length, 12); i++) {
+          const rowStr = Array.isArray(allRows[i]) ? allRows[i].join(' ').toLowerCase() : '';
+          if (rowStr.includes('tracking') || rowStr.includes('order') || rowStr.includes('cn')) { headerRowIdx = i; break; }
+        }
+        const headers = allRows[headerRowIdx] || [];
+        traxRows = allRows.slice(headerRowIdx + 1)
+          .filter(row => Array.isArray(row) && row.some(c => c !== null && c !== '' && c !== undefined))
+          .map(row => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[String(h || '')] = row[i] ?? ''; });
+            return obj;
+          });
+      }
+      parsed = parseTraxSheet(traxRows);
+
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
       const XLSXMod = await import('xlsx');
       const XLSX = XLSXMod.default || XLSXMod;
