@@ -1202,6 +1202,7 @@ export default function SingleOrderPage() {
                    <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
                     <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
                     <MenuItem icon="🦘" label="Book at Kangaroo" onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
+                    <MenuItem icon="⚡" label="Book at Trax" onClick={() => { openCourierBooking('trax', order.shopify_order_id); setOpenMenu(null); }} />
                   </div>
                 )}
               </div>
@@ -2786,6 +2787,7 @@ export default function SingleOrderPage() {
                 <option value="">— Auto / Not set —</option>
                 <option value="Leopards">Leopards (KI...)</option>
                 <option value="Kangaroo">Kangaroo (KL...)</option>
+                <option value="Trax">Trax</option>
                 <option value="PostEx">PostEx</option>
                 <option value="TCS">TCS</option>
                 <option value="M&P">M&amp;P</option>
