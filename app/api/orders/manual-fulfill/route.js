@@ -39,7 +39,7 @@ export const maxDuration = 30;
 // Compute a tracking URL from courier + tracking number (mirrors dispatch route)
 function buildTrackingUrl(courier, tracking) {
   if (!tracking) return null;
-  if (courier === 'Leopards') return `https://lcs.appsbymoose.com/track/${tracking}`;
+  if (courier === 'Leopards') return `https://leopardsfulfillment.leopardscourier.com/Track/Index?Cn=${tracking}`;
   if (courier === 'Kangaroo') return `https://kangaroo.pk/track/${tracking}`;
   if (courier === 'PostEx')   return `https://postex.pk/tracking/${tracking}`;
   return null;
