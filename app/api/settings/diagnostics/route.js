@@ -301,6 +301,61 @@ async function checkKangaroo() {
   };
 }
 
+// ─── Trax (Sonic) — live integration check (Jun 2026) ─────────────────────
+async function checkTrax() {
+  const supabase = createServerClient();
+  let count = 0;
+  let delivered = 0;
+  let paidUnpaid = { paid: 0, unpaid: 0 };
+  try {
+    const [{ count: c }, { count: d }, { count: p }, { count: u }] = await Promise.all([
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Trax'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Trax').eq('status', 'delivered'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Trax').eq('payment_status', 'paid'),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('dispatched_courier', 'Trax').eq('payment_status', 'unpaid'),
+    ]);
+    count = c || 0;
+    delivered = d || 0;
+    paidUnpaid = { paid: p || 0, unpaid: u || 0 };
+  } catch {}
+
+  const apiKey = process.env.SONIC_API_KEY;
+  const credsConfigured = !!apiKey;
+
+  let connectionStatus = 'not_tested';
+  let connectionError = null;
+  let testLatencyMs = null;
+  let cityCount = null;
+
+  if (credsConfigured) {
+    try {
+      const { getSonicCities } = await import('@/lib/sonic');
+      const t0 = Date.now();
+      const cities = await getSonicCities();
+      testLatencyMs = Date.now() - t0;
+      cityCount = Array.isArray(cities) ? cities.length : null;
+      connectionStatus = 'ok';
+    } catch (e) {
+      connectionStatus = 'failed';
+      connectionError = e.message;
+    }
+  }
+
+  return {
+    configured: credsConfigured,
+    api_key: apiKey ? mask(apiKey) : null,
+    endpoint: 'https://sonic.pk',
+    connection: connectionStatus,           // 'ok' | 'failed' | 'not_tested'
+    connection_error: connectionError,
+    test_latency_ms: testLatencyMs,
+    city_count: cityCount,
+    integration: 'live',
+    note: 'Major courier. Status sync 4:30/9:30/13:30/17:30 UTC, payments 5:30/10:30/14:30/18:30. Booking via Shopify "Sonic - Trax" app.',
+    order_count: count,
+    counts: { total: count, delivered, paid: paidUnpaid.paid, unpaid: paidUnpaid.unpaid },
+  };
+}
+
 // ─── System Health ─────────────────────────────────────────────────────────
 async function checkSystem() {
   const result = {
@@ -398,6 +453,7 @@ export async function GET(request) {
     if (check === 'leopards' || check === 'all') result.leopards = await checkLeopards();
     if (check === 'postex' || check === 'all') result.postex = await checkPostEx();
     if (check === 'kangaroo' || check === 'all') result.kangaroo = await checkKangaroo();
+    if (check === 'trax' || check === 'all') result.trax = await checkTrax();
     if (check === 'system' || check === 'all') result.system = await checkSystem();
 
     return NextResponse.json(result);
