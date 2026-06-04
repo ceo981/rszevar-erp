@@ -52,7 +52,7 @@ function rateLimitCheck(ip) {
 function buildTrackingUrl(courier, tracking) {
   if (!tracking) return null;
   const map = {
-    'Leopards': `https://lcs.appsbymoose.com/track/${tracking}`,
+    'Leopards': `https://leopardsfulfillment.leopardscourier.com/Track/Index?Cn=${tracking}`,
     'PostEx':   `https://postex.pk/track-order?trackingId=${tracking}`,
     'Kangaroo': `https://www.kangaroo.pk/track?cn=${tracking}`,
     'Trax':     `https://sonic.pk/tracking?tracking_number=${tracking}`,
