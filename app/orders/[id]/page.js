@@ -30,6 +30,7 @@ import OrderDrawer, {
 import EditCustomerModal from '../_components/EditCustomerModal';
 import EditShippingModal from '../_components/EditShippingModal';
 import { openCourierBooking } from '@/lib/courier-booking-urls';
+import { recommendCourier } from '@/lib/courier-recommendation';
 import {
   isActiveRawLineItem,
   enrichItemWithDiscount,
@@ -160,7 +161,7 @@ function HeaderBtn({ onClick, href, target, children, primary, title }) {
 }
 
 // ─── Dropdown menu item (shared styling for Print/More/Collect/Fulfill) ───
-function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
+function MenuItem({ onClick, icon, label, sub, danger, disabled, badge }) {
   return (
     <button
       onClick={onClick}
@@ -186,7 +187,16 @@ function MenuItem({ onClick, icon, label, sub, danger, disabled }) {
     >
       {icon && <span style={{ fontSize: 14, flexShrink: 0, width: 16, textAlign: 'center' }}>{icon}</span>}
       <span style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 500 }}>{label}</div>
+        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {label}
+          {badge && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 0.3, textTransform: 'uppercase',
+              color: '#10b981', background: 'rgba(16,185,129,0.15)',
+              border: '1px solid rgba(16,185,129,0.4)', borderRadius: 4, padding: '1px 5px',
+            }}>⭐ {badge}</span>
+          )}
+        </div>
         {sub && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{sub}</div>}
       </span>
     </button>
@@ -1199,10 +1209,19 @@ export default function SingleOrderPage() {
                     <MenuItem icon="📂" label="Archive order" onClick={() => comingSoon('Archive order', 5)} />
                     <MenuItem icon="💬" label="Send order WhatsApp" onClick={() => comingSoon('Manual WhatsApp send', 5)} />
                     <div style={{ height: 1, background: border, margin: '4px 0' }} />
-                   <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
-                    <MenuItem icon="🚚" label="Book at Leopards" onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
-                    <MenuItem icon="🦘" label="Book at Kangaroo" onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
-                    <MenuItem icon="⚡" label="Book at Trax" onClick={() => { openCourierBooking('trax', order.shopify_order_id); setOpenMenu(null); }} />
+                   {(() => {
+                      const recCourier = recommendCourier(order.customer_city);
+                      const cityLabel = order.customer_city ? order.customer_city.trim() : '';
+                      const recSub = cityLabel ? `Best for ${cityLabel}` : 'Recommended';
+                      return (
+                        <>
+                          <MenuItem icon="🚚" label="Book at PostEx" onClick={() => { openCourierBooking('postex', order.shopify_order_id); setOpenMenu(null); }} />
+                          <MenuItem icon="🚚" label="Book at Leopards" badge={recCourier === 'Leopards' ? 'Recommended' : undefined} sub={recCourier === 'Leopards' ? recSub : undefined} onClick={() => { openCourierBooking('leopards', order.shopify_order_id); setOpenMenu(null); }} />
+                          <MenuItem icon="🦘" label="Book at Kangaroo" badge={recCourier === 'Kangaroo' ? 'Recommended' : undefined} sub={recCourier === 'Kangaroo' ? recSub : undefined} onClick={() => { window.open(`/orders/${id}/book-kangaroo`, '_blank'); setOpenMenu(null); }} />
+                          <MenuItem icon="⚡" label="Book at Trax" badge={recCourier === 'Trax' ? 'Recommended' : undefined} sub={recCourier === 'Trax' ? recSub : undefined} onClick={() => { openCourierBooking('trax', order.shopify_order_id); setOpenMenu(null); }} />
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
