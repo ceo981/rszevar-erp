@@ -65,7 +65,7 @@ export async function GET(request) {
       .eq('status', 'delivered');
 
     // ── 3. Courier breakdown (all-time paid orders) ───────────
-    const couriers = ['PostEx', 'Leopards', 'Kangaroo'];
+    const couriers = ['PostEx', 'Leopards', 'Kangaroo', 'Trax'];
     const byCourier = {};
     for (const c of couriers) {
       const paid   = (paidOrders || []).filter(o => o.dispatched_courier === c);
