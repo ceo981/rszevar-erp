@@ -382,8 +382,8 @@ export async function GET(request) {
       if (status && status !== 'all') q = q.eq('status', status);
       if (courier && courier !== 'all') {
         if (courier === 'Other') {
-          // "Other" = anything that's not PostEx/Leopards/Kangaroo (including null)
-          q = q.or('dispatched_courier.is.null,and(dispatched_courier.neq.PostEx,dispatched_courier.neq.Leopards,dispatched_courier.neq.Kangaroo)');
+          // "Other" = anything that's not PostEx/Leopards/Kangaroo/Trax (including null)
+          q = q.or('dispatched_courier.is.null,and(dispatched_courier.neq.PostEx,dispatched_courier.neq.Leopards,dispatched_courier.neq.Kangaroo,dispatched_courier.neq.Trax)');
         } else {
           q = q.eq('dispatched_courier', courier);
         }
@@ -675,6 +675,7 @@ export async function GET(request) {
       { count: leopardsCount },
       { count: postexCount },
       { count: kangarooCount },
+      { count: traxCount },
       { count: gPending },
       { count: gConfirmed },
       { count: gOnPacking },
@@ -698,6 +699,7 @@ export async function GET(request) {
       baseCount().eq('dispatched_courier', 'Leopards'),
       baseCount().eq('dispatched_courier', 'PostEx'),
       baseCount().eq('dispatched_courier', 'Kangaroo'),
+      baseCount().eq('dispatched_courier', 'Trax'),
       baseCount().eq('status', 'pending'),
       baseCount().eq('status', 'confirmed'),
       baseCount().eq('status', 'on_packing'),
@@ -750,6 +752,7 @@ export async function GET(request) {
       leopards: leopardsCount || 0,
       postex: postexCount || 0,
       kangaroo: kangarooCount || 0,
+      trax: traxCount || 0,
       pending: gPending || 0,
       confirmed: gConfirmed || 0,
       on_packing: gOnPacking || 0,
