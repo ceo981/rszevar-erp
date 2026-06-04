@@ -224,7 +224,7 @@ export async function POST(request) {
       slipUrl = result?.print_url || null; // label/slip URL (printable)
       trackingUrl =
         result?.tracking_url ||
-        (tracking && courier === 'Leopards' ? `https://lcs.appsbymoose.com/track/${tracking}` : null) ||
+        (tracking && courier === 'Leopards' ? `https://leopardsfulfillment.leopardscourier.com/Track/Index?Cn=${tracking}` : null) ||
         (tracking && courier === 'Kangaroo' ? `https://kangaroo.pk/track/${tracking}` : null);
     } catch (e) {
       bookingError = e.message;
