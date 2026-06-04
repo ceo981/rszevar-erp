@@ -28,7 +28,7 @@ export async function GET() {
     const pendingSettlement = totalCOD - totalSettled;
 
     // By courier
-    const couriers = ['PostEx', 'Kangaroo', 'Leopards'];
+    const couriers = ['PostEx', 'Kangaroo', 'Leopards', 'Trax'];
     const byCourier = {};
     for (const courier of couriers) {
       const courierOrders = codOrders?.filter(o => o.dispatched_courier === courier) || [];
