@@ -107,6 +107,7 @@ function FilterDropdown({ current, onChange, globalCounts }) {
         { type: 'courier', value: 'Leopards', label: '🐆 Leopards', color: '#a855f7', count: gc.leopards },
         { type: 'courier', value: 'PostEx', label: '📦 PostEx', color: '#22d3ee', count: gc.postex },
         { type: 'courier', value: 'Kangaroo', label: '🦘 Kangaroo', color: '#f59e0b', count: gc.kangaroo },
+        { type: 'courier', value: 'Trax', label: '⚡ Trax', color: '#10b981', count: gc.trax },
         { type: 'courier', value: 'Other', label: '❓ Other / Unknown', color: 'var(--text2)' },
       ],
     },
@@ -692,6 +693,16 @@ export default function OrdersPage() {
             body: JSON.stringify({ triggered_by: 'auto_page_load' }),
           }),
           fetch('/api/courier/kangaroo/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/trax/sync-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ triggered_by: 'auto_page_load' }),
+          }),
+          fetch('/api/courier/trax/sync-payments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ triggered_by: 'auto_page_load' }),
