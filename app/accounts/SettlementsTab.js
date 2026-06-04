@@ -23,6 +23,7 @@ const COURIERS = [
   { id: 'Leopards', label: '🐆 Leopards', format: 'PDF / XLS', accept: '.pdf,.xls,.xlsx' },
   { id: 'Kangaroo', label: '🦘 Kangaroo', format: 'XLSX',      accept: '.xlsx,.xls' },
   { id: 'PostEx',   label: '📦 PostEx',   format: 'CSV',        accept: '.csv' },
+  { id: 'Trax',     label: '⚡ Trax',     format: 'XLSX / CSV', accept: '.xlsx,.xls,.csv' },
 ];
 
 const fmt     = n => `Rs ${Number(n || 0).toLocaleString()}`;
@@ -286,14 +287,14 @@ function HistorySection({ refresh }) {
   useEffect(() => { load(); }, [load, refresh]);
 
   const filtered = filter === 'All' ? records : records.filter(r => r.courier === filter);
-  const courierColor = { PostEx: '#4caf79', Kangaroo: '#9b7fe8', Leopards: '#e87d44' };
+  const courierColor = { PostEx: '#4caf79', Kangaroo: '#9b7fe8', Leopards: '#e87d44', Trax: '#10b981' };
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: gold }}>📋 Settlement History</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['All', 'Leopards', 'Kangaroo', 'PostEx'].map(c => (
+          {['All', 'Leopards', 'Kangaroo', 'PostEx', 'Trax'].map(c => (
             <button
               key={c}
               onClick={() => setFilter(c)}
