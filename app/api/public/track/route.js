@@ -55,6 +55,7 @@ function buildTrackingUrl(courier, tracking) {
     'Leopards': `https://lcs.appsbymoose.com/track/${tracking}`,
     'PostEx':   `https://postex.pk/track-order?trackingId=${tracking}`,
     'Kangaroo': `https://www.kangaroo.pk/track?cn=${tracking}`,
+    'Trax':     `https://sonic.pk/tracking?tracking_number=${tracking}`,
   };
   return map[courier] || null;
 }
