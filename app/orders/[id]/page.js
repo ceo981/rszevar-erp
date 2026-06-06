@@ -969,6 +969,10 @@ export default function SingleOrderPage() {
     ? computeGrossSubtotal(items)
     : (subtotal + discount);
 
+  // Jun 6 2026 — Total item quantity (sum of line quantities, Shopify-style).
+  // items.length = distinct lines; totalItemQty = actual unit count (e.g. 403).
+  const totalItemQty = items.reduce((s, it) => s + (parseInt(it.quantity) || 0), 0);
+
   // May 2026 — Total order weight from Shopify line_items.grams.
   // Helpful for international orders (UDEX rate slab pick) and also for
   // domestic dispatch override (Leopards/PostEx booking weight). 0 grams
@@ -1325,6 +1329,10 @@ export default function SingleOrderPage() {
                   </span>
                   <span style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: 'var(--text2)' }}>
                     📍 OFFICE
+                  </span>
+                  {/* Jun 6 2026 — Total item count (Shopify-style), sum of quantities */}
+                  <span title="Total items (sum of all quantities)" style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, padding: '3px 10px', borderRadius: 12, fontSize: 11, color: 'var(--text2)' }}>
+                    🧮 {totalItemQty} item{totalItemQty !== 1 ? 's' : ''}
                   </span>
                 </div>
               }
