@@ -6,6 +6,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ---------------------------------------------------------------------------
+// Jun 8 2026 — FIX: Supabase by default sirf 1000 rows deta hai jab koi
+// .range()/.limit() na ho. Pehle yahan single query thi -> sirf 1000 sabse
+// recent orders aate the -> purane customers (jaise old repeat buyers) group
+// hi nahi bante the aur search me "No matching customer" aata tha.
+// Ab batches (1000) me loop kar ke SAARE orders fetch karte hain.
+// ---------------------------------------------------------------------------
+async function fetchAllOrders() {
+  const pageSize = 1000;
+  let from = 0;
+  let all = [];
+  // Safety cap: 200k orders (200 batches) — runaway loop se bachne ke liye.
+  for (let i = 0; i < 200; i++) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, customer_name, customer_phone, customer_city, customer_address, total_amount, status, created_at')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) break;
+    if (!data || data.length === 0) break;
+
+    all = all.concat(data);
+
+    // Aakhri page mil gaya (poore pageSize se kam aaye) -> ruk jao.
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || '';
@@ -38,11 +69,8 @@ export async function GET(request) {
     return NextResponse.json({ orders: orders || [], complaints: complaints || [], blacklist });
   }
 
-  // Build customer summary from orders
-  const { data: allOrders } = await supabase
-    .from('orders')
-    .select('id, customer_name, customer_phone, customer_city, customer_address, total_amount, status, created_at')
-    .order('created_at', { ascending: false });
+  // Build customer summary from orders — ab SAARE orders (paginated)
+  const allOrders = await fetchAllOrders();
 
   // Group by phone
   const customerMap = {};
@@ -104,12 +132,14 @@ export async function GET(request) {
 
   // Search
   if (search) {
-    const q = search.toLowerCase();
-    customers = customers.filter(c =>
-      c.name?.toLowerCase().includes(q) ||
-      c.phone?.includes(q) ||
-      c.city?.toLowerCase().includes(q)
-    );
+    const q = search.toLowerCase().trim();
+    // Multi-word support: har word match hona chahiye (name/phone/city me se kahin bhi).
+    // Isse "anum taha" jaisa search bhi chale agar naam "Anum Taha" ho.
+    const words = q.split(/\s+/).filter(Boolean);
+    customers = customers.filter(c => {
+      const haystack = `${c.name || ''} ${c.phone || ''} ${c.city || ''}`.toLowerCase();
+      return words.every(w => haystack.includes(w));
+    });
   }
 
   // Sort by total spend desc
