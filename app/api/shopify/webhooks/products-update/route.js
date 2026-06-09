@@ -40,6 +40,10 @@ async function fetchProductExtras(productId) {
       product(id: $id) {
         seo { title description }
         collections(first: 50) { edges { node { handle title } } }
+        featuredImage { url }
+        variants(first: 100) {
+          nodes { id image { url } }
+        }
       }
     }
   `;
@@ -56,6 +60,14 @@ async function fetchProductExtras(productId) {
   if (json.errors) return null;
   const node = json?.data?.product;
   if (!node) return null;
+  // Authoritative variant→image map (numeric variant id → url). The webhook
+  // payload's images[] is not guaranteed complete, so GraphQL is the source
+  // of truth for which image belongs to which variant/color.
+  const variantImages = {};
+  for (const vn of (node.variants?.nodes || [])) {
+    const num = String(vn.id || '').match(/\/(\d+)$/)?.[1];
+    if (num && vn.image?.url) variantImages[num] = vn.image.url;
+  }
   return {
     seo: {
       title: node.seo?.title ?? null,
@@ -65,6 +77,8 @@ async function fetchProductExtras(productId) {
       handle: e.node.handle,
       title: e.node.title,
     })),
+    featuredImageUrl: node.featuredImage?.url || null,
+    variantImages,
   };
 }
 
@@ -154,10 +168,18 @@ export async function POST(request) {
         v.seo_meta_title       = extras.seo.title;
         v.seo_meta_description = extras.seo.description;
         v.collections          = extras.collections;
+        // FIX Jun 9 2026 — Wrong thumbnail bug. The products/update webhook
+        // payload's images[] can arrive partial/empty, so transformProducts
+        // falls every variant back to the product featured image (wrong color).
+        // Override with the authoritative per-variant image from GraphQL.
+        const authImg = extras.variantImages?.[String(v.shopify_variant_id)];
+        if (authImg) v.image_url = authImg;
+        else if (!v.image_url && extras.featuredImageUrl) v.image_url = extras.featuredImageUrl;
       }
       extrasFetched = {
         seo: !!(extras.seo.title || extras.seo.description),
         collections: extras.collections.length,
+        variant_images: Object.keys(extras.variantImages || {}).length,
       };
     }
   } catch (e) {
