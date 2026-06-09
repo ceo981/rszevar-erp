@@ -166,7 +166,24 @@ export default function AiEnhanceModal({ product, onClose, onPushed, onApply, mo
           input_language_mix: 'pure_english',
         }),
       });
-      const data = await res.json();
+
+      // Read as text first. A timed-out / crashed server returns an EMPTY body,
+      // and res.json() on an empty body throws the cryptic
+      // "Unexpected end of JSON input". Guard it and surface a useful message.
+      const rawText = await res.text();
+      if (!rawText) {
+        throw new Error(
+          res.status === 504 || res.status === 408
+            ? 'Server timed out while generating. Please click Generate again.'
+            : `Server returned an empty response (HTTP ${res.status}). Please try again.`
+        );
+      }
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Server returned an unexpected response (HTTP ${res.status}). Please try again.`);
+      }
       if (!data.success) {
         throw new Error(data.error || 'Generation failed');
       }
@@ -206,7 +223,20 @@ export default function AiEnhanceModal({ product, onClose, onPushed, onApply, mo
           },
         }),
       });
-      const data = await res.json();
+      const rawText = await res.text();
+      if (!rawText) {
+        throw new Error(
+          res.status === 504 || res.status === 408
+            ? 'Shopify push timed out. Check Shopify — it may have partially applied — then retry.'
+            : `Push returned an empty response (HTTP ${res.status}). Please try again.`
+        );
+      }
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Push returned an unexpected response (HTTP ${res.status}). Please try again.`);
+      }
       setPushResult(data);
       if (data.success) {
         setStep('pushed');
