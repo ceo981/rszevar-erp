@@ -10,6 +10,11 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const MODEL = process.env.AI_MODEL || 'claude-sonnet-4-6';
+// Fail the Anthropic call cleanly BEFORE Vercel kills the function at maxDuration.
+// Vercel returns an empty body on a 504, which makes the browser's res.json()
+// throw "Unexpected end of JSON input". Timing out at 52s lets us return real JSON.
+const REQUEST_TIMEOUT_MS = 52000;
+const MAX_TOKENS = 5000;
 
 const PRICING = {
   'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
@@ -280,10 +285,20 @@ export async function POST(request) {
 
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 4000,
+      max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
-    });
+    }, { timeout: REQUEST_TIMEOUT_MS });
+
+    // If the model ran out of token budget, the JSON is truncated — bail with a
+    // clear message instead of letting JSON.parse fail with a cryptic error.
+    if (response.stop_reason === 'max_tokens') {
+      return NextResponse.json({
+        success: false,
+        error: 'AI output was cut off (token limit). Try again, or shorten the Quick Facts.',
+        duration_ms: Date.now() - startTime,
+      }, { status: 500 });
+    }
 
     const textBlock = response.content.find(b => b.type === 'text');
     const rawText = textBlock?.text || '';
