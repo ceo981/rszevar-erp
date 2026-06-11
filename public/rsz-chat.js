@@ -1,7 +1,6 @@
 /* ============================================================================
  * RS ZEVAR — Storefront Chat Widget  (served at https://erp.rszevar.com/rsz-chat.js)
- * ----------------------------------------------------------------------------
- * Add ONCE to the Shopify theme (theme.liquid, just before </body>):
+ * Add ONCE to theme.liquid before </body>:
  *   <script src="https://erp.rszevar.com/rsz-chat.js" defer></script>
  * ========================================================================== */
 (function () {
@@ -12,10 +11,7 @@
   var API = 'https://erp.rszevar.com/api/public/storefront-chat';
   var WHATSAPP = '923032244550';
   var GREETING = 'Hi! \uD83D\uDC4B Welcome to RS ZEVAR. How can we help you today?';
-  var INK = '#171513';
-  var INK2 = '#2a2520';
-  var GOLD = '#c6a15b';
-  var GOLD_DARK = '#a8853f';
+  var INK = '#171513', INK2 = '#2a2520', GOLD = '#c6a15b', GOLD_DARK = '#a8853f';
   var HIST_TTL = 24 * 60 * 60 * 1000;
 
   var sessionId;
@@ -25,21 +21,14 @@
   } catch (e) { sessionId = 'w_' + Math.random().toString(36).slice(2); }
 
   function loadHistory() {
-    try {
-      var raw = JSON.parse(localStorage.getItem('rsz_chat_hist') || 'null');
-      if (raw && raw.t && (Date.now() - raw.t) < HIST_TTL && Array.isArray(raw.h)) return raw.h;
-    } catch (e) {}
+    try { var raw = JSON.parse(localStorage.getItem('rsz_chat_hist') || 'null'); if (raw && raw.t && (Date.now() - raw.t) < HIST_TTL && Array.isArray(raw.h)) return raw.h; } catch (e) {}
     return [];
   }
-  function saveHistory() {
-    try { localStorage.setItem('rsz_chat_hist', JSON.stringify({ t: Date.now(), h: history.slice(-40) })); } catch (e) {}
-  }
+  function saveHistory() { try { localStorage.setItem('rsz_chat_hist', JSON.stringify({ t: Date.now(), h: history.slice(-40) })); } catch (e) {} }
 
   var history = loadHistory();
-  var pendingMedia = null;
-  var open = false;
-  var busy = false;
-  var rendered = false;
+  var pendingMedia = null;  // images only (voice auto-sends)
+  var open = false, busy = false, rendered = false;
 
   var css = ''
     + '.rsz-fab{position:fixed;right:18px;bottom:20px;width:56px;height:56px;border-radius:50%;'
@@ -55,9 +44,9 @@
     + '.rsz-head .t b{font-size:15px;font-weight:700;color:' + GOLD + ';letter-spacing:.5px;}'
     + '.rsz-head .t small{display:block;font-size:11px;opacity:.7;font-weight:400;color:#fff;}'
     + '.rsz-spacer{flex:1;}'
-    + '.rsz-hbtn{cursor:pointer;background:rgba(255,255,255,.08);border:none;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;}'
-    + '.rsz-hbtn svg{width:17px;height:17px;}'
-    + '.rsz-x{margin-left:2px;cursor:pointer;font-size:22px;line-height:1;opacity:.85;background:none;border:none;color:#fff;}'
+    + '#rszWa{cursor:pointer;background:#25D366;border:none;border-radius:9px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;}'
+    + '#rszWa svg{width:19px;height:19px;}'
+    + '.rsz-x{margin-left:2px;cursor:pointer;font-size:24px;line-height:1;opacity:.85;background:none;border:none;color:#fff;padding:0 4px;}'
     + '.rsz-body{flex:1;overflow-y:auto;padding:14px;background:#f7f4ef;display:flex;flex-direction:column;gap:10px;}'
     + '.rsz-msg{max-width:82%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}'
     + '.rsz-bot{align-self:flex-start;background:#fff;color:#222;border:1px solid #ece5da;border-bottom-left-radius:4px;}'
@@ -71,19 +60,25 @@
     + '.rsz-card .n{font-size:13px;font-weight:600;line-height:1.3;}'
     + '.rsz-card .p{font-size:12px;color:' + GOLD_DARK + ';font-weight:700;margin-top:2px;}'
     + '.rsz-card .oos{font-size:11px;color:#c0392b;margin-top:2px;}'
-    + '.rsz-wa{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;background:#25D366;color:#fff;text-decoration:none;'
-    + 'padding:9px 14px;border-radius:10px;font-size:13px;font-weight:700;}'
+    + '.rsz-wa{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;background:#25D366;color:#fff;text-decoration:none;padding:9px 14px;border-radius:10px;font-size:13px;font-weight:700;}'
     + '.rsz-foot{border-top:1px solid #ece5da;padding:8px;background:#fff;}'
     + '.rsz-prev{display:flex;align-items:center;gap:8px;font-size:12px;color:#666;padding:4px 6px 6px;}'
     + '.rsz-prev img{width:36px;height:36px;border-radius:6px;object-fit:cover;}'
     + '.rsz-prev button{margin-left:auto;background:none;border:none;color:#c0392b;cursor:pointer;font-size:12px;}'
     + '.rsz-inrow{display:flex;align-items:center;gap:6px;}'
-    + '.rsz-in{flex:1;border:1px solid #ddd;border-radius:20px;padding:9px 14px;font-size:14px;outline:none;font-family:inherit;min-width:0;}'
-    + '.rsz-ico{width:38px;height:38px;border-radius:50%;border:none;background:#f1ece3;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}'
-    + '.rsz-ico svg{width:19px;height:19px;fill:#8a7a5e;}'
-    + '.rsz-ico.rec{background:#ffe2e2;}'
+    + '.rsz-in{flex:1;border:1px solid #ddd;border-radius:22px;padding:10px 15px;font-size:14px;outline:none;font-family:inherit;min-width:0;}'
+    + '.rsz-ico{width:42px;height:42px;border-radius:50%;border:none;background:#f1ece3;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}'
+    + '.rsz-ico svg{width:23px;height:23px;fill:#7c6a4d;}'
     + '.rsz-send{background:linear-gradient(135deg,' + GOLD + ',' + GOLD_DARK + ');}'
     + '.rsz-send svg{fill:#fff;}'
+    // recording bar (WhatsApp-style)
+    + '.rsz-recbar{display:flex;align-items:center;gap:8px;}'
+    + '.rsz-recmid{flex:1;display:flex;align-items:center;gap:9px;background:#fdeceb;border-radius:22px;padding:11px 16px;}'
+    + '.rsz-dot{width:11px;height:11px;border-radius:50%;background:#e0392b;animation:rszpulse 1s infinite;flex:0 0 auto;}'
+    + '.rsz-tmr{font-size:14px;font-weight:700;color:#c0392b;font-variant-numeric:tabular-nums;}'
+    + '.rsz-reclbl{font-size:12px;color:#999;margin-left:auto;}'
+    + '.rsz-cancel{background:#f3eded;}.rsz-cancel svg{fill:#c0392b;}'
+    + '@keyframes rszpulse{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}'
     + '.rsz-foot .pwr{display:block;text-align:center;font-size:10px;color:#bbb;margin-top:5px;}'
     + '@media (max-width:600px){'
     + '.rsz-fab{bottom:78px;right:14px;width:50px;height:50px;}'
@@ -91,16 +86,14 @@
     + '.rsz-panel{right:0;left:0;bottom:0;width:100%;height:min(72vh,560px);border-radius:18px 18px 0 0;}'
     + '}';
 
-  var style = document.createElement('style');
-  style.textContent = css;
-  document.head.appendChild(style);
+  var style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
 
   var fab = document.createElement('button');
-  fab.className = 'rsz-fab';
-  fab.setAttribute('aria-label', 'Chat with RS ZEVAR');
+  fab.className = 'rsz-fab'; fab.setAttribute('aria-label', 'Chat with RS ZEVAR');
   fab.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.4 1.2 4.6 3.1 6.1-.1 1.1-.6 2.4-1.4 3.4 1.6-.2 3.2-.8 4.4-1.7 1.2.4 2.5.6 3.9.6 5.5 0 10-3.8 10-8.4S17.5 3 12 3z"/></svg>';
 
-  var waHeadIcon = '<svg viewBox="0 0 24 24" fill="#25D366"><path d="M20 11.5a8 8 0 0 1-11.9 7L4 19.5l1.1-4A8 8 0 1 1 20 11.5z"/></svg>';
+  // Proper filled WhatsApp logo (white on green)
+  var WA_LOGO = '<svg viewBox="0 0 32 32" fill="#fff"><path d="M16 .4C7.4.4.5 7.3.5 15.9c0 2.8.7 5.4 2 7.8L.4 31.6l8.1-2.1c2.3 1.2 4.8 1.9 7.5 1.9 8.6 0 15.5-6.9 15.5-15.5S24.6.4 16 .4zm0 28.4c-2.4 0-4.7-.6-6.7-1.8l-.5-.3-4.8 1.3 1.3-4.7-.3-.5c-1.3-2-2-4.4-2-6.9C3.3 8.7 9 2.9 16.2 2.9c3.4 0 6.7 1.4 9.1 3.8 2.4 2.4 3.8 5.7 3.8 9.2 0 7.2-5.9 12.9-13.1 12.9zm7.2-9.7c-.4-.2-2.3-1.1-2.7-1.3-.4-.1-.6-.2-.9.2-.3.4-1 1.3-1.2 1.5-.2.2-.4.3-.8.1-.4-.2-1.7-.6-3.2-2-1.2-1.1-2-2.4-2.2-2.8-.2-.4 0-.6.2-.8l.6-.7c.2-.2.2-.4.4-.6.1-.3 0-.5 0-.7-.1-.2-.9-2.1-1.2-2.9-.3-.7-.6-.6-.9-.6h-.7c-.2 0-.6.1-1 .5-.3.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.3 5.6.9.4 1.6.6 2.1.8.9.3 1.7.2 2.3.2.7-.1 2.3-.9 2.6-1.8.3-.9.3-1.6.2-1.8-.1-.2-.3-.3-.7-.4z"/></svg>';
 
   var panel = document.createElement('div');
   panel.className = 'rsz-panel';
@@ -108,17 +101,22 @@
     + '<div class="rsz-head">'
     +   '<div class="t"><b>RS ZEVAR</b><small>Typically replies instantly</small></div>'
     +   '<div class="rsz-spacer"></div>'
-    +   '<button class="rsz-hbtn" id="rszWa" title="Chat on WhatsApp">' + waHeadIcon + '</button>'
+    +   '<button id="rszWa" title="Chat on WhatsApp">' + WA_LOGO + '</button>'
     +   '<button class="rsz-x" aria-label="Close">\u00D7</button>'
     + '</div>'
     + '<div class="rsz-body" id="rszBody"></div>'
     + '<div class="rsz-foot">'
     +   '<div class="rsz-prev" id="rszPrev" style="display:none;"></div>'
-    +   '<div class="rsz-inrow">'
+    +   '<div class="rsz-inrow" id="rszInrow">'
     +     '<button class="rsz-ico" id="rszPhoto" title="Send a photo"><svg viewBox="0 0 24 24"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg></button>'
     +     '<button class="rsz-ico" id="rszMic" title="Voice message"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/></svg></button>'
     +     '<input class="rsz-in" id="rszIn" placeholder="Type your message..." />'
     +     '<button class="rsz-ico rsz-send" id="rszSend" title="Send"><svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg></button>'
+    +   '</div>'
+    +   '<div class="rsz-recbar" id="rszRec" style="display:none;">'
+    +     '<button class="rsz-ico rsz-cancel" id="rszCancel" title="Cancel"><svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7zm3-3h6l1 2h4v2H2V6h4l1-2z"/></svg></button>'
+    +     '<div class="rsz-recmid"><span class="rsz-dot"></span><span class="rsz-tmr" id="rszTimer">0:00</span><span class="rsz-reclbl">Recording…</span></div>'
+    +     '<button class="rsz-ico rsz-send" id="rszStop" title="Send voice"><svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg></button>'
     +   '</div>'
     +   '<span class="pwr">RS ZEVAR \u2022 rszevar.com</span>'
     + '</div>'
@@ -131,23 +129,25 @@
   var inEl = panel.querySelector('#rszIn');
   var prevEl = panel.querySelector('#rszPrev');
   var fileEl = panel.querySelector('#rszFile');
+  var inRow = panel.querySelector('#rszInrow');
+  var recBar = panel.querySelector('#rszRec');
+  var timerEl = panel.querySelector('#rszTimer');
 
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function linkify(s) { return esc(s).replace(/(https?:\/\/[^\s]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + u + '</a>'; }); }
   function scroll() { bodyEl.scrollTop = bodyEl.scrollHeight; }
+  function fmtDur(s) { var m = Math.floor(s / 60), ss = s % 60; return m + ':' + (ss < 10 ? '0' : '') + ss; }
 
   function addMsg(role, text) {
     var d = document.createElement('div');
     d.className = 'rsz-msg ' + (role === 'user' ? 'rsz-user' : 'rsz-bot');
-    d.innerHTML = linkify(text);
-    bodyEl.appendChild(d); scroll();
+    d.innerHTML = linkify(text); bodyEl.appendChild(d); scroll();
   }
   function addCards(products) {
     if (!products || !products.length) return;
     var wrap = document.createElement('div'); wrap.className = 'rsz-cards';
     products.forEach(function (p) {
-      var a = document.createElement('a'); a.className = 'rsz-card';
-      a.href = p.url || '#'; a.target = '_blank'; a.rel = 'noopener';
+      var a = document.createElement('a'); a.className = 'rsz-card'; a.href = p.url || '#'; a.target = '_blank'; a.rel = 'noopener';
       var price = p.price != null ? ('Rs. ' + p.price) : '';
       a.innerHTML = (p.image ? '<img src="' + esc(p.image) + '" alt="">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f0eadf;"></div>')
         + '<div><div class="n">' + esc(p.name || 'Product') + '</div>'
@@ -171,54 +171,47 @@
   function setPreview() {
     if (!pendingMedia) { prevEl.style.display = 'none'; prevEl.innerHTML = ''; return; }
     prevEl.style.display = 'flex';
-    prevEl.innerHTML = pendingMedia.kind === 'image'
-      ? '<img src="data:' + pendingMedia.mimeType + ';base64,' + pendingMedia.data + '"><span>Photo ready</span>'
-      : '<span>\uD83C\uDFA4 Voice message ready</span>';
+    prevEl.innerHTML = '<img src="data:' + pendingMedia.mimeType + ';base64,' + pendingMedia.data + '"><span>Photo ready</span>';
     var btn = document.createElement('button'); btn.textContent = 'Remove';
     btn.onclick = function () { pendingMedia = null; setPreview(); };
     prevEl.appendChild(btn);
   }
 
   function renderHistory() {
-    if (rendered) return; rendered = true;
-    bodyEl.innerHTML = '';
-    if (history.length === 0) {
-      addMsg('bot', GREETING);
-      history.push({ role: 'assistant', text: GREETING });
-      saveHistory();
-    } else {
-      history.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.text); });
-    }
+    if (rendered) return; rendered = true; bodyEl.innerHTML = '';
+    if (history.length === 0) { addMsg('bot', GREETING); history.push({ role: 'assistant', text: GREETING }); saveHistory(); }
+    else { history.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.text); }); }
   }
 
-  function send() {
+  // ── Send (text + optional image, or voice) ──
+  function doSend(text, media, displayOverride) {
     if (busy) return;
-    var text = inEl.value.trim();
-    if (!text && !pendingMedia) return;
-    var media = pendingMedia;
-    var display = text || (media && media.kind === 'image' ? '\uD83D\uDCF7 Photo' : '\uD83C\uDFA4 Voice message');
+    if (!text && !media) return;
+    var display = displayOverride || text || (media && media.kind === 'image' ? '\uD83D\uDCF7 Photo' : '\uD83C\uDFA4 Voice message');
     addMsg('user', display);
-    history.push({ role: 'user', text: text || (media ? '[' + media.kind + ']' : '') });
-    saveHistory();
-    inEl.value = ''; pendingMedia = null; setPreview();
-
+    history.push({ role: 'user', text: text || (media ? '[' + media.kind + ']' : '') }); saveHistory();
     busy = true; showTyping();
     var payload = { sessionId: sessionId, messages: history };
     if (media) payload[media.kind === 'image' ? 'image' : 'audio'] = { mimeType: media.mimeType, data: media.data };
-
     fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         hideTyping(); busy = false;
         var reply = d.reply || 'Sorry, please try again \uD83D\uDE0A';
-        addMsg('bot', reply);
-        history.push({ role: 'assistant', text: reply }); saveHistory();
+        addMsg('bot', reply); history.push({ role: 'assistant', text: reply }); saveHistory();
         if (d.products && d.products.length) addCards(d.products);
         if (d.handoff) addWhatsApp();
       })
       .catch(function () { hideTyping(); busy = false; addMsg('bot', 'Connection issue \uD83D\uDE0A please try WhatsApp.'); addWhatsApp(); });
   }
+  function send() {
+    var text = inEl.value.trim(); var media = pendingMedia;
+    if (!text && !media) return;
+    inEl.value = ''; pendingMedia = null; setPreview();
+    doSend(text, media, null);
+  }
 
+  // ── Photo ──
   panel.querySelector('#rszPhoto').onclick = function () { fileEl.click(); };
   fileEl.onchange = function () {
     var f = fileEl.files && fileEl.files[0]; if (!f) return;
@@ -228,35 +221,48 @@
     rd.readAsDataURL(f); fileEl.value = '';
   };
 
-  var rec = null, chunks = [];
+  // ── Voice (WhatsApp-style with live timer) ──
+  var rec = null, chunks = [], recTimer = null, recStart = 0;
   function pickMime() {
     var c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
     for (var i = 0; i < c.length; i++) { if (window.MediaRecorder && MediaRecorder.isTypeSupported(c[i])) return c[i]; }
     return '';
   }
-  var micBtn = panel.querySelector('#rszMic');
-  micBtn.onclick = function () {
-    if (rec && rec.state === 'recording') { rec.stop(); return; }
+  function showRec(on) {
+    inRow.style.display = on ? 'none' : 'flex';
+    recBar.style.display = on ? 'flex' : 'none';
+  }
+  function startRec() {
     if (!navigator.mediaDevices || !window.MediaRecorder) { addMsg('bot', 'Voice is not supported in this browser \uD83D\uDE0A please type.'); return; }
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
       var mime = pickMime();
       rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-      chunks = [];
+      rec.__cancel = false; chunks = [];
       rec.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
       rec.onstop = function () {
-        micBtn.classList.remove('rec');
         stream.getTracks().forEach(function (t) { t.stop(); });
+        if (recTimer) { clearInterval(recTimer); recTimer = null; }
+        var dur = Math.max(1, Math.round((Date.now() - recStart) / 1000));
+        showRec(false);
+        if (rec.__cancel) return;
         var blob = new Blob(chunks, { type: (rec.mimeType || 'audio/webm') });
         var rd = new FileReader();
-        rd.onload = function () { pendingMedia = { kind: 'audio', mimeType: (rec.mimeType || 'audio/webm').split(';')[0], data: String(rd.result).split(',')[1] }; setPreview(); };
+        rd.onload = function () {
+          doSend('', { kind: 'audio', mimeType: (rec.mimeType || 'audio/webm').split(';')[0], data: String(rd.result).split(',')[1] }, '\uD83C\uDFA4 Voice message (' + fmtDur(dur) + ')');
+        };
         rd.readAsDataURL(blob);
       };
-      rec.start(); micBtn.classList.add('rec');
+      rec.start(); recStart = Date.now();
+      showRec(true); timerEl.textContent = '0:00';
+      recTimer = setInterval(function () { timerEl.textContent = fmtDur(Math.round((Date.now() - recStart) / 1000)); }, 250);
     }).catch(function () { addMsg('bot', 'Microphone access denied \uD83D\uDE0A please type.'); });
-  };
+  }
+  panel.querySelector('#rszMic').onclick = startRec;
+  panel.querySelector('#rszStop').onclick = function () { if (rec && rec.state === 'recording') rec.stop(); };
+  panel.querySelector('#rszCancel').onclick = function () { if (rec && rec.state === 'recording') { rec.__cancel = true; rec.stop(); } };
 
+  // ── Header WhatsApp + open/close ──
   panel.querySelector('#rszWa').onclick = function () { window.open(waLink(), '_blank', 'noopener'); };
-
   function toggle() {
     open = !open;
     panel.classList.toggle('show', open);
