@@ -138,10 +138,13 @@
   function scroll() { bodyEl.scrollTop = bodyEl.scrollHeight; }
   function fmtDur(s) { var m = Math.floor(s / 60), ss = s % 60; return m + ':' + (ss < 10 ? '0' : '') + ss; }
 
-  function addMsg(role, text) {
+  function addMsg(role, text, img) {
     var d = document.createElement('div');
     d.className = 'rsz-msg ' + (role === 'user' ? 'rsz-user' : 'rsz-bot');
-    d.innerHTML = linkify(text); bodyEl.appendChild(d); scroll();
+    var html = '';
+    if (img) html += '<img src="' + img + '" style="max-width:170px;max-height:170px;border-radius:9px;display:block;margin-bottom:' + (text ? '6px' : '0') + ';">';
+    if (text) html += linkify(text);
+    d.innerHTML = html; bodyEl.appendChild(d); scroll();
   }
   function addCards(products) {
     if (!products || !products.length) return;
@@ -187,9 +190,16 @@
   function doSend(text, media, displayOverride) {
     if (busy) return;
     if (!text && !media) return;
-    var display = displayOverride || text || (media && media.kind === 'image' ? '\uD83D\uDCF7 Photo' : '\uD83C\uDFA4 Voice message');
-    addMsg('user', display);
-    history.push({ role: 'user', text: text || (media ? '[' + media.kind + ']' : '') }); saveHistory();
+    var img = (media && media.kind === 'image') ? ('data:' + media.mimeType + ';base64,' + media.data) : null;
+    if (img) {
+      // photo (with optional caption) shown as a real thumbnail
+      addMsg('user', text || '', img);
+    } else {
+      var display = displayOverride || text || (media && media.kind === 'audio' ? '\uD83C\uDFA4 Voice message' : '');
+      addMsg('user', display);
+    }
+    var histText = text || (media && media.kind === 'image' ? '\uD83D\uDCF7 Photo' : (media ? '[' + media.kind + ']' : ''));
+    history.push({ role: 'user', text: histText }); saveHistory();
     busy = true; showTyping();
     var payload = { sessionId: sessionId, messages: history };
     if (media) payload[media.kind === 'image' ? 'image' : 'audio'] = { mimeType: media.mimeType, data: media.data };
