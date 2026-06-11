@@ -666,6 +666,25 @@ function HeaderMenu({ onMarkUnread, onClose }) {
 export default function MessagesPage() {
   const { profile, userEmail, can } = useUser();
   const canReply = can('messages.reply');
+  const isCeo = profile?.role === 'super_admin';
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [botToggling, setBotToggling] = useState(false);
+  useEffect(() => {
+    if (!isCeo) return;
+    fetch('/api/whatsapp/bot-toggle').then(r => r.json()).then(d => { if (d.success) setBotEnabled(!!d.enabled); }).catch(() => {});
+  }, [isCeo]);
+  const toggleBot = async () => {
+    if (botToggling) return;
+    setBotToggling(true);
+    const next = !botEnabled;
+    setBotEnabled(next); // optimistic
+    try {
+      const r = await fetch('/api/whatsapp/bot-toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }) });
+      const d = await r.json();
+      if (!d.success) { setBotEnabled(!next); alert(d.error || 'Toggle failed'); }
+    } catch (e) { setBotEnabled(!next); alert('Toggle failed'); }
+    setBotToggling(false);
+  };
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [search, setSearch] = useState('');
@@ -941,12 +960,27 @@ export default function MessagesPage() {
             WhatsApp customer conversations
           </p>
         </div>
-        <button
-          onClick={() => { loadConversations(); if (selectedId) loadMessages(selectedId); }}
-          style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
-          ⟳ Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isCeo && (
+            <div
+              onClick={toggleBot}
+              title={botEnabled ? 'Bot auto-reply is ON — tap to turn OFF' : 'Bot auto-reply is OFF — tap to turn ON'}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: botToggling ? 'wait' : 'pointer', background: 'var(--bg-card)', border: `1px solid ${botEnabled ? '#22c55e' : border}`, borderRadius: 8, padding: '7px 12px', userSelect: 'none' }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, color: botEnabled ? '#22c55e' : 'var(--text3)' }}>🤖 Auto-reply</span>
+              <span style={{ position: 'relative', width: 38, height: 22, borderRadius: 22, background: botEnabled ? '#22c55e' : '#9ca3af', transition: 'background .2s', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 2, left: botEnabled ? 18 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: botEnabled ? '#22c55e' : 'var(--text3)', minWidth: 24 }}>{botEnabled ? 'ON' : 'OFF'}</span>
+            </div>
+          )}
+          <button
+            onClick={() => { loadConversations(); if (selectedId) loadMessages(selectedId); }}
+            style={{ background: 'var(--bg-card)', border: `1px solid ${border}`, color: 'var(--text2)', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            ⟳ Refresh
+          </button>
+        </div>
       </div>
 
       {/* Two-column layout — desktop. On mobile, we show EITHER list OR chat
