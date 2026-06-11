@@ -24,6 +24,7 @@ import { sendText } from '../../../../lib/whatsapp';
 import { updateShopifyOrderTags } from '../../../../lib/shopify';
 import { handleIncomingMessage, handleOutgoingMessage } from '../../../../lib/whatsapp-inbox';
 import { enrichInboundMessageMedia } from '../../../../lib/whatsapp-media';
+import { maybeAutoReply } from '../../../../lib/bot-brain/whatsapp-autoreply';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,21 @@ export async function POST(request) {
                 await enrichInboundMessageMedia(saved.messageId);
               } catch (mediaErr) {
                 console.error('[whatsapp-webhook] media cache error:', mediaErr?.message);
+              }
+            }
+
+            // ── Phase 3: bot auto-reply (text only, gated by master switch +
+            //    human-takeover + handoff inside the helper; never throws) ──
+            if (saved?.conversationId && msg.type === 'text') {
+              try {
+                await maybeAutoReply({
+                  conversationId: saved.conversationId,
+                  fromPhone: msg.from,
+                  msgType: msg.type,
+                  bodyText: msg.text?.body || '',
+                });
+              } catch (botErr) {
+                console.error('[whatsapp-webhook] auto-reply error:', botErr?.message);
               }
             }
           } catch (e) {
