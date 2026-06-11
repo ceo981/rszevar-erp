@@ -101,12 +101,8 @@ function buildContents(messages, media) {
 // Pull product cards out of tool results so the widget can render them.
 function collectProducts(name, result, bucket) {
   if (!result) return;
-  if (name === 'search_products' && Array.isArray(result.results)) {
-    for (const p of result.results) bucket.push(p);
-  }
-  if (name === 'get_product_by_link' && result.product) {
-    bucket.push(result.product);
-  }
+  if (Array.isArray(result.results)) { for (const p of result.results) bucket.push(p); } // search_products, get_best_sellers
+  if (result.product) bucket.push(result.product); // get_product_by_link
 }
 
 function dedupeProducts(list) {
