@@ -160,7 +160,17 @@
     });
     bodyEl.appendChild(wrap); scroll();
   }
-  function waLink() { return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent('Assalam-o-alaikum, I need help from RS ZEVAR.'); }
+  function waLink() {
+    // Prefill the customer's recent messages so the team gets full context.
+    var userMsgs = history.filter(function (m) { return m.role === 'user'; })
+      .map(function (m) { return (m.text || '').trim(); })
+      .filter(function (t) { return t && t !== '\uD83D\uDCF7 Photo'; });
+    var recent = userMsgs.slice(-4).join('\n\u2022 ');
+    var txt = 'Assalam-o-alaikum! Main RS ZEVAR website chat se aaya hun.';
+    if (recent) txt += '\n\nMeri baat-cheet:\n\u2022 ' + recent;
+    txt += '\n\n(rszevar.com chat)';
+    return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(txt.slice(0, 1500));
+  }
   function addWhatsApp() {
     var a = document.createElement('a'); a.className = 'rsz-wa'; a.href = waLink(); a.target = '_blank'; a.rel = 'noopener';
     a.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M20 11.5a8 8 0 0 1-11.9 7L4 19.5l1.1-4A8 8 0 1 1 20 11.5z"/></svg> Chat on WhatsApp';
