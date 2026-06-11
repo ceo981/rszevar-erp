@@ -73,12 +73,13 @@ function limited(map, key, max) {
 }
 
 // ─── Caps ─────────────────────────────────────────────────────────────────────
-const MAX_MESSAGES = 14;        // keep only the recent turns
-const MAX_TEXT_LEN = 2000;      // per message
-const MAX_IMAGE_B64 = 4_000_000; // ~3MB image (Vercel body limit ~4.5MB)
+const MAX_MESSAGES = 14;          // keep only the recent turns
+const MAX_TEXT_LEN = 2000;        // per message
+const MAX_MEDIA_B64 = 6_000_000;  // ~4.5MB media (image or short voice note)
 
-// ─── Build Gemini contents from chat history (+ optional image on last user) ──
-function buildContents(messages, image) {
+// ─── Build Gemini contents from chat history (+ optional media on last user) ──
+// `media` = { mimeType, data } — works for both image (image/*) and audio (audio/*).
+function buildContents(messages, media) {
   const trimmed = (Array.isArray(messages) ? messages : []).slice(-MAX_MESSAGES);
   const contents = [];
   trimmed.forEach((m, idx) => {
@@ -86,17 +87,41 @@ function buildContents(messages, image) {
     const text = String(m.text || '').slice(0, MAX_TEXT_LEN);
     const parts = [];
     if (text) parts.push({ text });
-    // Attach image only to the LAST user message
+    // Attach the photo / voice note only to the LAST user message
     const isLast = idx === trimmed.length - 1;
-    if (isLast && role === 'user' && image && image.data && image.mimeType) {
-      parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+    if (isLast && role === 'user' && media && media.data && media.mimeType) {
+      parts.push({ inlineData: { mimeType: media.mimeType, data: media.data } });
     }
     if (parts.length) contents.push({ role, parts });
   });
   return contents;
 }
 
-function finalize(origin, rawText) {
+// Pull product cards out of tool results so the widget can render them.
+function collectProducts(name, result, bucket) {
+  if (!result) return;
+  if (name === 'search_products' && Array.isArray(result.results)) {
+    for (const p of result.results) bucket.push(p);
+  }
+  if (name === 'get_product_by_link' && result.product) {
+    bucket.push(result.product);
+  }
+}
+
+function dedupeProducts(list) {
+  const seen = new Set();
+  const out = [];
+  for (const p of list) {
+    const key = p.url || p.name;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name: p.name, price: p.price ?? null, in_stock: p.in_stock !== false, url: p.url || null, image: p.image || null });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+function finalize(origin, rawText, products = []) {
   let text = String(rawText || '').trim();
   let handoff = false;
   if (text.includes(HANDOFF_TOKEN)) {
@@ -112,6 +137,7 @@ function finalize(origin, rawText) {
     reply: text,
     handoff,
     whatsapp: handoff ? HANDOFF_WHATSAPP : null,
+    products: dedupeProducts(products),
   });
 }
 
@@ -136,13 +162,14 @@ export async function POST(request) {
       return jsonRes(origin, { success: false, error: 'messages required' }, 400);
     }
 
-    // Validate optional image
-    let image = null;
-    if (body.image && body.image.data && body.image.mimeType) {
-      if (String(body.image.data).length > MAX_IMAGE_B64) {
-        return jsonRes(origin, { success: false, error: 'image too large', reply: 'Image thori choti bhej dein please 😊' }, 413);
+    // Optional media: photo (image/*) or voice note (audio/*)
+    let media = null;
+    const raw = body.image || body.audio || body.media;
+    if (raw && raw.data && raw.mimeType) {
+      if (String(raw.data).length > MAX_MEDIA_B64) {
+        return jsonRes(origin, { success: false, error: 'media too large', reply: 'File thori choti bhej dein please 😊' }, 413);
       }
-      image = { data: String(body.image.data), mimeType: String(body.image.mimeType) };
+      media = { data: String(raw.data), mimeType: String(raw.mimeType) };
     }
 
     // No Gemini key yet → graceful handoff so the widget still works.
@@ -152,7 +179,8 @@ export async function POST(request) {
 
     const supabase = createServerClient();
     const systemInstruction = await buildSystemPrompt(supabase, 'website');
-    let contents = buildContents(messages, image);
+    let contents = buildContents(messages, media);
+    const productBucket = [];
 
     // ── Function-calling loop (max 3 tool rounds) ──
     for (let round = 0; round < 3; round++) {
@@ -162,7 +190,7 @@ export async function POST(request) {
 
       if (calls.length === 0) {
         const text = parts.filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-        return finalize(origin, text);
+        return finalize(origin, text, productBucket);
       }
 
       // Append the model's tool-call turn, then the tool results.
@@ -170,15 +198,16 @@ export async function POST(request) {
       const responseParts = [];
       for (const p of calls) {
         const result = await executeTool(p.functionCall.name, p.functionCall.args || {}, supabase);
+        collectProducts(p.functionCall.name, result, productBucket);
         responseParts.push({ functionResponse: { name: p.functionCall.name, response: { result } } });
       }
       contents.push({ role: 'user', parts: responseParts });
     }
 
-    // Tool rounds exhausted without a final text → ask the model once more, plain.
+    // Tool rounds exhausted without a final text → ask once more, plain.
     const last = await generateContent({ systemInstruction, contents });
     const text = firstCandidateParts(last).filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-    return finalize(origin, text || `${HANDOFF_TOKEN}`);
+    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket);
   } catch (e) {
     // Any failure → don't show a raw error to the customer; hand off kindly.
     return jsonRes(origin, {
