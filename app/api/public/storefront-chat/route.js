@@ -19,6 +19,7 @@ import { createServerClient } from '../../../../lib/supabase';
 import { generateContent, isGeminiConfigured, firstCandidateParts } from '../../../../lib/bot-brain/gemini';
 import { TOOL_DECLARATIONS, executeTool } from '../../../../lib/bot-brain/tools';
 import { buildSystemPrompt, HANDOFF_WHATSAPP, HANDOFF_TOKEN } from '../../../../lib/bot-brain/system-prompt';
+import { logConversation } from '../../../../lib/bot-brain/log';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -121,7 +122,7 @@ function dedupeProducts(list) {
   return out;
 }
 
-function finalize(origin, rawText, products = []) {
+async function finalize(origin, rawText, products, ctx) {
   let text = String(rawText || '').trim();
   let handoff = false;
   if (text.includes(HANDOFF_TOKEN)) {
@@ -132,12 +133,16 @@ function finalize(origin, rawText, products = []) {
     handoff = true;
     text = 'Main aap ko apni team se connect kar deti hun 😊';
   }
+  // Save conversation for the Bot Inbox (best-effort; never blocks the reply)
+  if (ctx && ctx.sessionId) {
+    await logConversation({ sessionId: ctx.sessionId, channel: 'website', messages: ctx.messages, reply: text, handoff });
+  }
   return jsonRes(origin, {
     success: true,
     reply: text,
     handoff,
     whatsapp: handoff ? HANDOFF_WHATSAPP : null,
-    products: dedupeProducts(products),
+    products: dedupeProducts(products || []),
   });
 }
 
@@ -172,9 +177,11 @@ export async function POST(request) {
       media = { data: String(raw.data), mimeType: String(raw.mimeType) };
     }
 
+    const ctx = { sessionId: sessionId, messages: messages };
+
     // No Gemini key yet → graceful handoff so the widget still works.
     if (!isGeminiConfigured()) {
-      return finalize(origin, `Main aap ko apni team se connect kar deti hun 😊 ${HANDOFF_TOKEN}`);
+      return finalize(origin, `Main aap ko apni team se connect kar deti hun 😊 ${HANDOFF_TOKEN}`, [], ctx);
     }
 
     const supabase = createServerClient();
@@ -190,7 +197,7 @@ export async function POST(request) {
 
       if (calls.length === 0) {
         const text = parts.filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-        return finalize(origin, text, productBucket);
+        return finalize(origin, text, productBucket, ctx);
       }
 
       // Append the model's tool-call turn, then the tool results.
@@ -207,7 +214,7 @@ export async function POST(request) {
     // Tool rounds exhausted without a final text → ask once more, plain.
     const last = await generateContent({ systemInstruction, contents });
     const text = firstCandidateParts(last).filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket);
+    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket, ctx);
   } catch (e) {
     // Any failure → don't show a raw error to the customer; hand off kindly.
     return jsonRes(origin, {
