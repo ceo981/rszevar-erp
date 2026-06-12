@@ -181,7 +181,9 @@ export async function POST(request) {
     }
 
     const supabase = createServerClient();
-    const systemInstruction = await buildSystemPrompt(supabase, 'website');
+    const __lastUser = Array.isArray(messages) ? [...messages].reverse().find((m) => m && m.role === 'user') : null;
+    const __lastUserText = __lastUser ? String(__lastUser.text || '') : '';
+    const systemInstruction = await buildSystemPrompt(supabase, 'website', __lastUserText);
     let contents = buildContents(messages, media);
     const productBucket = [];
 
