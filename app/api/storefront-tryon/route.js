@@ -146,7 +146,8 @@ export async function POST(req) {
 
   let body;
   try {
-    body = await req.json();
+    const raw = await req.text();
+    body = raw ? JSON.parse(raw) : {};
   } catch (_) {
     return json({ error: 'Invalid JSON' }, 400, origin);
   }
