@@ -118,7 +118,7 @@ function dedupeProducts(list) {
   return out;
 }
 
-async function finalize(origin, rawText, products, ctx) {
+async function finalize(origin, rawText, products, ctx, orderWa) {
   let text = String(rawText || '').trim();
   let handoff = false;
   if (text.includes(HANDOFF_TOKEN)) {
@@ -129,6 +129,9 @@ async function finalize(origin, rawText, products, ctx) {
     handoff = true;
     text = 'Main aap ko apni team se connect kar deti hun 😊';
   }
+  // Order captured (create_order) → force the WhatsApp button so the customer
+  // can send their order to the team, and prefill it with the order message.
+  if (orderWa) handoff = true;
   // Save conversation for the Bot Inbox (best-effort; never blocks the reply)
   if (ctx && ctx.sessionId) {
     await logConversation({ sessionId: ctx.sessionId, channel: 'website', messages: ctx.messages, reply: text, handoff });
@@ -138,6 +141,7 @@ async function finalize(origin, rawText, products, ctx) {
     reply: text,
     handoff,
     whatsapp: handoff ? HANDOFF_WHATSAPP : null,
+    whatsapp_text: orderWa || null,
     products: dedupeProducts(products || []),
   });
 }
@@ -186,6 +190,7 @@ export async function POST(request) {
     const systemInstruction = await buildSystemPrompt(supabase, 'website', __lastUserText);
     let contents = buildContents(messages, media);
     const productBucket = [];
+    let orderWa = null; // set when create_order returns a ready WhatsApp order message
 
     // ── Function-calling loop (max 3 tool rounds) ──
     for (let round = 0; round < 3; round++) {
@@ -195,7 +200,7 @@ export async function POST(request) {
 
       if (calls.length === 0) {
         const text = parts.filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-        return finalize(origin, text, productBucket, ctx);
+        return finalize(origin, text, productBucket, ctx, orderWa);
       }
 
       // Append the model's tool-call turn, then the tool results.
@@ -204,6 +209,7 @@ export async function POST(request) {
       for (const p of calls) {
         const result = await executeTool(p.functionCall.name, p.functionCall.args || {}, supabase);
         collectProducts(p.functionCall.name, result, productBucket);
+        if (result && result.whatsapp_text) orderWa = result.whatsapp_text;
         responseParts.push({ functionResponse: { name: p.functionCall.name, response: { result } } });
       }
       contents.push({ role: 'user', parts: responseParts });
@@ -212,7 +218,7 @@ export async function POST(request) {
     // Tool rounds exhausted without a final text → ask once more, plain.
     const last = await generateContent({ systemInstruction, contents });
     const text = firstCandidateParts(last).filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket, ctx);
+    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket, ctx, orderWa);
   } catch (e) {
     // Any failure → don't show a raw error to the customer; hand off kindly.
     return jsonRes(origin, {
