@@ -160,8 +160,14 @@
     });
     bodyEl.appendChild(wrap); scroll();
   }
+  var pendingOrderWa = null; // set from server d.whatsapp_text when an order is captured
   function waLink() {
-    // Prefill the customer's recent messages so the team gets full context.
+    // If the bot just captured an order, prefill the FULL order message so it
+    // lands in the team's WhatsApp ready to confirm & place.
+    if (pendingOrderWa) {
+      return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(String(pendingOrderWa).slice(0, 1500));
+    }
+    // Otherwise: prefill the customer's recent messages so the team gets context.
     var userMsgs = history.filter(function (m) { return m.role === 'user'; })
       .map(function (m) { return (m.text || '').trim(); })
       .filter(function (t) { return t && t !== '\uD83D\uDCF7 Photo'; });
@@ -171,9 +177,10 @@
     txt += '\n\n(rszevar.com chat)';
     return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(txt.slice(0, 1500));
   }
-  function addWhatsApp() {
+  function addWhatsApp(isOrder) {
     var a = document.createElement('a'); a.className = 'rsz-wa'; a.href = waLink(); a.target = '_blank'; a.rel = 'noopener';
-    a.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M20 11.5a8 8 0 0 1-11.9 7L4 19.5l1.1-4A8 8 0 1 1 20 11.5z"/></svg> Chat on WhatsApp';
+    var label = isOrder ? 'Order WhatsApp pe bhejein' : 'Chat on WhatsApp';
+    a.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#fff"><path d="M20 11.5a8 8 0 0 1-11.9 7L4 19.5l1.1-4A8 8 0 1 1 20 11.5z"/></svg> ' + label;
     bodyEl.appendChild(a); scroll();
   }
 
@@ -220,7 +227,8 @@
         var reply = d.reply || 'Sorry, please try again \uD83D\uDE0A';
         addMsg('bot', reply); history.push({ role: 'assistant', text: reply }); saveHistory();
         if (d.products && d.products.length) addCards(d.products);
-        if (d.handoff) addWhatsApp();
+        pendingOrderWa = d.whatsapp_text || null; // order captured? prefill it in the WhatsApp button
+        if (d.handoff) addWhatsApp(!!pendingOrderWa);
       })
       .catch(function () { hideTyping(); busy = false; addMsg('bot', 'Connection issue \uD83D\uDE0A please try WhatsApp.'); addWhatsApp(); });
   }
