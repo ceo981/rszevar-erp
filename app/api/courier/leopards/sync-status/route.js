@@ -217,7 +217,31 @@ export async function POST(request) {
   }
 }
 
-export async function GET() {
+// GET — dual purpose:
+//   • Vercel cron (Authorization: Bearer <CRON_SECRET>) → runs the status sync.
+//   • Anyone else (UI stats fetch) → read-only counts (original behavior).
+// ⚠️ Vercel env mein CRON_SECRET set hona zaroori hai warna cron header nahi aayega.
+export async function GET(request) {
+  const cronSecret = process.env.CRON_SECRET;
+  const auth = request.headers.get('authorization') || '';
+  if (cronSecret && auth === `Bearer ${cronSecret}`) {
+    try {
+      const rules = await getSettings('business_rules');
+      const configuredDays = rules['rules.leopards_sync_window_days'] ?? 10;
+      const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
+      const now = new Date();
+      const from = formatDate(new Date(now.getTime() - configuredDays * 24 * 60 * 60 * 1000));
+      const to = formatDate(now);
+      const result = await runSync({ from, to, triggered_by: 'cron', lockedStatuses });
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error.message, triggered_by: 'cron' },
+        { status: 500 }
+      );
+    }
+  }
+
   try {
     const supabase = createServerClient();
     const { data: lastLog } = await supabase
