@@ -294,7 +294,9 @@ export default function SingleOrderPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/orders/${id}`);
+      // cache:'no-store' — warna edit ke baad browser apni HTTP cache se purana
+      // order de deta tha (stale shipping address dikhti thi jabki DB+Shopify updated).
+      const r = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
       const d = await r.json();
       if (d.success) setOrder(d.order);
       else setError(d.error || 'Order load failed');
@@ -307,7 +309,7 @@ export default function SingleOrderPage() {
   const loadTimeline = useCallback(async () => {
     if (!id) return;
     try {
-      const r = await fetch(`/api/orders/comment?order_id=${id}`);
+      const r = await fetch(`/api/orders/comment?order_id=${id}`, { cache: 'no-store' });
       const d = await r.json();
       setTimeline(d.log || []);
     } catch {}
