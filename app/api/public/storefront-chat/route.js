@@ -118,7 +118,7 @@ function dedupeProducts(list) {
   return out;
 }
 
-async function finalize(origin, rawText, products, ctx, orderWa) {
+async function finalize(origin, rawText, products, ctx, orderWa, collection) {
   let text = String(rawText || '').trim();
   let handoff = false;
   if (text.includes(HANDOFF_TOKEN)) {
@@ -142,6 +142,7 @@ async function finalize(origin, rawText, products, ctx, orderWa) {
     handoff,
     whatsapp: handoff ? HANDOFF_WHATSAPP : null,
     whatsapp_text: orderWa || null,
+    collection: collection || null,
     products: dedupeProducts(products || []),
   });
 }
@@ -191,6 +192,7 @@ export async function POST(request) {
     let contents = buildContents(messages, media);
     const productBucket = [];
     let orderWa = null; // set when create_order returns a ready WhatsApp order message
+    let collection = null; // set when a product search matches a website collection (View more)
 
     // ── Function-calling loop (max 3 tool rounds) ──
     for (let round = 0; round < 3; round++) {
@@ -200,7 +202,7 @@ export async function POST(request) {
 
       if (calls.length === 0) {
         const text = parts.filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-        return finalize(origin, text, productBucket, ctx, orderWa);
+        return finalize(origin, text, productBucket, ctx, orderWa, collection);
       }
 
       // Append the model's tool-call turn, then the tool results.
@@ -210,6 +212,7 @@ export async function POST(request) {
         const result = await executeTool(p.functionCall.name, p.functionCall.args || {}, supabase);
         collectProducts(p.functionCall.name, result, productBucket);
         if (result && result.whatsapp_text) orderWa = result.whatsapp_text;
+        if (result && result.collection) collection = result.collection;
         responseParts.push({ functionResponse: { name: p.functionCall.name, response: { result } } });
       }
       contents.push({ role: 'user', parts: responseParts });
@@ -218,7 +221,7 @@ export async function POST(request) {
     // Tool rounds exhausted without a final text → ask once more, plain.
     const last = await generateContent({ systemInstruction, contents });
     const text = firstCandidateParts(last).filter((p) => typeof p.text === 'string').map((p) => p.text).join('').trim();
-    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket, ctx, orderWa);
+    return finalize(origin, text || `${HANDOFF_TOKEN}`, productBucket, ctx, orderWa, collection);
   } catch (e) {
     // Any failure → don't show a raw error to the customer; hand off kindly.
     return jsonRes(origin, {
