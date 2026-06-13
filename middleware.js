@@ -11,6 +11,22 @@ export async function middleware(request) {
     return NextResponse.next();
   }
 
+  // ─── Vercel Cron bypass (JUN 2026) ────────────────────────────────────────
+  // Vercel cron requests ke paas login cookie nahi hota, isliye auth middleware
+  // unhe /login pe 307 redirect kar deta tha aur sync/cron handler chalta hi
+  // nahi tha. Vercel cron har request ke saath `Authorization: Bearer <CRON_SECRET>`
+  // bhejta hai (jab CRON_SECRET env var set ho). Agar woh secret valid hai to
+  // auth bypass karo — target route handler khud dobara secret verify karke
+  // decide karta hai ke sync chalana hai ya read-only stats dena hai.
+  // Secret hi gate hai, isliye yeh secure hai (cookie ki zarurat nahi).
+  const cronSecret = process.env.CRON_SECRET;
+  if (
+    cronSecret &&
+    request.headers.get('authorization') === `Bearer ${cronSecret}`
+  ) {
+    return NextResponse.next();
+  }
+
   return await updateSession(request);
 }
 
