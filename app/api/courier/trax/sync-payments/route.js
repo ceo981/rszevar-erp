@@ -9,6 +9,15 @@
 //    + cheque/method/date note mein save
 //
 // Safe & idempotent — sirf unpaid → paid flip karta hai.
+//
+// ─── JUN 2026 FIX (crons dead) ──────────────────────────────────────────────
+//   Vercel cron GET bhejta hai par sync POST mein tha → cron kabhi payment sync
+//   nahi chalata tha. Ab GET bhi, agar Vercel cron se aaye (Authorization:
+//   Bearer <CRON_SECRET>), to runPaymentSync chalata hai. Bina secret ke GET
+//   wahi read-only stats deta hai.
+//   ⚠️ Vercel env mein CRON_SECRET set karna zaroori hai.
+//   Note: payment fetch ab hardened lib/sonic.js (timeout + retry + labeled
+//   errors) use karta hai — "fetch failed" ab kind:'network' label hota hai.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -148,7 +157,26 @@ export async function POST(request) {
   }
 }
 
-export async function GET() {
+// GET — dual purpose:
+//   • Vercel cron (Authorization: Bearer <CRON_SECRET>) → runs the payment sync.
+//   • Anyone else (UI stats fetch) → read-only counts (original behavior).
+export async function GET(request) {
+  const cronSecret = process.env.CRON_SECRET;
+  const auth = request.headers.get('authorization') || '';
+  const isCron = !!cronSecret && auth === `Bearer ${cronSecret}`;
+
+  if (isCron) {
+    try {
+      const result = await runPaymentSync({ triggered_by: 'cron', limit: 500 });
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error.message, triggered_by: 'cron' },
+        { status: 500 }
+      );
+    }
+  }
+
   try {
     const supabase = createServerClient();
 
