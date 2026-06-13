@@ -19,7 +19,9 @@ import { getSettings } from '../../../../../lib/settings';
 import { evaluateAutomatedTransition } from '../../../../../lib/order-status';
 
 const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
-const DEFAULT_MAX_ORDERS = 50; // safety cap for 60s Vercel timeout
+const DEFAULT_MAX_ORDERS = 80;   // concurrency pool ki wajah se safe (pehle 50)
+const FETCH_CONCURRENCY = 5;
+const FETCH_DEADLINE_MS = 35000; // 35s API budget; baqi ~25s reclassify + DB writes + log
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -112,7 +114,7 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
     .eq('dispatched_courier', 'Kangaroo')
     .not('tracking_number', 'is', null)
     .not('status', 'in', notInList)
-    .order('updated_at', { ascending: false })
+    .order('courier_last_synced_at', { ascending: true, nullsFirst: true })
     .limit(maxOrders);
 
   if (fetchErr) throw new Error(`DB fetch error: ${fetchErr.message}`);
@@ -147,7 +149,10 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
   const trackingNumbers = kangarooOrders.map(o => o.tracking_number);
   let trackResults;
   try {
-    trackResults = await trackKangarooBatch(trackingNumbers);
+    trackResults = await trackKangarooBatch(trackingNumbers, {
+      concurrency: FETCH_CONCURRENCY,
+      deadlineMs: FETCH_DEADLINE_MS,
+    });
   } catch (e) {
     throw new Error(`Kangaroo API batch failed: ${e.message}`);
   }
