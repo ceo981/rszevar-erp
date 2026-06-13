@@ -157,6 +157,8 @@ export async function POST(req) {
 
   const sessionId = (body.sessionId || '').toString().slice(0, 80) || 'anon';
   const productImageUrl = (body.productImageUrl || '').toString();
+  const jewelryType = (body.jewelryType || '').toString().slice(0, 120);
+  const productTitle = (body.productTitle || '').toString().slice(0, 200);
   const selfie = parseSelfie(body.selfie);
 
   if (!productImageUrl) return json({ error: 'productImageUrl required' }, 400, origin);
@@ -228,6 +230,8 @@ export async function POST(req) {
       model: process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
       product,
       selfie: { mimeType: selfie.mimeType, data: selfie.data },
+      jewelryType,
+      productTitle,
       aspectRatio: process.env.TRYON_ASPECT || '3:4',
     });
   } catch (e) {
