@@ -254,6 +254,10 @@ export async function GET(request, { params }) {
     return NextResponse.json({
       success: true,
       order: { ...order, assigned_to_name, assigned_via_team, customer_order_count },
+    }, {
+      // Browser/CDN ko is response ko cache karne se roko — warna edit ke baad
+      // loadOrder ko stale order milta tha.
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
   } catch (error) {
     console.error('[api/orders/id] error:', error);
