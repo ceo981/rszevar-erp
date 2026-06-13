@@ -4,8 +4,13 @@ import { updateSession } from '@/lib/supabase/middleware';
 export async function middleware(request) {
   // Public API routes bypass auth (used by storefront for order tracking)
   // + the storefront chat widget JS (served to rszevar.com from /rsz-chat.js)
+  // + the storefront-facing endpoints (chat backend + virtual try-on) which are
+  //   called cross-origin from rszevar.com and therefore carry NO login cookie.
+  //   These routes are public by design and protect themselves (CORS allow-list,
+  //   per-session/per-IP rate limits, SSRF guards) instead of relying on auth.
   if (
     request.nextUrl.pathname.startsWith('/api/public') ||
+    request.nextUrl.pathname.startsWith('/api/storefront-') ||
     request.nextUrl.pathname === '/rsz-chat.js'
   ) {
     return NextResponse.next();
