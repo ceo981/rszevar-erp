@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // Sonic ka koi bulk-by-date-range status endpoint nahi hai (Leopards jaisa),
 // isliye Kangaroo wala pattern: har active Trax order ke liye per-call status
-// fetch karo (lib/sonic.js delay handle karta hai).
+// fetch karo (lib/sonic.js concurrency + timeout handle karta hai).
 //
 // PROTOCOL GUARD (same as Leopards/Kangaroo): ye cron silently pre-dispatch
 // order ka office status nahi badlega. Agar staff ne ERP confirm/packed click
@@ -14,6 +14,20 @@
 //
 // dispatched_courier='Trax' lib/shopify.js fulfillment sync se set hota hai
 // (Shopify tracking_company = "Trax"). Manual fulfill / dispatch bhi set karte.
+//
+// ─── JUN 2026 FIXES ─────────────────────────────────────────────────────────
+//  FIX 1 (crons dead): Vercel cron GET bhejta hai, par sync POST mein tha →
+//        cron kabhi sync nahi chalata tha. Ab GET bhi, agar Vercel cron se aaye
+//        (Authorization: Bearer <CRON_SECRET>), to runSync chalata hai. Bina
+//        secret ke GET wahi read-only stats deta hai (UI ke liye).
+//        ⚠️ Vercel env mein CRON_SECRET set karna ZAROORI hai warna cron header
+//        nahi bhejega aur sync phir bhi nahi chalega.
+//  FIX 2 (starvation): ordering `updated_at desc` se `courier_last_synced_at
+//        asc nulls first` — sabse purane/never-synced orders pehle. Backlog
+//        (delivered-but-stale + never_synced) guaranteed drain hota hai.
+//  FIX 3 (timeout): per-call sequential loop (36-44s, 60s ke paas) → concurrency
+//        pool (5 parallel) + 35s deadline. Function HAMESHA apni log row likhta
+//        hai; jo orders deadline ke baad reh gaye woh agle run mein ho jate hain.
 // ============================================================================
 
 import { NextResponse } from 'next/server';
@@ -23,7 +37,10 @@ import { getSettings } from '../../../../../lib/settings';
 import { evaluateAutomatedTransition } from '../../../../../lib/order-status';
 
 const DEFAULT_LOCKED = ['delivered', 'returned', 'rto', 'cancelled', 'refunded'];
-const DEFAULT_MAX_ORDERS = 50; // safety cap for 60s Vercel timeout (per-call API)
+const DEFAULT_MAX_ORDERS = 80;   // concurrency pool ki wajah se safe (pehle 50)
+const HARD_MAX_ORDERS = 150;
+const FETCH_CONCURRENCY = 5;
+const FETCH_DEADLINE_MS = 35000; // 35s API budget; baqi ~25s DB writes + log ke liye
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,7 +50,8 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
   const startTime = Date.now();
   const supabase = createServerClient();
 
-  // Fetch Trax orders that still need a status check (skip locked at DB level)
+  // Fetch Trax orders that still need a status check (skip locked at DB level).
+  // FIX: oldest-synced / never-synced FIRST → no starvation, full backlog drains.
   const notInList = `(${lockedStatuses.join(',')})`;
   const { data: traxOrders, error: fetchErr } = await supabase
     .from('orders')
@@ -41,7 +59,7 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
     .eq('dispatched_courier', 'Trax')
     .not('tracking_number', 'is', null)
     .not('status', 'in', notInList)
-    .order('updated_at', { ascending: false })
+    .order('courier_last_synced_at', { ascending: true, nullsFirst: true })
     .limit(maxOrders);
 
   if (fetchErr) throw new Error(`DB fetch error: ${fetchErr.message}`);
@@ -70,14 +88,20 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
     };
   }
 
-  // Per-order status fetch (Sonic has no bulk endpoint)
+  // Per-order status fetch — concurrency pool + deadline (Sonic has no bulk endpoint)
   const trackingNumbers = traxOrders.map(o => o.tracking_number);
   let trackResults;
   try {
-    trackResults = await fetchSonicStatusBatch(trackingNumbers);
+    trackResults = await fetchSonicStatusBatch(trackingNumbers, {
+      concurrency: FETCH_CONCURRENCY,
+      deadlineMs: FETCH_DEADLINE_MS,
+    });
   } catch (e) {
     throw new Error(`Sonic API batch failed: ${e.message}`);
   }
+
+  const budgetHit = !!trackResults.budgetHit;
+  const attempted = trackResults.attempted || trackResults.length;
 
   const trackMap = new Map();
   for (const r of trackResults) trackMap.set(r.tracking, r);
@@ -89,10 +113,10 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
 
   for (const order of traxOrders) {
     const trackRes = trackMap.get(order.tracking_number);
-    if (!trackRes) continue;
+    if (!trackRes) continue; // not fetched this run (deadline) — next run pe ho jayega
 
     if (!trackRes.success) {
-      apiErrors.push({ tracking: order.tracking_number, error: trackRes.error });
+      apiErrors.push({ tracking: order.tracking_number, error: trackRes.error, kind: trackRes.kind });
       continue;
     }
 
@@ -192,12 +216,15 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
       tracking: r.tracking,
       success: r.success,
       raw_status: r.success ? r.status : null,
+      error_kind: r.success ? null : r.kind,
     })),
   });
 
   return {
     success: true,
     total_trax_orders: traxOrders.length,
+    attempted_this_run: attempted,
+    budget_hit: budgetHit, // true = deadline lag gaya, baqi orders agle run mein
     rows_touched: updatedCount,
     status_changes: statusChangedCount,
     protocol_violations: protocolViolations.length,
@@ -208,19 +235,22 @@ async function runSync({ triggered_by = 'manual', lockedStatuses, maxOrders }) {
     skipped_sample: skipped.slice(0, 5),
     db_errors: dbErrors.length,
     duration_ms: Date.now() - startTime,
-    message: `${statusChangedCount} status changes · ${protocolViolations.length} protocol violations blocked`,
+    message: `${statusChangedCount} status changes · ${protocolViolations.length} protocol violations blocked${budgetHit ? ' · deadline hit (rest next run)' : ''}`,
   };
+}
+
+async function resolveAndRun(triggered_by, maxOrders) {
+  const rules = await getSettings('business_rules');
+  const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
+  const cap = Math.min(maxOrders || DEFAULT_MAX_ORDERS, HARD_MAX_ORDERS);
+  return runSync({ triggered_by, lockedStatuses, maxOrders: cap });
 }
 
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const rules = await getSettings('business_rules');
-    const lockedStatuses = rules['rules.locked_statuses'] ?? DEFAULT_LOCKED;
     const triggered_by = body.triggered_by || 'manual';
-    const maxOrders = Math.min(body.max_orders || DEFAULT_MAX_ORDERS, 100);
-
-    const result = await runSync({ triggered_by, lockedStatuses, maxOrders });
+    const result = await resolveAndRun(triggered_by, body.max_orders);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
@@ -230,7 +260,26 @@ export async function POST(request) {
   }
 }
 
-export async function GET() {
+// GET — dual purpose:
+//   • Vercel cron (Authorization: Bearer <CRON_SECRET>) → runs the sync.
+//   • Anyone else (UI stats fetch) → read-only counts (original behavior).
+export async function GET(request) {
+  const cronSecret = process.env.CRON_SECRET;
+  const auth = request.headers.get('authorization') || '';
+  const isCron = !!cronSecret && auth === `Bearer ${cronSecret}`;
+
+  if (isCron) {
+    try {
+      const result = await resolveAndRun('cron', DEFAULT_MAX_ORDERS);
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error.message, triggered_by: 'cron' },
+        { status: 500 }
+      );
+    }
+  }
+
   try {
     const supabase = createServerClient();
     const { data: lastLog } = await supabase
