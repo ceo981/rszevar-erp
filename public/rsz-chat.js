@@ -146,11 +146,12 @@
     if (text) html += linkify(text);
     d.innerHTML = html; bodyEl.appendChild(d); scroll();
   }
-  function addCards(products) {
+  function addCards(products, collection) {
     if (!products || !products.length) return;
     var wrap = document.createElement('div'); wrap.className = 'rsz-cards';
     products.forEach(function (p) {
-      var a = document.createElement('a'); a.className = 'rsz-card'; a.href = p.url || '#'; a.target = '_blank'; a.rel = 'noopener';
+      // Same tab (no target=_blank) so the customer stays in the store flow.
+      var a = document.createElement('a'); a.className = 'rsz-card'; a.href = p.url || '#';
       var price = p.price != null ? ('Rs. ' + p.price) : '';
       a.innerHTML = (p.image ? '<img src="' + esc(p.image) + '" alt="">' : '<div style="width:52px;height:52px;border-radius:8px;background:#f0eadf;"></div>')
         + '<div><div class="n">' + esc(p.name || 'Product') + '</div>'
@@ -158,7 +159,17 @@
         + (p.in_stock === false ? '<div class="oos">Out of stock</div>' : '') + '</div>';
       wrap.appendChild(a);
     });
-    bodyEl.appendChild(wrap); scroll();
+    bodyEl.appendChild(wrap);
+    // "View more" → real website collection (same tab) when we matched one.
+    if (collection && collection.url) {
+      var more = document.createElement('a');
+      more.className = 'rsz-viewmore';
+      more.href = collection.url;
+      more.textContent = 'View more' + (collection.title ? ' \u2014 ' + collection.title : '') + ' \u2192';
+      more.style.cssText = 'display:block;text-align:center;margin:6px 0 2px;font-size:13px;color:#9a7b4f;text-decoration:none;font-weight:600;';
+      bodyEl.appendChild(more);
+    }
+    scroll();
   }
   var pendingOrderWa = null; // set from server d.whatsapp_text when an order is captured
   function waLink() {
@@ -226,7 +237,7 @@
         hideTyping(); busy = false;
         var reply = d.reply || 'Sorry, please try again \uD83D\uDE0A';
         addMsg('bot', reply); history.push({ role: 'assistant', text: reply }); saveHistory();
-        if (d.products && d.products.length) addCards(d.products);
+        if (d.products && d.products.length) addCards(d.products, d.collection);
         pendingOrderWa = d.whatsapp_text || null; // order captured? prefill it in the WhatsApp button
         if (d.handoff) addWhatsApp(!!pendingOrderWa);
       })
