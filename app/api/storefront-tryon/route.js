@@ -53,10 +53,11 @@ function allowedOrigins() {
 }
 
 function corsHeaders(origin) {
-  const list = allowedOrigins();
-  const ok = origin && list.includes(origin);
+  // Reflect the caller's origin when present, else allow any. This endpoint
+  // uses no cookies/credentials, so this is safe; abuse is bounded by the
+  // per-session and per-IP rate limits below.
   return {
-    'Access-Control-Allow-Origin': ok ? origin : list[0],
+    'Access-Control-Allow-Origin': origin || '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
@@ -142,11 +143,6 @@ export async function OPTIONS(req) {
 
 export async function POST(req) {
   const origin = req.headers.get('origin');
-
-  // CORS gate (block unknown origins outright for a write endpoint).
-  if (origin && !allowedOrigins().includes(origin)) {
-    return json({ error: 'Origin not allowed' }, 403, origin);
-  }
 
   let body;
   try {
