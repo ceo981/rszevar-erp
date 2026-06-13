@@ -150,8 +150,24 @@ export async function POST(request) {
   }
 }
 
-// ─── GET — stats + last sync ────────────────────────────────────────────────
-export async function GET() {
+// ─── GET — stats + last sync (+ cron-triggered run) ─────────────────────────
+//   • Vercel cron (Authorization: Bearer <CRON_SECRET>) → runs the payment sync.
+//   • Anyone else (UI stats fetch) → read-only counts (original behavior).
+export async function GET(request) {
+  const cronSecret = process.env.CRON_SECRET;
+  const auth = request.headers.get('authorization') || '';
+  if (cronSecret && auth === `Bearer ${cronSecret}`) {
+    try {
+      const result = await runPaymentSync({ triggered_by: 'cron', limit: 500 });
+      return NextResponse.json(result);
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error.message, triggered_by: 'cron' },
+        { status: 500 }
+      );
+    }
+  }
+
   try {
     const supabase = createServerClient();
 
